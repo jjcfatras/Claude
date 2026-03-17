@@ -20,14 +20,14 @@ Follow these steps precisely:
      - **Binary files**: Skip lines containing `Binary files ... differ` — these have no hunks. Include the file in the changed-files list but omit it from the valid-line map.
      - **Renamed files**: For `rename from X` / `rename to Y`, use the **new** path (the `b/` path) as the map key. If there are no hunks (pure rename with no content changes), include the file in the changed-files list but omit it from the valid-line map.
    - Return:
-   (1) a summary of the change,
-   (2) the **path to the diff file** (the unique `$DIFF_FILE` path),
-   (3) a list of all changed file paths,
-   (4) the **owner** and **repo** name (e.g., `FS-Main` and `fairsquare-ui`),
-   (5) the **pull request number**,
-   (6) the **full HEAD commit SHA** of the PR branch (use `gh pr view <number> --json headRefOid -q .headRefOid`),
-   (7) the **valid-line map**.
-   c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
+     (1) a summary of the change,
+     (2) the **path to the diff file** (the unique `$DIFF_FILE` path),
+     (3) a list of all changed file paths,
+     (4) the **owner** and **repo** name (e.g., `FS-Main` and `fairsquare-ui`),
+     (5) the **pull request number**,
+     (6) the **full HEAD commit SHA** of the PR branch (use `gh pr view <number> --json headRefOid -q .headRefOid`),
+     (7) the **valid-line map**.
+     c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
    - Fetch all reviews: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`
    - Filter for the most recent review whose `body` contains `"Generated with [Claude Code]"` using jq
    - If found, extract its `id`, `submitted_at`, and `commit_id`
@@ -218,7 +218,7 @@ Follow these steps precisely:
      --input /tmp/pr-review-payload.json
    ```
 
-   **Fallback**: If the API call fails, post a single PR comment via `gh pr comment <number> --body '<body>'` containing the full review summary body. Include all issues (both inline-eligible and summary-only) in the body using ISSUE_FORMAT, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: `_Note: Inline comments failed ({error}). All issues listed below._`
+   **Fallback**: If the API call fails, post a single PR comment via `gh pr comment <number> --body '<body>'` containing the full review summary body. Include all issues (both inline-eligible and summary-only) in the body using ISSUE*FORMAT, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: `\_Note: Inline comments failed ({error}). All issues listed below.*`
 
    **ISSUE_FORMAT** (used for both inline comment bodies and summary-only issues):
 
