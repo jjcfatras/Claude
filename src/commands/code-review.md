@@ -10,6 +10,14 @@ Provide a code review for the given pull request.
 **Setup:** Create a todo list for steps 1-5. Update after each step.
 **Execution:** Within each step, launch all agents in a single message (foreground, never `run_in_background`); all must complete before the next step.
 
+**Shell Command Safety** (applies to ALL steps and ALL agents):
+
+- **Never include `#` comments in bash commands** — use the Bash tool's `description` parameter for documentation instead. The `#` character inside shell commands desynchronizes quote tracking in the permission system, causing repeated approval prompts.
+- **Never pass markdown content or jq filters as inline bash arguments** — always write them to temp files first using the Write tool, then reference the files (e.g., `jq -f /tmp/filter.jq`, `gh pr comment NUMBER -F /tmp/body.md`).
+- **Never use heredocs (`<<`, `<<<`) for content that contains `#` or quote characters** — use the Write tool to create the file, then reference it.
+- **Never use `sed` or `awk`** — they are not in the allowed tools list and their syntax triggers security prompts. Use the Read tool, `jq`, or `gh api --jq` for text processing.
+- **Keep every Bash command on a single line** — newlines inside a Bash command are interpreted as multiple commands and trigger security prompts. Chain with `&&` or `|` on one line.
+
 Follow these steps precisely:
 
 1. Launch all three Haiku agents:
@@ -29,11 +37,11 @@ Follow these steps precisely:
      (7) the **valid-line map**.
      c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
    - Fetch all reviews: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`
-   - Filter for the most recent review whose `body` contains `"Generated with [Claude Code]"` using jq
+   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]` using jq's `test` function. Write the jq filter to a temp file (e.g., `/tmp/pr-review-filter.jq`) using the Write tool, then run `jq -f /tmp/pr-review-filter.jq`. Do not use `contains()` with embedded quote characters, and do not pass jq filters as inline arguments.
    - If found, extract its `id`, `submitted_at`, and `commit_id`
    - Fetch that review's inline comments: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews/{id}/comments`
    - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
-   - Write the result to a temp file as JSON with the following structure:
+   - Write the result to a temp file as JSON using the Write tool (not bash heredocs or echo). The JSON should have the following structure:
 
      ```json
      {
@@ -60,7 +68,16 @@ Follow these steps precisely:
    - **HAS_FRONTEND**: true if the PR modifies files in frontend directories (e.g., `src/components/`, `src/pages/`, `src/hooks/`, `app/`, or files with `.tsx`/`.jsx` extensions that contain React components)
    - **HAS_INFRASTRUCTURE**: true if any changed file matches migration, terraform, docker, or config patterns (e.g., `*.sql`, `migrations/`, `*.tf`, `*.hcl`, `docker*`, `Dockerfile*`, infrastructure or deploy directories, or files referencing `secret_manager_path`)
 
-   Launch all applicable Sonnet agents. Pass each agent the diff file path, summary, changed file list, CLAUDE.md files, the owner/repo/HEAD SHA from step 1, and the prior-issues file path from step 1c. Each agent must read the diff from the file using the Read tool and read the prior-issues file. Agents may also read the full source of changed files (using `gh api repos/{owner}/{repo}/contents/{path}?ref={HEAD_SHA}` to fetch file contents at the HEAD SHA) if needed to verify an issue — for example, to see surrounding context, function signatures, imports, or call sites — but should avoid excessive fetching. Agents must NOT use `gh pr diff` directly.
+   Launch all applicable Sonnet agents. Pass each agent the diff file path, summary, changed file list, CLAUDE.md files, the owner/repo/HEAD SHA from step 1, and the prior-issues file path from step 1c. Each agent must read the diff from the file using the Read tool and read the prior-issues file. Agents may also read the full source of changed files if needed to verify an issue — for example, to see surrounding context, function signatures, imports, or call sites — but should avoid excessive fetching. Agents must NOT use `gh pr diff` directly.
+
+   **Agent Shell Command Safety** — include these rules verbatim in every agent prompt:
+   1. No `#` characters in bash commands — use the Bash tool's `description` parameter for documentation.
+   2. No `sed` or `awk` — use the Read tool, `jq`, or `gh api --jq` instead.
+   3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
+   4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
+   5. No inline jq filters — write filters to `.jq` files and use `jq -f file.jq`.
+   6. No markdown/JSON as inline `--arg` values — write content to temp files and use `--rawfile`.
+   7. To fetch file contents at the HEAD SHA, use this single-line command: `gh api repos/{owner}/{repo}/contents/{path}?ref={SHA} --jq .content | base64 --decode`
 
    Each agent should independently code review the change. For each issue identified, the agent must:
    1. Identify the issue and its category
@@ -203,10 +220,24 @@ Follow these steps precisely:
 
    If the inline list is empty, set `comments` to `[]`.
 
-   Build the JSON using `jq` with `--arg` and `--argjson` flags to properly escape all string values (quotes, newlines, backslashes, and dollar signs in code snippets). The approach:
-   1. Start with an empty JSON array for comments.
-   2. For each inline-eligible issue, pipe the array through `jq` using `--arg` for string fields (path, side, body) and `--argjson` for numeric fields (line), appending each comment object.
-   3. Build the final payload with `jq -n`, passing commit_id and body as `--arg` strings and the comments array as `--argjson`, then write to `/tmp/pr-review-payload.json`.
+   Build the JSON using a file-based approach to avoid shell quoting issues with markdown content (code blocks, backticks, and quotes cause security warnings when passed as inline shell arguments):
+
+   **Shell Command Safety:**
+   - Never pass comment bodies or the review summary as inline `--arg` values. Always write markdown content to temp files first and use `--rawfile` to read them.
+   - Never pass jq filter expressions as inline quoted arguments (e.g., `jq '{...}'`). Brace-quote combinations trigger security warnings. Always write jq filters to `.jq` files and use `jq -f filter.jq`.
+
+   The approach:
+   1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `/tmp/pr-review-comment-1.md`, `/tmp/pr-review-comment-2.md`).
+   2. Use the Write tool to save the review summary body to `/tmp/pr-review-summary.md`.
+   3. For each comment, use the Write tool to save the jq filter to `/tmp/pr-review-comment-N.jq`, then run: `jq -n -f /tmp/pr-review-comment-N.jq --rawfile body /tmp/pr-review-comment-N.md --arg path "file/path" --arg side "RIGHT" --argjson line 42 > /tmp/pr-review-comment-N.json`
+   4. Merge all comment JSON files into an array: use the Write tool to save the filter `.` to `/tmp/pr-review-slurp.jq`, then run `jq -s -f /tmp/pr-review-slurp.jq /tmp/pr-review-comment-*.json`. Write output to `/tmp/pr-review-comments.json`.
+   5. Use the Write tool to save the assembly filter to `/tmp/pr-review-assemble.jq` with content like:
+      ```
+      {commit_id: $commit_id, event: $event, body: $body, comments: $comments[0]}
+      ```
+      Then run: `jq -n -f /tmp/pr-review-assemble.jq --arg commit_id "SHA" --arg event "COMMENT" --rawfile body /tmp/pr-review-summary.md --slurpfile comments /tmp/pr-review-comments.json > /tmp/pr-review-payload.json`
+
+   Use `--rawfile` to read string content from files (preserves newlines and special characters without shell escaping). Use `--slurpfile` to read JSON arrays/objects from files. Use `-f` to read jq filter programs from files (avoids brace/quote patterns in shell commands). Only use `--arg` for short, safe strings (file paths, "RIGHT", commit SHA).
 
    Refer to the JSON structure above for the expected shape. Validate the payload before posting: `jq . /tmp/pr-review-payload.json`
 
@@ -216,7 +247,7 @@ Follow these steps precisely:
 
    Replace OWNER, REPO, and NUMBER with the actual values from step 1.
 
-   **Fallback**: If the API call fails, post a single PR comment using `gh pr comment` with the full review summary body. Include all issues (both inline-eligible and summary-only) in the body using `ISSUE_FORMAT`, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: "Note: Inline comments failed ({error}). All issues listed below."
+   **Fallback**: If the API call fails, write the full review summary body to a temp file using the Write tool (e.g., `/tmp/pr-review-fallback.md`), then post it with `gh pr comment NUMBER -F /tmp/pr-review-fallback.md`. Include all issues (both inline-eligible and summary-only) in the body using `ISSUE_FORMAT`, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: "Note: Inline comments failed ({error}). All issues listed below."
 
    **ISSUE_FORMAT** (used for both inline comment bodies and summary-only issues):
 
