@@ -15,7 +15,7 @@ Follow these steps precisely:
 1. Launch all three Haiku agents:
    a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md files: the root CLAUDE.md (if any) and CLAUDE.md files in directories modified by the PR.
    b. **PR Summary Agent**: View the pull request and:
-   - Write the full diff to a unique temp file: `DIFF_FILE=$(mktemp /tmp/pr-<number>-XXXXXX.diff) && gh pr diff <number> > "$DIFF_FILE"`
+   - Create a unique temp file with `mktemp /tmp/pr-<number>-XXXXXX.diff`, then write the PR diff into it with `gh pr diff <number>`. Store the path for later use.
    - Extract a **valid-line map** from the diff by parsing `diff --git` lines (for file paths) and `@@ ... +newStart,newCount @@` hunk headers (for ranges). The map is: `file path → list of [newStart, newStart+newCount-1]` ranges.
      - **Binary files**: Skip lines containing `Binary files ... differ` — these have no hunks. Include the file in the changed-files list but omit it from the valid-line map.
      - **Renamed files**: For `rename from X` / `rename to Y`, use the **new** path (the `b/` path) as the map key. If there are no hunks (pure rename with no content changes), include the file in the changed-files list but omit it from the valid-line map.
@@ -33,9 +33,26 @@ Follow these steps precisely:
    - If found, extract its `id`, `submitted_at`, and `commit_id`
    - Fetch that review's inline comments: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews/{id}/comments`
    - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
-   - Write the result to a temp file as JSON: `{"last_review_date": "...", "last_review_commit": "...", "issues": [{"path": "...", "line": N, "start_line": N, "snippet": "...", "description": "..."}]}`
+   - Write the result to a temp file as JSON with the following structure:
+
+     ```json
+     {
+       "last_review_date": "...",
+       "last_review_commit": "...",
+       "issues": [
+         {
+           "path": "...",
+           "line": 0,
+           "start_line": 0,
+           "snippet": "...",
+           "description": "..."
+         }
+       ]
+     }
+     ```
+
    - Return: the temp file path and the prior-issues data
-   - If no prior Claude Code review exists, return `{"last_review_date": null, "last_review_commit": null, "issues": []}` and write it to the temp file
+   - If no prior Claude Code review exists, write a JSON object with `last_review_date` and `last_review_commit` set to null and an empty `issues` array, then return it along with the temp file path
 
 2. Determine which categories apply to this PR:
    - **HAS_CLAUDE_MD**: true if CLAUDE.md files were found
@@ -186,39 +203,20 @@ Follow these steps precisely:
 
    If the inline list is empty, set `comments` to `[]`.
 
-   Build the JSON using `jq` to properly escape all string values:
+   Build the JSON using `jq` with `--arg` and `--argjson` flags to properly escape all string values (quotes, newlines, backslashes, and dollar signs in code snippets). The approach:
+   1. Start with an empty JSON array for comments.
+   2. For each inline-eligible issue, pipe the array through `jq` using `--arg` for string fields (path, side, body) and `--argjson` for numeric fields (line), appending each comment object.
+   3. Build the final payload with `jq -n`, passing commit_id and body as `--arg` strings and the comments array as `--argjson`, then write to `/tmp/pr-review-payload.json`.
 
-   ```bash
-   # Build the comments array first (repeat --arg/--argjson for each comment)
-   COMMENTS_JSON='[]'
-   # For each inline-eligible issue, append to COMMENTS_JSON:
-   COMMENTS_JSON=$(echo "$COMMENTS_JSON" | jq \
-     --arg path "$FILE_PATH" \
-     --argjson line "$LINE" \
-     --arg side "RIGHT" \
-     --arg body "$COMMENT_BODY" \
-     '. + [{ path: $path, line: $line, side: $side, body: $body }]')
-
-   # Build the full payload
-   jq -n \
-     --arg commit_id "$COMMIT_SHA" \
-     --arg body "$REVIEW_BODY" \
-     --argjson comments "$COMMENTS_JSON" \
-     '{ commit_id: $commit_id, event: "COMMENT", body: $body, comments: $comments }' \
-     > /tmp/pr-review-payload.json
-   ```
-
-   Validate the payload before posting: `cat /tmp/pr-review-payload.json | jq .`
+   Refer to the JSON structure above for the expected shape. Validate the payload before posting: `jq . /tmp/pr-review-payload.json`
 
    **5b: Post the review** — Submit via a single API call:
 
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{number}/reviews \
-     --method POST \
-     --input /tmp/pr-review-payload.json
-   ```
+   `gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input /tmp/pr-review-payload.json`
 
-   **Fallback**: If the API call fails, post a single PR comment via `gh pr comment <number> --body '<body>'` containing the full review summary body. Include all issues (both inline-eligible and summary-only) in the body using ISSUE*FORMAT, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: `\_Note: Inline comments failed ({error}). All issues listed below.*`
+   Replace OWNER, REPO, and NUMBER with the actual values from step 1.
+
+   **Fallback**: If the API call fails, post a single PR comment using `gh pr comment` with the full review summary body. Include all issues (both inline-eligible and summary-only) in the body using `ISSUE_FORMAT`, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: "Note: Inline comments failed ({error}). All issues listed below."
 
    **ISSUE_FORMAT** (used for both inline comment bodies and summary-only issues):
 
