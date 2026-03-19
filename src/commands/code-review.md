@@ -7,7 +7,7 @@ model: opus
 
 Provide a code review for the given pull request.
 
-**Setup:** Create a todo list for steps 1-5. Update after each step.
+**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-5. Update after each step.
 **Execution:** Within each step, launch all agents in a single message (foreground, never `run_in_background`); all must complete before the next step.
 
 **Shell Command Safety** (applies to ALL steps and ALL agents):
@@ -37,7 +37,7 @@ Follow these steps precisely:
      (7) the **valid-line map**.
      c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
    - Fetch all reviews: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`
-   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]` using jq's `test` function. Write the jq filter to a temp file (e.g., `/tmp/pr-review-filter.jq`) using the Write tool, then run `jq -f /tmp/pr-review-filter.jq`. Do not use `contains()` with embedded quote characters, and do not pass jq filters as inline arguments.
+   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]` using jq's `test` function. Write the jq filter to a temp file (e.g., `$REVIEW_TMPDIR/filter.jq`) using the Write tool, then run `jq -f $REVIEW_TMPDIR/filter.jq`. Do not use `contains()` with embedded quote characters, and do not pass jq filters as inline arguments.
    - If found, extract its `id`, `submitted_at`, and `commit_id`
    - Fetch that review's inline comments: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews/{id}/comments`
    - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
@@ -231,27 +231,27 @@ Follow these steps precisely:
    6. No markdown/JSON as inline `--arg` values — write content to temp files and use `--rawfile`.
 
    The approach:
-   1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `/tmp/pr-review-comment-1.md`, `/tmp/pr-review-comment-2.md`).
-   2. Use the Write tool to save the review summary body to `/tmp/pr-review-summary.md`.
-   3. For each comment, use the Write tool to save the jq filter to `/tmp/pr-review-comment-N.jq`, then run: `jq -n -f /tmp/pr-review-comment-N.jq --rawfile body /tmp/pr-review-comment-N.md --arg path "file/path" --arg side "RIGHT" --argjson line 42 > /tmp/pr-review-comment-N.json`
-   4. Merge all comment JSON files into an array: use the Write tool to save the filter `.` to `/tmp/pr-review-slurp.jq`, then run `jq -s -f /tmp/pr-review-slurp.jq /tmp/pr-review-comment-*.json`. Write output to `/tmp/pr-review-comments.json`.
-   5. Use the Write tool to save the assembly filter to `/tmp/pr-review-assemble.jq` with content like:
+   1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`).
+   2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md`.
+   3. For each comment, use the Write tool to save the jq filter to `$REVIEW_TMPDIR/comment-N.jq`, then run: `jq -n -f $REVIEW_TMPDIR/comment-N.jq --rawfile body $REVIEW_TMPDIR/comment-N.md --arg path "file/path" --arg side "RIGHT" --argjson line 42 > $REVIEW_TMPDIR/comment-N.json`
+   4. Merge all comment JSON files into an array: use the Write tool to save the filter `.` to `$REVIEW_TMPDIR/slurp.jq`, then run `jq -s -f $REVIEW_TMPDIR/slurp.jq $REVIEW_TMPDIR/comment-*.json`. Write output to `$REVIEW_TMPDIR/comments.json`.
+   5. Use the Write tool to save the assembly filter to `$REVIEW_TMPDIR/assemble.jq` with content like:
       ```
       {commit_id: $commit_id, event: $event, body: $body, comments: $comments[0]}
       ```
-      Then run: `jq -n -f /tmp/pr-review-assemble.jq --arg commit_id "SHA" --arg event "COMMENT" --rawfile body /tmp/pr-review-summary.md --slurpfile comments /tmp/pr-review-comments.json > /tmp/pr-review-payload.json`
+      Then run: `jq -n -f $REVIEW_TMPDIR/assemble.jq --arg commit_id "SHA" --arg event "COMMENT" --rawfile body $REVIEW_TMPDIR/summary.md --slurpfile comments $REVIEW_TMPDIR/comments.json > $REVIEW_TMPDIR/payload.json`
 
    Use `--rawfile` to read string content from files (preserves newlines and special characters without shell escaping). Use `--slurpfile` to read JSON arrays/objects from files. Use `-f` to read jq filter programs from files (avoids brace/quote patterns in shell commands). Only use `--arg` for short, safe strings (file paths, "RIGHT", commit SHA).
 
-   Refer to the JSON structure above for the expected shape. Validate the payload before posting: `jq . /tmp/pr-review-payload.json`
+   Refer to the JSON structure above for the expected shape. Validate the payload before posting: `jq . $REVIEW_TMPDIR/payload.json`
 
    **5b: Post the review** — Submit via a single API call:
 
-   `gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input /tmp/pr-review-payload.json`
+   `gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input $REVIEW_TMPDIR/payload.json`
 
    Replace OWNER, REPO, and NUMBER with the actual values from step 1.
 
-   **Fallback**: If the API call fails, write the full review summary body to a temp file using the Write tool (e.g., `/tmp/pr-review-fallback.md`), then post it with `gh pr comment NUMBER -F /tmp/pr-review-fallback.md`. Include all issues (both inline-eligible and summary-only) in the body using `ISSUE_FORMAT`, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: "Note: Inline comments failed ({error}). All issues listed below."
+   **Fallback**: If the API call fails, write the full review summary body to a temp file using the Write tool (e.g., `$REVIEW_TMPDIR/fallback.md`), then post it with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. Include all issues (both inline-eligible and summary-only) in the body using `ISSUE_FORMAT`, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: "Note: Inline comments failed ({error}). All issues listed below."
 
    **ISSUE_FORMAT** (used for both inline comment bodies and summary-only issues):
 
