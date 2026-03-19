@@ -222,9 +222,13 @@ Follow these steps precisely:
 
    Build the JSON using a file-based approach to avoid shell quoting issues with markdown content (code blocks, backticks, and quotes cause security warnings when passed as inline shell arguments):
 
-   **Shell Command Safety:**
-   - Never pass comment bodies or the review summary as inline `--arg` values. Always write markdown content to temp files first and use `--rawfile` to read them.
-   - Never pass jq filter expressions as inline quoted arguments (e.g., `jq '{...}'`). Brace-quote combinations trigger security warnings. Always write jq filters to `.jq` files and use `jq -f filter.jq`.
+   **Shell Command Safety** (applies to all step 5 operations):
+   1. No `#` characters in bash commands — use the Bash tool's `description` parameter for documentation.
+   2. No `sed` or `awk` — use the Read tool, `jq`, or `gh api --jq` instead.
+   3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
+   4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
+   5. No inline jq filters — write filters to `.jq` files and use `jq -f file.jq`.
+   6. No markdown/JSON as inline `--arg` values — write content to temp files and use `--rawfile`.
 
    The approach:
    1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `/tmp/pr-review-comment-1.md`, `/tmp/pr-review-comment-2.md`).
