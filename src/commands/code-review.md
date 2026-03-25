@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*)
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*)
 description: Code review a pull request
 disable-model-invocation: false
 model: opus
@@ -13,9 +13,11 @@ Provide a code review for the given pull request.
 **Shell Command Safety** (applies to ALL steps and ALL agents):
 
 - **Never include `#` comments in bash commands** — use the Bash tool's `description` parameter for documentation instead. The `#` character inside shell commands desynchronizes quote tracking in the permission system, causing repeated approval prompts.
-- **Never pass markdown content or jq filters as inline bash arguments** — always write them to temp files first using the Write tool, then reference the files (e.g., `jq -f /tmp/filter.jq`, `gh pr comment NUMBER -F /tmp/body.md`).
+- **Never pass markdown content or JSON as inline bash arguments** — always write them to files first using the Write tool, then reference the files (e.g., `gh pr comment NUMBER -F /tmp/body.md`). Do not use `jq -f`, `--rawfile`, or `--slurpfile` as these trigger dangerous-flag security prompts — construct JSON directly with the Write tool and validate with `jq .`.
 - **Never use heredocs (`<<`, `<<<`) for content that contains `#` or quote characters** — use the Write tool to create the file, then reference it.
-- **Never use `sed` or `awk`** — they are not in the allowed tools list and their syntax triggers security prompts. Use the Read tool, `jq`, or `gh api --jq` for text processing.
+- **Never use `sed`, `awk`, or `du`** — they are not in the allowed tools list and their syntax triggers security prompts. Use the Read tool, `jq`, or `gh api --jq` for text processing.
+- **Never combine curly braces (`{`, `}`) with quote characters in the same bash command** — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline.
+- **Never use `$()` command substitution in bash commands** — save intermediate results to temp files with separate commands, then reference those files.
 - **Keep every Bash command on a single line** — newlines inside a Bash command are interpreted as multiple commands and trigger security prompts. Chain with `&&` or `|` on one line.
 
 Follow these steps precisely:
@@ -37,7 +39,7 @@ Follow these steps precisely:
      (7) the **valid-line map**.
      c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
    - Fetch all reviews: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`
-   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]` using jq's `test` function. Write the jq filter to a temp file (e.g., `$REVIEW_TMPDIR/filter.jq`) using the Write tool, then run `jq -f $REVIEW_TMPDIR/filter.jq`. Do not use `contains()` with embedded quote characters, and do not pass jq filters as inline arguments.
+   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]`. Pipe the paginated results through `jq` (do not use `--jq` inline when the URL contains braces): `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select(.body | test("Generated with \\[Claude Code\\]"))] | sort_by(.submitted_at) | last'` (substitute actual owner, repo, and number values). Do not use `jq -f` or pass jq filters through temp files.
    - If found, extract its `id`, `submitted_at`, and `commit_id`
    - Fetch that review's inline comments: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews/{id}/comments`
    - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
@@ -72,12 +74,14 @@ Follow these steps precisely:
 
    **Agent Shell Command Safety** — include these rules verbatim in every agent prompt:
    1. No `#` characters in bash commands — use the Bash tool's `description` parameter for documentation.
-   2. No `sed` or `awk` — use the Read tool, `jq`, or `gh api --jq` instead.
+   2. No `sed`, `awk`, or `du` — use the Read tool, `jq`, or `gh api --jq` instead.
    3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
    4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
-   5. No inline jq filters — write filters to `.jq` files and use `jq -f file.jq`.
-   6. No markdown/JSON as inline `--arg` values — write content to temp files and use `--rawfile`.
-   7. To fetch file contents at the HEAD SHA, use this single-line command: `gh api repos/{owner}/{repo}/contents/{path}?ref={SHA} --jq .content | base64 --decode`
+   5. No `jq -f`, `--rawfile`, or `--slurpfile` flags — these trigger dangerous-flag security prompts. Construct JSON payloads directly using the Write tool. Only use `jq .` for validation or `gh api --jq` for filtering.
+   6. To fetch file contents at the HEAD SHA, use this single-line command (substitute actual values for OWNER, REPO, PATH, SHA): `gh api repos/OWNER/REPO/contents/PATH?ref=SHA --jq .content | base64 --decode`
+   7. **Do NOT post reviews, comments, or any content to GitHub** — agents must only return their findings. All posting is handled in step 5 after filtering and user approval.
+   8. No curly braces (`{`, `}`) combined with quote characters in the same bash command — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline. Always substitute actual values into URL paths instead of using `{placeholder}` syntax.
+   9. No `$()` command substitution — run commands separately, saving intermediate results to temp files, then reference those files.
 
    Each agent should independently code review the change. For each issue identified, the agent must:
    1. Identify the issue and its category
@@ -113,6 +117,10 @@ Follow these steps precisely:
    - 📝 Minor: Code duplication, style inconsistencies, minor improvements, nitpicks
 
    **Agents (4-8 depending on conditions) — launch ALL in one message (foreground):**
+
+   **CRITICAL — every agent prompt MUST begin with this exact text block:**
+
+   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. Do NOT post anything to GitHub.
 
    **Agent #1: CLAUDE.md Compliance** (if HAS_CLAUDE_MD)
    - Audit changes for CLAUDE.md compliance
@@ -220,30 +228,22 @@ Follow these steps precisely:
 
    If the inline list is empty, set `comments` to `[]`.
 
-   Build the JSON using a file-based approach to avoid shell quoting issues with markdown content (code blocks, backticks, and quotes cause security warnings when passed as inline shell arguments):
+   Build the JSON payload directly using the Write tool — do not use jq for construction (its file-reading flags `-f`, `--rawfile`, `--slurpfile` trigger dangerous-flag security prompts).
 
    **Shell Command Safety** (applies to all step 5 operations):
    1. No `#` characters in bash commands — use the Bash tool's `description` parameter for documentation.
-   2. No `sed` or `awk` — use the Read tool, `jq`, or `gh api --jq` instead.
+   2. No `sed`, `awk`, or `du` — use the Read tool or `gh api --jq` instead.
    3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
    4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
-   5. No inline jq filters — write filters to `.jq` files and use `jq -f file.jq`.
-   6. No markdown/JSON as inline `--arg` values — write content to temp files and use `--rawfile`.
+   5. No `jq -f`, `--rawfile`, or `--slurpfile` flags — construct JSON directly with the Write tool.
+   6. No curly braces (`{`, `}`) combined with quote characters in the same bash command — pipe `gh api` output to `jq` instead of using `--jq` inline.
+   7. No `$()` command substitution — save intermediate results to temp files, then reference them.
 
    The approach:
    1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`).
    2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md`.
-   3. For each comment, use the Write tool to save the jq filter to `$REVIEW_TMPDIR/comment-N.jq`, then run: `jq -n -f $REVIEW_TMPDIR/comment-N.jq --rawfile body $REVIEW_TMPDIR/comment-N.md --arg path "file/path" --arg side "RIGHT" --argjson line 42 > $REVIEW_TMPDIR/comment-N.json`
-   4. Merge all comment JSON files into an array: use the Write tool to save the filter `.` to `$REVIEW_TMPDIR/slurp.jq`, then run `jq -s -f $REVIEW_TMPDIR/slurp.jq $REVIEW_TMPDIR/comment-*.json`. Write output to `$REVIEW_TMPDIR/comments.json`.
-   5. Use the Write tool to save the assembly filter to `$REVIEW_TMPDIR/assemble.jq` with content like:
-      ```
-      {commit_id: $commit_id, event: $event, body: $body, comments: $comments[0]}
-      ```
-      Then run: `jq -n -f $REVIEW_TMPDIR/assemble.jq --arg commit_id "SHA" --arg event "COMMENT" --rawfile body $REVIEW_TMPDIR/summary.md --slurpfile comments $REVIEW_TMPDIR/comments.json > $REVIEW_TMPDIR/payload.json`
-
-   Use `--rawfile` to read string content from files (preserves newlines and special characters without shell escaping). Use `--slurpfile` to read JSON arrays/objects from files. Use `-f` to read jq filter programs from files (avoids brace/quote patterns in shell commands). Only use `--arg` for short, safe strings (file paths, "RIGHT", commit SHA).
-
-   Refer to the JSON structure above for the expected shape. Validate the payload before posting: `jq . $REVIEW_TMPDIR/payload.json`
+   3. **Construct the entire `$REVIEW_TMPDIR/payload.json` directly using the Write tool.** The agent has all issue data in memory (paths, line numbers, formatted bodies, commit SHA). Build a valid JSON object matching the target structure above. Ensure proper JSON escaping of all string values: escape `"` as `\"`, `\` as `\\`, newlines as `\n`, tabs as `\t`, and backticks need no escaping in JSON.
+   4. Validate the payload: `jq . $REVIEW_TMPDIR/payload.json`
 
    **5b: Post the review** — Submit via a single API call:
 
