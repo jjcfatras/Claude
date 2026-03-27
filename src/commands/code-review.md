@@ -18,6 +18,8 @@ Provide a code review for the given pull request.
 - **Never use `sed`, `awk`, or `du`** — they are not in the allowed tools list and their syntax triggers security prompts. Use the Read tool, `jq`, or `gh api --jq` for text processing.
 - **Never combine curly braces (`{`, `}`) with quote characters in the same bash command** — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline.
 - **Never use `$()` command substitution in bash commands** — save intermediate results to temp files with separate commands, then reference those files.
+- **Never use output redirection (`>`, `>>`) in bash commands** — use the Write tool to create files instead. Shell redirection triggers "write to arbitrary files" security prompts.
+- **Never use adjacent/consecutive quote characters** (e.g., `'"`, `"'`, or `''` at word boundaries) in bash commands — these trigger "potential obfuscation" security prompts. Simplify quoting by avoiding embedded quotes (e.g., use regex wildcards `.` instead of literal characters that require escaping), or write complex expressions to a file with the Write tool first.
 - **Keep every Bash command on a single line** — newlines inside a Bash command are interpreted as multiple commands and trigger security prompts. Chain with `&&` or `|` on one line.
 
 Follow these steps precisely:
@@ -39,7 +41,7 @@ Follow these steps precisely:
      (7) the **valid-line map**.
      c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
    - Fetch all reviews: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`
-   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]`. Pipe the paginated results through `jq` (do not use `--jq` inline when the URL contains braces): `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select(.body | test("Generated with \\[Claude Code\\]"))] | sort_by(.submitted_at) | last'` (substitute actual owner, repo, and number values). Do not use `jq -f` or pass jq filters through temp files.
+   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]`. Pipe the paginated results through multiple `jq` calls to avoid nested quotes (substitute actual owner, repo, and number values): `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select(.body | test("Generated with .Claude Code."))]' | jq 'sort_by(.submitted_at) | last'`. Do not use `jq -f` or pass jq filters through temp files.
    - If found, extract its `id`, `submitted_at`, and `commit_id`
    - Fetch that review's inline comments: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews/{id}/comments`
    - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
@@ -82,6 +84,8 @@ Follow these steps precisely:
    7. **Do NOT post reviews, comments, or any content to GitHub** — agents must only return their findings. All posting is handled in step 5 after filtering and user approval.
    8. No curly braces (`{`, `}`) combined with quote characters in the same bash command — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline. Always substitute actual values into URL paths instead of using `{placeholder}` syntax.
    9. No `$()` command substitution — run commands separately, saving intermediate results to temp files, then reference those files.
+   10. No output redirection (`>`, `>>`) — use the Write tool to create files instead.
+   11. No adjacent/consecutive quote characters (e.g., `'"`, `"'`, `''` at word boundaries) — simplify quoting (e.g., use regex wildcards `.` instead of escaped literals) or use the Write tool for complex expressions.
 
    Each agent should independently code review the change. For each issue identified, the agent must:
    1. Identify the issue and its category
@@ -120,7 +124,7 @@ Follow these steps precisely:
 
    **CRITICAL — every agent prompt MUST begin with this exact text block:**
 
-   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. Do NOT post anything to GitHub.
+   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. Do NOT post anything to GitHub.
 
    **Agent #1: CLAUDE.md Compliance** (if HAS_CLAUDE_MD)
    - Audit changes for CLAUDE.md compliance
@@ -238,6 +242,8 @@ Follow these steps precisely:
    5. No `jq -f`, `--rawfile`, or `--slurpfile` flags — construct JSON directly with the Write tool.
    6. No curly braces (`{`, `}`) combined with quote characters in the same bash command — pipe `gh api` output to `jq` instead of using `--jq` inline.
    7. No `$()` command substitution — save intermediate results to temp files, then reference them.
+   8. No output redirection (`>`, `>>`) — use the Write tool to create files instead.
+   9. No adjacent/consecutive quote characters (e.g., `'"`, `"'`, `''` at word boundaries) — simplify quoting or use the Write tool.
 
    The approach:
    1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`).
