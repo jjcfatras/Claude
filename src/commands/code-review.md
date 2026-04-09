@@ -1,8 +1,9 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*)
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(base64:*), Bash(ls:*)
 description: Code review a pull request
 disable-model-invocation: false
 model: opus
+effort: high
 ---
 
 Provide a code review for the given pull request.
@@ -21,13 +22,14 @@ Provide a code review for the given pull request.
 - **Never use output redirection (`>`, `>>`) in bash commands** — use the Write tool to create files instead. Shell redirection triggers "write to arbitrary files" security prompts.
 - **Never use adjacent/consecutive quote characters** (e.g., `'"`, `"'`, or `''` at word boundaries) in bash commands — these trigger "potential obfuscation" security prompts. Simplify quoting by avoiding embedded quotes (e.g., use regex wildcards `.` instead of literal characters that require escaping), or write complex expressions to a file with the Write tool first.
 - **Keep every Bash command on a single line** — newlines inside a Bash command are interpreted as multiple commands and trigger security prompts. Chain with `&&` or `|` on one line.
+- **Never use ANSI-C quoting (`$'...'`)** — this triggers "ANSI-C quoting which can hide characters" security prompts. Avoid placing `$` immediately before a single quote (e.g., `$VAR'suffix'`). Use double quotes or separate the variable from single-quoted strings with a space.
 
 Follow these steps precisely:
 
 1. Launch all three Haiku agents:
    a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md files: the root CLAUDE.md (if any) and CLAUDE.md files in directories modified by the PR.
    b. **PR Summary Agent**: View the pull request and:
-   - Create a unique temp file with `mktemp /tmp/pr-<number>-XXXXXX.diff`, then write the PR diff into it with `gh pr diff <number>`. Store the path for later use.
+   - Run `gh pr diff NUMBER` to get the diff content, then save it to a unique temp file (e.g., `$REVIEW_TMPDIR/pr-NUMBER.diff`) using the Write tool. Store the path for later use.
    - Extract a **valid-line map** from the diff by parsing `diff --git` lines (for file paths) and `@@ ... +newStart,newCount @@` hunk headers (for ranges). The map is: `file path → list of [newStart, newStart+newCount-1]` ranges.
      - **Binary files**: Skip lines containing `Binary files ... differ` — these have no hunks. Include the file in the changed-files list but omit it from the valid-line map.
      - **Renamed files**: For `rename from X` / `rename to Y`, use the **new** path (the `b/` path) as the map key. If there are no hunks (pure rename with no content changes), include the file in the changed-files list but omit it from the valid-line map.
@@ -37,13 +39,13 @@ Follow these steps precisely:
      (3) a list of all changed file paths,
      (4) the **owner** and **repo** name (e.g., `FS-Main` and `fairsquare-ui`),
      (5) the **pull request number**,
-     (6) the **full HEAD commit SHA** of the PR branch (use `gh pr view <number> --json headRefOid -q .headRefOid`),
+     (6) the **full HEAD commit SHA** of the PR branch (use `gh pr view NUMBER --json headRefOid -q .headRefOid`),
      (7) the **valid-line map**.
      c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
-   - Fetch all reviews: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`
+   - Fetch all reviews: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews`
    - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]`. Pipe the paginated results through multiple `jq` calls to avoid nested quotes (substitute actual owner, repo, and number values): `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select(.body | test("Generated with .Claude Code."))]' | jq 'sort_by(.submitted_at) | last'`. Do not use `jq -f` or pass jq filters through temp files.
    - If found, extract its `id`, `submitted_at`, and `commit_id`
-   - Fetch that review's inline comments: `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews/{id}/comments`
+   - Fetch that review's inline comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments`
    - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
    - Write the result to a temp file as JSON using the Write tool (not bash heredocs or echo). The JSON should have the following structure:
 
@@ -80,12 +82,13 @@ Follow these steps precisely:
    3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
    4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
    5. No `jq -f`, `--rawfile`, or `--slurpfile` flags — these trigger dangerous-flag security prompts. Construct JSON payloads directly using the Write tool. Only use `jq .` for validation or `gh api --jq` for filtering.
-   6. To fetch file contents at the HEAD SHA, use this single-line command (substitute actual values for OWNER, REPO, PATH, SHA): `gh api repos/OWNER/REPO/contents/PATH?ref=SHA --jq .content | base64 --decode`
+   6. To fetch file contents at the HEAD SHA, use this single-line command (substitute actual values for OWNER, REPO, PATH, SHA): `gh api repos/OWNER/REPO/contents/PATH?ref=SHA | jq -r .content | base64 --decode`
    7. **Do NOT post reviews, comments, or any content to GitHub** — agents must only return their findings. All posting is handled in step 5 after filtering and user approval.
    8. No curly braces (`{`, `}`) combined with quote characters in the same bash command — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline. Always substitute actual values into URL paths instead of using `{placeholder}` syntax.
    9. No `$()` command substitution — run commands separately, saving intermediate results to temp files, then reference those files.
    10. No output redirection (`>`, `>>`) — use the Write tool to create files instead.
    11. No adjacent/consecutive quote characters (e.g., `'"`, `"'`, `''` at word boundaries) — simplify quoting (e.g., use regex wildcards `.` instead of escaped literals) or use the Write tool for complex expressions.
+   12. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Use double quotes or separate the variable from the single-quoted string with a space.
 
    Each agent should independently code review the change. For each issue identified, the agent must:
    1. Identify the issue and its category
@@ -124,7 +127,7 @@ Follow these steps precisely:
 
    **CRITICAL — every agent prompt MUST begin with this exact text block:**
 
-   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. Do NOT post anything to GitHub.
+   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub.
 
    **Agent #1: CLAUDE.md Compliance** (if HAS_CLAUDE_MD)
    - Audit changes for CLAUDE.md compliance
@@ -244,6 +247,7 @@ Follow these steps precisely:
    7. No `$()` command substitution — save intermediate results to temp files, then reference them.
    8. No output redirection (`>`, `>>`) — use the Write tool to create files instead.
    9. No adjacent/consecutive quote characters (e.g., `'"`, `"'`, `''` at word boundaries) — simplify quoting or use the Write tool.
+   10. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Use double quotes or separate the variable from the single-quoted string with a space.
 
    The approach:
    1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`).
@@ -305,7 +309,7 @@ Examples of false positives, for steps 2 and 3:
 
 Notes:
 
-- Use `gh` for fetching PR data. Use `gh api repos/{owner}/{repo}/pulls/{number}/reviews` for posting reviews with inline comments.
+- Use `gh` for fetching PR data. Use `gh api repos/OWNER/REPO/pulls/NUMBER/reviews` for posting reviews with inline comments.
 - Cite and link every issue (e.g., if referring to a CLAUDE.md, link it)
 - When linking to code in inline comments, follow this format precisely: https://github.com/anthropics/claude-code/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-L15
   - Requires full git sha
