@@ -92,15 +92,14 @@ Follow these steps precisely:
 
    Each agent should independently code review the change. For each issue identified, the agent must:
    1. Identify the issue and its category
-   2. Perform an adversarial self-check. For each issue, answer these questions before including it:
-      - **Is it pre-existing?** Check if the flagged code appears in context lines (` ` prefix) vs. added lines (`+` prefix). If it's only on context lines, score confidence 0.
-      - **Does another path handle it?** Search the diff for related patterns (e.g., if flagging missing error handling, search for `catch`, `try`, or error handler in the same file's diff).
-      - **Is it intentional?** Consider whether the change is directly related to the PR's purpose. A renamed variable isn't a bug; it's the point.
-      - **Would CI catch it?** If a linter, type checker, or test suite would flag this, score confidence 0.
-      - **Is it a false positive per the examples at the bottom of this document?**
-      - **Was it already flagged?** Check the prior-issues list for an entry with the same file path AND either (a) the same or adjacent line number (within ±5 lines) OR (b) an overlapping code snippet (40+ character common substring). If a match exists AND the code at that location is unchanged (context line ` ` not added line `+`), score confidence 0. If the code HAS changed (`+` line in diff), treat as a new issue.
-      - If you cannot confidently answer "no" to all of these, do not include the issue.
-   3. Only after the self-check, assign all of the following:
+   2. Calibrate confidence using these questions (use them to SCORE, not to discard — all filtering happens in step 3):
+      - **Is it pre-existing?** Check if the flagged code appears in context lines (` ` prefix) vs. added lines (`+` prefix). If it's only on context lines and the PR does not change its usage or impact, score low confidence. If the PR **amplifies** a pre-existing issue — adds new call sites, broadens the scope, moves it into shared code, or changes the context in which it executes — score confidence based on the amplified impact.
+      - **Does another path handle it?** Search the diff for related patterns. If handled elsewhere, reduce confidence.
+      - **Is it intentional?** If the change is directly related to the PR's stated purpose, score low confidence.
+      - **Would CI catch it?** If a standard linter or type checker would reliably flag this, score low confidence.
+      - **Is it a false positive per the examples at the bottom of this document?** If yes, score low confidence.
+      - **Was it already flagged?** Check the prior-issues list for a match (same file, ±5 lines or overlapping snippet). If matched on unchanged code, score low confidence.
+   3. For every issue, assign ALL of the following (do not discard any issue — report everything and let step 3 filter):
       - **File path**: Exact relative file path from repo root, matching a path from the PR diff
       - **Line number**: Line in the NEW version where the issue occurs. For multi-line issues, provide `startLine` and `line` (end line). Must correspond to added/modified lines (`+` prefix) in the diff.
       - **Confidence score**: 0-100 (using rubric below)
@@ -112,11 +111,11 @@ Follow these steps precisely:
 
    **IMPORTANT:** File path and line number are REQUIRED for every issue. If an issue cannot be tied to a specific line, reference the most relevant changed line. Agents must cross-reference line numbers against the PR diff for accuracy.
 
-   **Do not report issues with confidence below 50.** If an issue scores below 50 after the self-check, discard it immediately.
+   **Report ALL issues with confidence > 0.** Do not discard issues at the agent level — step 3 handles all filtering decisions centrally. Agents that find no issues after honest evaluation should report that they found none.
 
    For CLAUDE.md-flagged issues, double-check that the CLAUDE.md explicitly calls out that issue. If not, cap confidence at 60 unless it is also a clear functional bug.
 
-   **Confidence scale** (0-100; include when prompting each agent): 0=false positive, pre-existing, or only on unchanged lines (do not use 25 or 50 for these — use 0). 25=plausible but unverified. 50=verified but ambiguous (another path might handle it). 75=verified and confirmed in practice, little ambiguity. 100=certain, unambiguous evidence. Use intermediate values (60, 80, 90); when unsure between levels, use the lower score.
+   **Confidence scale** (0-100; include when prompting each agent): 0=false positive, clearly intentional, or CI-catchable. 25=plausible but unverified. 50=verified but ambiguous (another path might handle it). 75=verified and confirmed in practice, little ambiguity. 100=certain, unambiguous evidence. Use intermediate values (60, 80, 90); when unsure between levels, use the lower score. Pre-existing issues that the PR does not amplify score 0; pre-existing issues that the PR amplifies (new call sites, broader exposure) score based on the amplified impact.
 
    **Severity scale** (include when prompting each agent):
    - 🔴 Critical: Security vulnerabilities, authorization bypasses, data loss risks, crashes in common paths
@@ -178,7 +177,7 @@ Follow these steps precisely:
 
    **Gate 1 — Confidence/Severity filter:**
    - Confidence must be at least 50 (the issue is at least verified).
-   - If confidence is between 50-74, only include the issue if its severity is Critical.
+   - If confidence is between 50-74, only include the issue if its severity is Critical or Medium.
    - Issues with confidence 75 or above are included regardless of severity.
      If there are no issues that meet these criteria, do not proceed.
 
@@ -299,7 +298,7 @@ Follow these steps precisely:
 
 Examples of false positives, for steps 2 and 3:
 
-- Pre-existing issues or issues on lines the PR did not modify
+- Pre-existing issues on lines the PR did not modify, UNLESS the PR significantly amplifies the issue (adds new call sites, broadens exposure, or moves the pattern into shared code)
 - Pedantic nitpicks that a senior engineer wouldn't call out
 - Issues that a linter, typechecker, or compiler would catch (e.g., missing imports, type errors, formatting). Do not run build steps — assume CI handles these.
 - General code quality issues (test coverage, documentation) unless explicitly required in CLAUDE.md
