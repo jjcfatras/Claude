@@ -11,18 +11,7 @@ Provide a code review for the given pull request.
 **Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-5. Update after each step.
 **Execution:** Within each step, launch all agents in a single message (foreground, never `run_in_background`); all must complete before the next step.
 
-**Shell Command Safety** (applies to ALL steps and ALL agents):
-
-- **Never include `#` comments in bash commands** — use the Bash tool's `description` parameter for documentation instead. The `#` character inside shell commands desynchronizes quote tracking in the permission system, causing repeated approval prompts.
-- **Never pass markdown content or JSON as inline bash arguments** — always write them to files first using the Write tool, then reference the files (e.g., `gh pr comment NUMBER -F /tmp/body.md`). Do not use `jq -f`, `--rawfile`, or `--slurpfile` as these trigger dangerous-flag security prompts — construct JSON directly with the Write tool and validate with `jq .`.
-- **Never use heredocs (`<<`, `<<<`) for content that contains `#` or quote characters** — use the Write tool to create the file, then reference it.
-- **Never use `sed`, `awk`, or `du`** — they are not in the allowed tools list and their syntax triggers security prompts. Use the Read tool, `jq`, or `gh api --jq` for text processing.
-- **Never combine curly braces (`{`, `}`) with quote characters in the same bash command** — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline.
-- **Never use `$()` command substitution in bash commands** — save intermediate results to temp files with separate commands, then reference those files.
-- **Never use output redirection (`>`, `>>`) in bash commands** — use the Write tool to create files instead. Shell redirection triggers "write to arbitrary files" security prompts.
-- **Never use adjacent/consecutive quote characters** (e.g., `'"`, `"'`, or `''` at word boundaries) in bash commands — these trigger "potential obfuscation" security prompts. Simplify quoting by avoiding embedded quotes (e.g., use regex wildcards `.` instead of literal characters that require escaping), or write complex expressions to a file with the Write tool first.
-- **Keep every Bash command on a single line** — newlines inside a Bash command are interpreted as multiple commands and trigger security prompts. Chain with `&&` or `|` on one line.
-- **Never use ANSI-C quoting (`$'...'`)** — this triggers "ANSI-C quoting which can hide characters" security prompts. Avoid placing `$` immediately before a single quote (e.g., `$VAR'suffix'`). Use double quotes or separate the variable from single-quoted strings with a space.
+**Shell Command Safety:** All bash commands — yours and agents' — must follow the rules in `.claude/references/shell-safety.md`. The condensed version is included in every agent preamble below.
 
 Follow these steps precisely:
 
@@ -76,19 +65,7 @@ Follow these steps precisely:
 
    Launch all applicable Sonnet agents. Pass each agent the diff file path, summary, changed file list, CLAUDE.md files, the owner/repo/HEAD SHA from step 1, and the prior-issues file path from step 1c. Each agent must read the diff from the file using the Read tool and read the prior-issues file. Agents may also read the full source of changed files if needed to verify an issue — for example, to see surrounding context, function signatures, imports, or call sites — but should avoid excessive fetching. Agents must NOT use `gh pr diff` directly.
 
-   **Agent Shell Command Safety** — include these rules verbatim in every agent prompt:
-   1. No `#` characters in bash commands — use the Bash tool's `description` parameter for documentation.
-   2. No `sed`, `awk`, or `du` — use the Read tool, `jq`, or `gh api --jq` instead.
-   3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
-   4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
-   5. No `jq -f`, `--rawfile`, or `--slurpfile` flags — these trigger dangerous-flag security prompts. Construct JSON payloads directly using the Write tool. Only use `jq .` for validation or `gh api --jq` for filtering.
-   6. To fetch file contents at the HEAD SHA, use this single-line command (substitute actual values for OWNER, REPO, PATH, SHA): `gh api repos/OWNER/REPO/contents/PATH?ref=SHA | jq -r .content | base64 --decode`
-   7. **Do NOT post reviews, comments, or any content to GitHub** — agents must only return their findings. All posting is handled in step 5 after filtering and user approval.
-   8. No curly braces (`{`, `}`) combined with quote characters in the same bash command — this triggers "expansion obfuscation" security prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead of using `--jq` inline. Always substitute actual values into URL paths instead of using `{placeholder}` syntax.
-   9. No `$()` command substitution — run commands separately, saving intermediate results to temp files, then reference those files.
-   10. No output redirection (`>`, `>>`) — use the Write tool to create files instead.
-   11. No adjacent/consecutive quote characters (e.g., `'"`, `"'`, `''` at word boundaries) — simplify quoting (e.g., use regex wildcards `.` instead of escaped literals) or use the Write tool for complex expressions.
-   12. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Use double quotes or separate the variable from the single-quoted string with a space.
+   **Agent Shell Command Safety** — the preamble below covers all rules. Agents that need rationale can read `.claude/references/shell-safety.md`.
 
    Each agent should independently code review the change. For each issue identified, the agent must:
    1. Identify the issue and its category
@@ -236,17 +213,7 @@ Follow these steps precisely:
 
    Build the JSON payload directly using the Write tool — do not use jq for construction (its file-reading flags `-f`, `--rawfile`, `--slurpfile` trigger dangerous-flag security prompts).
 
-   **Shell Command Safety** (applies to all step 5 operations):
-   1. No `#` characters in bash commands — use the Bash tool's `description` parameter for documentation.
-   2. No `sed`, `awk`, or `du` — use the Read tool or `gh api --jq` instead.
-   3. No multi-line bash commands — keep every command on a single line, chain with `&&` or `|`.
-   4. No heredocs (`<<`, `<<<`) — use the Write tool to create files, then reference them.
-   5. No `jq -f`, `--rawfile`, or `--slurpfile` flags — construct JSON directly with the Write tool.
-   6. No curly braces (`{`, `}`) combined with quote characters in the same bash command — pipe `gh api` output to `jq` instead of using `--jq` inline.
-   7. No `$()` command substitution — save intermediate results to temp files, then reference them.
-   8. No output redirection (`>`, `>>`) — use the Write tool to create files instead.
-   9. No adjacent/consecutive quote characters (e.g., `'"`, `"'`, `''` at word boundaries) — simplify quoting or use the Write tool.
-   10. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Use double quotes or separate the variable from the single-quoted string with a space.
+   **Shell Command Safety** — follow the same rules as agents (see preamble in step 2, or `.claude/references/shell-safety.md` for rationale).
 
    The approach:
    1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`).

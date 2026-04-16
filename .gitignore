@@ -1,3 +1,5 @@
 node_modules
 src/commands/git/.DS_Store
 CLAUDE.local.md
+src/.DS_Store
+.claude/settings.local.json
