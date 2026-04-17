@@ -1,6 +1,6 @@
 # Shell Command Safety Rules
 
-Claude Code's permission system flags certain shell patterns as potentially dangerous. These rules prevent repeated approval prompts that block the review workflow.
+Claude Code's permission system flags certain shell patterns as potentially dangerous. These rules prevent repeated approval prompts.
 
 ## Rules
 

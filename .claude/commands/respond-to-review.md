@@ -8,19 +8,7 @@ effort: high
 
 Respond to inline review comments on a pull request. For each comment, determine whether the flagged issue is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix and reply confirming the change.
 
-**Shell Command Safety** (applies to ALL steps and ALL agents):
-
-- **Never include `#` comments in bash commands** — use the Bash tool's `description` parameter instead.
-- **Never pass markdown content or JSON as inline bash arguments** — write them to files first using the Write tool, then reference the files.
-- **Never use heredocs (`<<`, `<<<`)** — use the Write tool to create files, then reference them.
-- **Never use `sed`, `awk`, or `du`** — use the Read tool, `jq`, or `gh api --jq` instead.
-- **Never combine curly braces (`{`, `}`) with quote characters in the same bash command** — pipe to a separate `jq` command instead of using `--jq` inline.
-- **Never use `$()` command substitution** — save intermediate results to temp files with separate commands, then reference those files.
-- **Never use output redirection (`>`, `>>`)** — use the Write tool to create files instead.
-- **Never use adjacent/consecutive quote characters** (e.g., `'"`, `"'`, `''`) — simplify quoting or use the Write tool.
-- **Never use ANSI-C quoting (`$'...'`)** — never place `$` immediately before a single quote.
-- **Keep every Bash command on a single line** — chain with `&&` or `|`.
-- **Never use `jq -f`, `--rawfile`, or `--slurpfile`** — construct JSON payloads with the Write tool.
+**Shell Command Safety:** All bash commands — yours and agents' — must follow the rules in `.claude/references/shell-safety.md`. The condensed version is included in every agent preamble below.
 
 Follow these steps precisely:
 
@@ -49,6 +37,10 @@ Follow these steps precisely:
 ## Step 2: Analyze each comment
 
 For each pending comment, perform the following analysis. If there are 3 or fewer comments, analyze sequentially. If there are more than 3, launch parallel agents (up to 5) to analyze batches.
+
+**CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
+
+> You are a review-response analysis agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the workflow. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub — only the main skill posts replies in Step 5.
 
 For each comment, extract: `id`, `path`, `line`, `original_line`, `diff_hunk`, `body`, `user.login`.
 
