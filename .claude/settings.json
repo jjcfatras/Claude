@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_github_github__pull_request_read",
+      "mcp__postgres__pg_execute_query",
+      "mcp__plugin_github_github__get_file_contents",
+      "mcp__plugin_github_github__search_pull_requests",
+      "mcp__claude_ai_Atlassian__getJiraIssue",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "mcp__plugin_github_github__search_code",
+      "mcp__plugin_github_github__list_pull_requests",
+      "mcp__plugin_context7_context7__query-docs",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__postman__getCollectionRequest",
+      "mcp__postman__getCollectionFolder",
+      "Bash(mktemp:*)"
+    ]
+  }
+}

@@ -10,7 +10,7 @@ Claude Code's permission system flags certain shell patterns as potentially dang
 
 3. **No heredocs (`<<`, `<<<`)** — especially with `#` or quote characters inside. Use the Write tool to create files, then reference them.
 
-4. **No `sed`, `awk`, `du`, or `grep` as bash commands** — they are not in the allowed-tools list. Use the Read tool for files, the Grep tool for search, `jq` for JSON processing, and `gh api --jq` for API filtering.
+4. **Prefer the dedicated tools over shell equivalents** — use the Read tool for files, the Grep tool for search, and `jq` / `gh api --jq` for JSON. Reach for `sed`/`awk`/`grep`/`du` as bash commands only when no built-in tool covers the case. The built-ins are faster (Grep is ripgrep-backed) and avoid skill-level `allowed-tools` gaps; in skills whose frontmatter omits these commands (e.g., `code-review`, `respond-to-review`, `test-driven-fix`), the shell forms will be rejected regardless of project allowlist.
 
 5. **No curly braces (`{`, `}`) combined with quote characters in the same command** — triggers "expansion obfuscation" prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead. Always substitute actual values into URL paths instead of using `{placeholder}` syntax.
 
