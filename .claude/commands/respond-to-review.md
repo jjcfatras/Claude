@@ -1,7 +1,7 @@
 ---
 description: Respond to every flagged issue on a PR — inline comments and review-body findings alike — dismissing false positives and preexisting issues, fixing valid ones
 argument-hint: <pr-number> [comment-id]
-allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob, mcp__*
 model: opus
 effort: high
 ---
@@ -92,6 +92,8 @@ For each pending item in `$TMPDIR/pending-items.json`, perform the following ana
 **CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
 
 > You are a review-response analysis agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the workflow. Use the Read tool to read files, the Grep tool to search content (ripgrep-backed — e.g. `pattern: "try\\s*\\{"`, `path: "src/"`, `output_mode: "files_with_matches"`; see `.claude/references/shell-safety.md` rule 4), and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub — only the main skill posts replies in Step 5.
+>
+> **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 
 For each item, extract the fields relevant to its `source_type`:
 
@@ -126,7 +128,7 @@ If the item is not preexisting, analyze whether the reviewer's concern is valid.
    - Is the reviewer misreading the code or missing context?
    - Is the concern about style/preference rather than correctness?
    - Would the suggested change actually be incorrect or unnecessary given the types/constraints?
-4. Use Grep to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files).
+4. Use Grep to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files). If the reviewer's concern hinges on external library behavior (React hooks, Prisma, Next.js, AWS SDK, etc.), verify the claim with Context7 (`mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_context7_context7__query-docs`) before deciding the verdict.
 5. If you can **definitively** demonstrate the concern is unfounded with concrete evidence → categorize as **false positive** and record the evidence.
 6. If there is any reasonable chance the reviewer is correct → categorize as **valid**.
 
