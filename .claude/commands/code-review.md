@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(base64:*), Bash(ls:*)
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(base64:*), Bash(ls:*), Read, Grep, Glob, mcp__*, Skill
 description: Code review a pull request
 disable-model-invocation: false
 model: opus
@@ -71,7 +71,7 @@ Follow these steps precisely:
    1. Identify the issue and its category
    2. Calibrate confidence using these questions (use them to SCORE, not to discard — all filtering happens in step 3):
       - **Is it pre-existing?** Check if the flagged code appears in context lines (` ` prefix) vs. added lines (`+` prefix). If it's only on context lines and the PR does not change its usage or impact, score low confidence. If the PR **amplifies** a pre-existing issue — adds new call sites, broadens the scope, moves it into shared code, or changes the context in which it executes — score confidence based on the amplified impact.
-      - **Does another path handle it?** Search the diff for related patterns. If handled elsewhere, reduce confidence.
+      - **Does another path handle it?** Search the diff for related patterns (use the Grep tool, not bash `grep`). If handled elsewhere, reduce confidence.
       - **Is it intentional?** If the change is directly related to the PR's stated purpose, score low confidence.
       - **Would CI catch it?** If a standard linter or type checker would reliably flag this, score low confidence.
       - **Is it a false positive per the examples at the bottom of this document?** If yes, score low confidence.
@@ -103,7 +103,9 @@ Follow these steps precisely:
 
    **CRITICAL — every agent prompt MUST begin with this exact text block:**
 
-   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content, and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub.
+   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content (ripgrep-backed — e.g. `pattern: "useEffect"`, `path: "src/"`, `output_mode: "files_with_matches"`; see `.claude/references/shell-safety.md` rule 4), and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — this includes `jq '{...}'` object-construction filters, `--jq` filters with braces, and `{placeholder}` URL paths; extract fields individually with `jq -r .field` or build JSON with the Write tool. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub.
+   >
+   > **Verify library claims with Context7.** When flagging an issue whose validity hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before reporting: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. If docs contradict or don't support the flagged behavior, score low confidence or drop the issue. Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 
    **Agent #1: CLAUDE.md Compliance** (if HAS_CLAUDE_MD)
    - Audit changes for CLAUDE.md compliance

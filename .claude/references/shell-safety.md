@@ -10,9 +10,12 @@ Claude Code's permission system flags certain shell patterns as potentially dang
 
 3. **No heredocs (`<<`, `<<<`)** — especially with `#` or quote characters inside. Use the Write tool to create files, then reference them.
 
-4. **Prefer the dedicated tools over shell equivalents** — use the Read tool for files, the Grep tool for search, and `jq` / `gh api --jq` for JSON. Reach for `sed`/`awk`/`grep`/`du` as bash commands only when no built-in tool covers the case. The built-ins are faster (Grep is ripgrep-backed) and avoid skill-level `allowed-tools` gaps; in skills whose frontmatter omits these commands (e.g., `code-review`, `respond-to-review`, `test-driven-fix`), the shell forms will be rejected regardless of project allowlist.
+4. **Prefer the dedicated tools over shell equivalents** — use the Read tool for files, the Grep tool for search, and `jq` / `gh api --jq` for JSON. Reach for `sed`/`awk`/`grep`/`du` as bash commands only when no built-in tool covers the case. The built-ins are faster (Grep is ripgrep-backed) and avoid skill-level `allowed-tools` gaps; in skills whose frontmatter omits these commands (e.g., `code-review`, `respond-to-review`, `test-driven-fix`), the shell forms will be rejected regardless of project allowlist. Typical Grep tool call in place of `grep -rn 'PATTERN' src/`: `pattern: "PATTERN", path: "src/", output_mode: "content", -n: true`. Use `output_mode: "files_with_matches"` (the default) when you only need the file list, `output_mode: "count"` for counts, and `head_limit: N` instead of piping to `head`.
 
-5. **No curly braces (`{`, `}`) combined with quote characters in the same command** — triggers "expansion obfuscation" prompts. For `gh api` calls needing `--jq` filters, pipe the output to a separate `jq` command instead. Always substitute actual values into URL paths instead of using `{placeholder}` syntax.
+5. **No curly braces (`{`, `}`) combined with quote characters in the same command** — triggers "expansion obfuscation" prompts. This covers three common patterns:
+   - **jq object construction**: `jq '{path: .path, line: .line}'` is prohibited. Extract fields individually with separate `jq -r .field` calls, or write the raw JSON to a file with the Write tool and let the agent build the final object.
+   - **`gh api --jq` filters containing `{...}`**: pipe the raw response into a separate `jq` command instead of passing a brace-bearing filter through `--jq`.
+   - **URL path placeholders**: always substitute actual values into URL paths (e.g., `repos/OWNER/REPO/pulls/NUMBER`) rather than `{owner}`/`{repo}`/`{number}` templates.
 
 6. **No `$()` command substitution** — save intermediate results to temp files with separate commands, then reference those files.
 
