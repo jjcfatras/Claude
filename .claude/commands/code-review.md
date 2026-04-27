@@ -1,288 +1,343 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(base64:*), Bash(ls:*), Read, Grep, Glob, mcp__*, Skill
-description: Code review a pull request
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(ls:*), Bash(sleep:*), Bash(rm:*), Bash(date:*), Read, Write, Grep, Glob, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage, mcp__*, Skill
+description: Code review a pull request via a multi-specialist agent team. Spawns one custom subagent per applicable category (security, types, react, infra, errors, perf, quality, claude-md), coordinates them via a shared task list and peer DMs for cross-domain verification, and posts inline review comments. Cleans up its temp workspace (under /tmp) after posting.
 disable-model-invocation: false
 model: opus
-effort: high
+effort: xhigh
 ---
 
-Provide a code review for the given pull request.
+Provide a code review for the given pull request using a multi-specialist agent team.
 
-**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-5. Update after each step.
-**Execution:** Within each step, launch all agents in a single message (foreground, never `run_in_background`); all must complete before the next step.
+**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-6. Update after each step.
 
-**Shell Command Safety:** All bash commands — yours and agents' — must follow the rules in `.claude/references/shell-safety.md`. The condensed version is included in every agent preamble below.
+**`/tmp` writability fallback.** Some project allowlists permit `mktemp -d /tmp/...` but block subsequent `Write` and `rm` against `/tmp/` paths. Verify writability before proceeding: use the Write tool to create `$REVIEW_TMPDIR/.writable` (any short content). If the Write is denied, fall back: run `mkdir -p $HOME/.claude/tmp` then `mktemp -d $HOME/.claude/tmp/pr-review-XXXXXX`, point `$REVIEW_TMPDIR` at the new path, and retry the writability sentinel. Do not retry against `/tmp` once it has denied a write — the denial is structural (allowlist scope), not transient.
+
+**Pre-flight: probe team-coordination tools.** This skill's whole design (concurrent specialist scans + lead-driven finalization + peer DMs) hard-depends on `Agent`, `TeamCreate`, `TeamDelete`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, `SendMessage`. Do not trust the tool descriptions in your system prompt — they can claim a tool exists when the runtime has actually scoped it out. **Probe by calling `TaskList`** (a no-op read on an empty task list returns an empty result; a denied call returns a runtime error). Two failure shapes you must distinguish:
+
+- **`Agent is not available inside subagents`** (or any "not available inside subagents" / "subagent" message): the skill is being invoked from a subagent context that structurally cannot spawn its own team. **No allowlist edit will fix this.** Stop and tell the user:
+  > The code-review skill cannot run inside an Agent invocation — the team-coordination primitives don't propagate into subagents. Run the skill from the main interactive session instead.
+- **`<tool> exists but is not enabled in this context`** / "tool not allowed" / explicit permission denial: the runtime exposes the tool but the project allowlist denies it. Stop and tell the user:
+  > The code-review skill needs the team-coordination tools to be allowlisted. Add `Agent`, `TeamCreate`, `TeamDelete`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, `SendMessage` to `permissions.allow` in `.claude/settings.json` and retry.
+
+Either way, **do not silently fall back to a single-agent review.** The skill's confidence calibration, dedup gates, and finding format all assume independent specialist scans + peer DMs; a degraded run produces low-fidelity findings without surfacing the limitation. Cleanup `$REVIEW_TMPDIR` before exiting (per step 6's prefix safety check).
+
+This pre-flight runs **before** step 1 deliberately — step 1 spends several minutes fetching the PR diff and building the valid-line map, and there is no reason to do that work if the team can't be built.
+
+**Required reading for the lead (this session):**
+
+- `.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these.
+- `.claude/references/shell-safety.md` — every shell command must follow these rules.
+
+**Execution model:** Step 1 still uses inline `Agent` calls (one-shot prep agents). Step 2 builds an actual team: each specialist becomes a persistent teammate (custom subagent under `.claude/agents/code-review-*.md`) that can DM peers for cross-domain verification while it works. The lead orchestrates step 2 via `TeamCreate`, a shared task list, polling on the `findings/` directory, and a broadcast `finalize_now` DM, then runs steps 3-5 itself. Step 6 cleans up.
+
+**Lead-driven finalization (important):** Specialists never mark their own task `completed`. They write `findings/<role>.json` (the lead's "scan done" signal), then stay idle so peers who are still scanning can DM them for cross-verification. The lead waits for every specialist's findings file to land, then broadcasts `finalize_now` — that DM is the cue for specialists to mark their tasks `completed` and become available for shutdown. This guarantees a slow-scanning peer can always reach a fast peer.
 
 Follow these steps precisely:
 
-1. Launch all three Haiku agents:
-   a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md files: the root CLAUDE.md (if any) and CLAUDE.md files in directories modified by the PR.
-   b. **PR Summary Agent**: View the pull request and:
-   - Run `gh pr diff NUMBER` to get the diff content, then save it to a unique temp file (e.g., `$REVIEW_TMPDIR/pr-NUMBER.diff`) using the Write tool. Store the path for later use.
-   - Extract a **valid-line map** from the diff by parsing `diff --git` lines (for file paths) and `@@ ... +newStart,newCount @@` hunk headers (for ranges). The map is: `file path → list of [newStart, newStart+newCount-1]` ranges.
-     - **Binary files**: Skip lines containing `Binary files ... differ` — these have no hunks. Include the file in the changed-files list but omit it from the valid-line map.
-     - **Renamed files**: For `rename from X` / `rename to Y`, use the **new** path (the `b/` path) as the map key. If there are no hunks (pure rename with no content changes), include the file in the changed-files list but omit it from the valid-line map.
-   - Return:
-     (1) a summary of the change,
-     (2) the **path to the diff file** (the unique `$DIFF_FILE` path),
-     (3) a list of all changed file paths,
-     (4) the **owner** and **repo** name (e.g., `FS-Main` and `fairsquare-ui`),
-     (5) the **pull request number**,
-     (6) the **full HEAD commit SHA** of the PR branch (use `gh pr view NUMBER --json headRefOid -q .headRefOid`),
-     (7) the **valid-line map**.
-     c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
-   - Fetch all reviews: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews`
-   - Filter for the most recent review whose `body` contains the text `Generated with [Claude Code]`. Pipe the paginated results through multiple `jq` calls to avoid nested quotes (substitute actual owner, repo, and number values): `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select(.body | test("Generated with .Claude Code."))]' | jq 'sort_by(.submitted_at) | last'`. Do not use `jq -f` or pass jq filters through temp files.
-   - If found, extract its `id`, `submitted_at`, and `commit_id`
-   - Fetch that review's inline comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments`
-   - Extract from each comment: `path`, `line`, `start_line`, code snippet (text between first pair of triple-backtick fences in body), and first-line description
-   - Write the result to a temp file as JSON using the Write tool (not bash heredocs or echo). The JSON should have the following structure:
+## 1. Prep agents (Haiku, inline) — unchanged
 
-     ```json
-     {
-       "last_review_date": "...",
-       "last_review_commit": "...",
-       "issues": [
-         {
-           "path": "...",
-           "line": 0,
-           "start_line": 0,
-           "snippet": "...",
-           "description": "..."
-         }
-       ]
-     }
-     ```
+Launch all three prep agents in a single message (foreground):
 
-   - Return: the temp file path and the prior-issues data
-   - If no prior Claude Code review exists, write a JSON object with `last_review_date` and `last_review_commit` set to null and an empty `issues` array, then return it along with the temp file path
+a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md files: the root CLAUDE.md (if any) and CLAUDE.md files in directories modified by the PR.
 
-2. Determine which categories apply to this PR:
-   - **HAS_CLAUDE_MD**: true if CLAUDE.md files were found
-   - **HAS_TYPESCRIPT**: true if any changed file ends in `.ts` or `.tsx`
-   - **HAS_FRONTEND**: true if the PR modifies files in frontend directories (e.g., `src/components/`, `src/pages/`, `src/hooks/`, `app/`, or files with `.tsx`/`.jsx` extensions that contain React components)
-   - **HAS_INFRASTRUCTURE**: true if any changed file matches migration, terraform, docker, or config patterns (e.g., `*.sql`, `migrations/`, `*.tf`, `*.hcl`, `docker*`, `Dockerfile*`, infrastructure or deploy directories, or files referencing `secret_manager_path`)
+b. **PR Summary Agent**: View the pull request and:
 
-   Launch all applicable Sonnet agents. Pass each agent the diff file path, summary, changed file list, CLAUDE.md files, the owner/repo/HEAD SHA from step 1, and the prior-issues file path from step 1c. Each agent must read the diff from the file using the Read tool and read the prior-issues file. Agents may also read the full source of changed files if needed to verify an issue — for example, to see surrounding context, function signatures, imports, or call sites — but should avoid excessive fetching. Agents must NOT use `gh pr diff` directly.
+- Run `gh pr diff NUMBER` to get the diff content, then save it to `$REVIEW_TMPDIR/pr-NUMBER.diff` using the Write tool.
+- Extract a **valid-line map** from the diff by parsing `diff --git` lines (for file paths) and `@@ ... +newStart,newCount @@` hunk headers. The map is: `file path → list of [newStart, newStart+newCount-1]` ranges.
+  - **Binary files**: Skip lines containing `Binary files ... differ`. Include the file in the changed-files list but omit it from the valid-line map.
+  - **Renamed files**: Use the **new** path (the `b/` path) as the map key. Pure renames with no content changes get included in the changed-files list but omitted from the valid-line map.
+- Return: (1) summary, (2) `$DIFF_FILE` path, (3) changed file list, (4) `OWNER` and `REPO`, (5) PR `NUMBER`, (6) full HEAD SHA (`gh pr view NUMBER --json headRefOid -q .headRefOid`), (7) valid-line map.
 
-   **Agent Shell Command Safety** — the preamble below covers all rules. Agents that need rationale can read `.claude/references/shell-safety.md`.
+c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
 
-   Each agent should independently code review the change. For each issue identified, the agent must:
-   1. Identify the issue and its category
-   2. Calibrate confidence using these questions (use them to SCORE, not to discard — all filtering happens in step 3):
-      - **Is it pre-existing?** Check if the flagged code appears in context lines (` ` prefix) vs. added lines (`+` prefix). If it's only on context lines and the PR does not change its usage or impact, score low confidence. If the PR **amplifies** a pre-existing issue — adds new call sites, broadens the scope, moves it into shared code, or changes the context in which it executes — score confidence based on the amplified impact.
-      - **Does another path handle it?** Search the diff for related patterns (use the Grep tool, not bash `grep`). If handled elsewhere, reduce confidence.
-      - **Is it intentional?** If the change is directly related to the PR's stated purpose, score low confidence.
-      - **Would CI catch it?** If a standard linter or type checker would reliably flag this, score low confidence.
-      - **Is it a false positive per the examples at the bottom of this document?** If yes, score low confidence.
-      - **Was it already flagged?** Check the prior-issues list for a match (same file, ±5 lines or overlapping snippet). If matched on unchanged code, score low confidence.
-   3. For every issue, assign ALL of the following (do not discard any issue — report everything and let step 3 filter):
-      - **File path**: Exact relative file path from repo root, matching a path from the PR diff
-      - **Line number**: Line in the NEW version where the issue occurs. For multi-line issues, provide `startLine` and `line` (end line). Must correspond to added/modified lines (`+` prefix) in the diff.
-      - **Confidence score**: 0-100 (using rubric below)
-      - **Severity**: Critical, Medium, or Minor (using rubric below)
-      - **Brief rationale**: One-sentence justification for confidence and severity
-      - **Explanation**: Detailed explanation of why this is an issue, its impact. If flagged due to CLAUDE.md, quote the relevant section.
-      - **Code example**: The actual problematic code snippet from the PR
-      - **Suggested fix**: An example of how to fix the issue (if applicable)
+- Fetch all reviews: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews`
+- Filter for the most recent review whose `body` contains `Generated with [Claude Code]`. Decompose into small single-purpose `jq` calls so each filter stays simple — the original `[.[] | select(.body | test("Generated with .Claude Code."))]` form trips the harness's expansion-obfuscation check (regex `test()` + nested quote/bracket/paren stack). The safe pattern: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq -c '.[]' | jq -c 'select((.body // "") | contains("Generated with [Claude Code]"))' | jq -s 'sort_by(.submitted_at) | last'`. Do not use `jq -f` or pass jq filters through temp files. If even that decomposition is denied in the current environment, fall back to fetching the raw paginated reviews with a minimal `--jq '.[]'` filter and inspect the bodies in-agent.
+- If found, extract `id`, `submitted_at`, and `commit_id`.
+- Fetch its inline comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments`
+- Extract `path`, `line`, `start_line`, snippet (between first triple-backtick fences in body), and first-line description.
+- Write the result as JSON to `$REVIEW_TMPDIR/prior-issues.json` using the Write tool. Schema:
 
-   **IMPORTANT:** File path and line number are REQUIRED for every issue. If an issue cannot be tied to a specific line, reference the most relevant changed line. Agents must cross-reference line numbers against the PR diff for accuracy.
+  ```json
+  {
+    "last_review_date": "...",
+    "last_review_commit": "...",
+    "issues": [
+      {
+        "path": "...",
+        "line": 0,
+        "start_line": 0,
+        "snippet": "...",
+        "description": "..."
+      }
+    ]
+  }
+  ```
 
-   **Report ALL issues with confidence > 0.** Do not discard issues at the agent level — step 3 handles all filtering decisions centrally. Agents that find no issues after honest evaluation should report that they found none.
+- If no prior Claude Code review exists, write the file with `last_review_date` / `last_review_commit` set to `null` and an empty `issues` array.
+- Return the file path and the prior-issues data.
 
-   For CLAUDE.md-flagged issues, double-check that the CLAUDE.md explicitly calls out that issue. If not, cap confidence at 60 unless it is also a clear functional bug.
+## 2. Build the team and run the multi-specialist review
 
-   **Confidence scale** (0-100; include when prompting each agent): 0=false positive, clearly intentional, or CI-catchable. 25=plausible but unverified. 50=verified but ambiguous (another path might handle it). 75=verified and confirmed in practice, little ambiguity. 100=certain, unambiguous evidence. Use intermediate values (60, 80, 90); when unsure between levels, use the lower score. Pre-existing issues that the PR does not amplify score 0; pre-existing issues that the PR amplifies (new call sites, broader exposure) score based on the amplified impact.
+The pre-flight at the top of the skill has already confirmed the team-coordination tools are usable. If somehow you reached step 2 with any of them missing, abort here rather than degrading.
 
-   **Severity scale** (include when prompting each agent):
-   - 🔴 Critical: Security vulnerabilities, authorization bypasses, data loss risks, crashes in common paths
-   - 🟡 Medium: Missing validations, incorrect behavior in edge cases, documentation gaps for new APIs, migration issues
-   - 📝 Minor: Code duplication, style inconsistencies, minor improvements, nitpicks
+### 2a. Determine which specialists apply
 
-   **Agents (4-8 depending on conditions) — launch ALL in one message (foreground):**
+Based on the changed-file list:
 
-   **CRITICAL — every agent prompt MUST begin with this exact text block:**
+- **HAS_CLAUDE_MD**: true if step 1a found CLAUDE.md files.
+- **HAS_TYPESCRIPT**: true if any changed file ends in `.ts` or `.tsx`.
+- **HAS_FRONTEND**: true if any changed file is in a frontend dir (e.g., `src/components/`, `src/pages/`, `src/hooks/`, `app/`) or has a `.tsx`/`.jsx` extension that contains React components.
+- **HAS_INFRASTRUCTURE**: true if any changed file matches migration / terraform / docker / config patterns (`*.sql`, `migrations/`, `*.tf`, `*.hcl`, `docker*`, `Dockerfile*`, infra/deploy directories, or files referencing `secret_manager_path`).
 
-   > You are a code review agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the review. Use the Read tool to read files, the Grep tool to search content (ripgrep-backed — e.g. `pattern: "useEffect"`, `path: "src/"`, `output_mode: "files_with_matches"`; see `.claude/references/shell-safety.md` rule 4), and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — this includes `jq '{...}'` object-construction filters, `--jq` filters with braces, and `{placeholder}` URL paths; extract fields individually with `jq -r .field` or build JSON with the Write tool. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub.
-   >
-   > **Verify library claims with Context7.** When flagging an issue whose validity hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before reporting: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. If docs contradict or don't support the flagged behavior, score low confidence or drop the issue. Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
+The roster always includes `security`, `quality`, `errors`, `perf`. Conditionals add `claude-md`, `typescript`, `react`, `infra` based on the flags above.
 
-   **Agent #1: CLAUDE.md Compliance** (if HAS_CLAUDE_MD)
-   - Audit changes for CLAUDE.md compliance
-   - CLAUDE.md is guidance for writing code, so not all instructions apply during review
+### 2b. Write the roster file and shared inputs
 
-   **Agent #2: Security, Authorization, and API Validation**
-   - Security vulnerabilities, permissions, ownership checks, auth issues, input validation
-   - API contract compliance: request validation (schemas, types, required fields), docs updated for new/modified routes
+Build `$REVIEW_TMPDIR/roster.json` using the Write tool. Schema:
 
-   **Agent #3: Infrastructure and Database** (if HAS_INFRASTRUCTURE)
-   - Database migration patterns — ensure reversibility
-   - New secrets must have corresponding `secret_manager_path` in terraform
-   - Review configuration changes
+```json
+{
+  "team_name": "code-review-<PR_NUMBER>",
+  "members": [
+    {
+      "role": "security",
+      "name": "security-reviewer",
+      "subagent_type": "code-review-security"
+    },
+    {
+      "role": "react",
+      "name": "react-reviewer",
+      "subagent_type": "code-review-react"
+    }
+  ]
+}
+```
 
-   **Agent #4: Code Quality and Best Practices**
-   - Ensure changes follow existing codebase patterns and conventions
-   - Identify code duplication that should be refactored
-   - Suggest improvements where appropriate
+Use `<role>-reviewer` as the teammate `name` (the rubrics file's routing table refers to peers by these names — do not deviate). Include only roles that apply per 2a.
 
-   **Agent #5: TypeScript Type Safety** (if HAS_TYPESCRIPT)
-   - Type usage: `any`/`unknown` narrowing, generic constraints, null/undefined handling, discriminated unions, type assertions
-   - Check that inferred types match intended behavior
+Also write:
 
-   **Agent #6: Error Handling, Async, and Resilience**
-   - Error handling: try/catch, error boundaries, meaningful error messages, propagation vs swallowing, graceful degradation, logging for observability
-   - Async: unhandled rejections, race conditions, proper async/await, parallel vs sequential choices
-   - Database: transaction handling, connection pool management
+- `$REVIEW_TMPDIR/changed-files.json` — JSON array of changed paths.
+- `$REVIEW_TMPDIR/claude-md-files.json` — JSON object `{ "<path>": "<contents>", … }` from step 1a (or `{}`).
+- `$REVIEW_TMPDIR/prior-issues.json` — already written by step 1c.
+- Create the directory `$REVIEW_TMPDIR/findings/` (specialists will write files into it). Use `Bash` with `mkdir -p`.
 
-   **Agent #7: React/Frontend Patterns** (if HAS_FRONTEND)
-   - Hook dependency arrays, unnecessary re-renders, memoization (`useMemo`, `useCallback`, `React.memo`), component composition, accessibility, effect cleanup
+### 2c. Create the team and assignment tasks
 
-   **Agent #8: Performance Patterns**
-   - N+1 queries, inefficient loops, missing pagination
-   - Bundle size implications, lazy loading opportunities
-   - Memory leaks (event listeners, subscriptions not cleaned up)
+1. `TeamCreate({team_name: "code-review-<PR_NUMBER>", description: "Multi-specialist review for PR <NUMBER>"})`.
+2. For each member in the roster, `TaskCreate({subject: "Review for <role>", description: "Specialist task — write findings to $REVIEW_TMPDIR/findings/<role>.json then mark complete.", activeForm: "Reviewing <role>"})`. Capture each returned task ID; you'll pass it to the spawn prompt as `ASSIGNMENT_TASK_ID`.
 
-3. Filter issues using deduplication and a two-gate approach:
+### 2d. Spawn all applicable specialists in one message
 
-   **Pre-filter 1 — Deduplication:** Group issues by file path and line number (within ±3 lines). For each group, keep the issue with the highest confidence score. If tied, prefer the agent whose domain best matches the issue category.
+Launch every member of the roster as a teammate via the `Agent` tool. Send all calls in **a single message** so they run concurrently. For each member:
 
-   **Pre-filter 2 — Prior-review deduplication:** For each surviving issue, match against the prior-issues list from step 1c:
-   1. Same file path
-   2. Line within ±5 lines of a prior issue's line OR code snippet shares a 40+ character common substring with a prior issue's snippet
-   3. If matched AND the line is on unchanged code (context line ` `, not added line `+` in the diff) → remove the issue (already flagged in prior review)
-   4. If matched BUT the code at that location has changed (`+` line in diff) → keep the issue, append to its explanation: "_Note: This issue was flagged in a prior review but the code has since changed._"
+```
+Agent({
+  team_name: "code-review-<PR_NUMBER>",
+  name: "<role>-reviewer",
+  subagent_type: "code-review-<role>",
+  description: "Code review specialist — <role>",
+  prompt: <SPAWN_PROMPT>
+})
+```
 
-   Log the count of issues removed by this filter for reporting in step 4.
+Where `<SPAWN_PROMPT>` is:
 
-   **Gate 1 — Confidence/Severity filter:**
-   - Confidence must be at least 50 (the issue is at least verified).
-   - If confidence is between 50-74, only include the issue if its severity is Critical or Medium.
-   - Issues with confidence 75 or above are included regardless of severity.
-     If there are no issues that meet these criteria, do not proceed.
+```
+You are <role>-reviewer on the code review team for <OWNER>/<REPO> PR #<PR_NUMBER>.
 
-   **Gate 2 — Diff line validation:**
-   Using the valid-line map from step 1b, validate that every surviving issue targets a line within a valid hunk range for that file.
+Inputs (absolute paths):
+- DIFF_FILE: $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff
+- SUMMARY: <one-paragraph summary from step 1b>
+- CHANGED_FILES: $REVIEW_TMPDIR/changed-files.json
+- CLAUDE_MD_FILES: $REVIEW_TMPDIR/claude-md-files.json
+- PRIOR_ISSUES_FILE: $REVIEW_TMPDIR/prior-issues.json
+- OWNER: <OWNER>
+- REPO: <REPO>
+- HEAD_SHA: <full HEAD SHA>
+- PR_NUMBER: <PR_NUMBER>
+- REVIEW_TMPDIR: $REVIEW_TMPDIR
+- ROSTER_FILE: $REVIEW_TMPDIR/roster.json
+- ASSIGNMENT_TASK_ID: <task id captured in 2c>
 
-   For each issue, check its `line` (and `startLine`) against valid ranges for that file:
-   - **In range**: mark as **inline-eligible**.
-   - **Out of range, within 5 lines of nearest valid line**: snap to nearest valid line, prepend "_Note: This comment was placed on the nearest diff line; the issue actually occurs on line {original_line}._" Mark inline-eligible.
-   - **Out of range, >5 lines away or file not in diff**: mark as **summary-only**.
-   - **Multi-line** (`startLine` + `line`): if only `startLine` is out of range but `line` is valid, drop `startLine` (single-line comment). If `line` is out of range, apply snapping logic above.
+Follow your agent's system prompt. Begin by reading .claude/references/code-review-rubrics.md and .claude/references/shell-safety.md.
+```
 
-   Result: two lists (inline-eligible, summary-only). If both empty, stop. If only summary-only exists, skip steps 5a and 5b.
+When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; the polling logic in 2e is what tells you when they're actually done.
 
-4. Present a summary of findings to the user and ask permission to post. If issues were removed by prior-review deduplication (pre-filter 2), include a line: "Skipped N issue(s) already flagged in prior review ({last_review_date})." followed by a brief list of skipped issues (file:line — description) so the user can override if needed. If the user declines, stop.
+### 2e. Wait for scans to land, then broadcast finalize
 
-5. Post the review using the GitHub Reviews API via `gh api` (single API call, single notification, inline comments on relevant diff lines).
+The lead enforces a wall-clock backstop on top of the per-DM 30-second timeout that specialists use internally. The "scan done" signal is the existence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` (and stay available to answer peer DMs) until the lead's `finalize_now` broadcast tells them to mark complete.
 
-   Use `owner`, `repo`, pull request `number`, and `commit_id` (full HEAD SHA) from step 1.
+Note: leading-sleep commands (`sleep N` with no preceding work in the same call) are rejected by the harness, so each sleep below uses `Bash` with `run_in_background: true` and waits via `TaskOutput` (`block: true`).
 
-   **5a: Build the JSON payload** — Construct the JSON payload safely using `jq` to ensure proper escaping of special characters (quotes, newlines, backslashes, `$`) in code snippets. The target structure:
+1. Right after the parallel `Agent` calls, sleep 60s. This gives every specialist time for an initial scan and a round of cross-verification DMs.
+2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 5.
+3. Sleep another 30s and recheck. If everyone has now written findings, proceed to step 5.
+4. **Backstop (any role still missing findings after ~90s):** for each missing role, send a private early `finalize_now` DM:
+   `SendMessage({to: "<role>-reviewer", message: "finalize_now: lead-imposed deadline, commit whatever findings you have with scan_status: timed_out and mark complete"})`.
+   Send all such DMs in one message. Sleep 15s, then list `findings/` again so any partial files written in response have a chance to land.
+5. **Broadcast finalize to everyone.** In a single message, send `finalize_now` to every roster member:
+   `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`.
+   Specialists who already marked complete in step 4 will see this message after their task is done — that's harmless (they no-op). Specialists whose findings are already on disk will simply mark their task `completed` per workflow step 7.
+6. Sleep 15s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` (the specialist failed to process the broadcast), but proceed — the findings files are what matter for step 2f.
 
-   ```json
-   {
-     "commit_id": "<full HEAD SHA>",
-     "event": "COMMENT",
-     "body": "<review summary — see format below>",
-     "comments": [
-       {
-         "path": "relative/file/path",
-         "line": 42,
-         "side": "RIGHT",
-         "body": "<formatted comment per ISSUE_FORMAT>"
-       },
-       {
-         "path": "relative/file/path",
-         "start_line": 45,
-         "line": 50,
-         "start_side": "RIGHT",
-         "side": "RIGHT",
-         "body": "<formatted multi-line comment per ISSUE_FORMAT>"
-       }
-     ]
-   }
-   ```
+### 2f. Collect findings
 
-   Populate `comments` from the inline-eligible issues list. Each entry needs:
-   - `path`: relative file path from repo root
-   - `line`: post-Gate-2 line number (end line for multi-line issues)
-   - `side`: always `"RIGHT"`
-   - `body`: formatted per ISSUE_FORMAT below
+Read every `$REVIEW_TMPDIR/findings/<role>.json` that exists. For each role in the roster:
 
-   For multi-line issues, also include `start_line` and `start_side: "RIGHT"`.
+- If the file exists and parses, append its `findings` array to the consolidated list.
+- If the file is missing or has `scan_status: "timed_out"`, log it and continue with whatever made it through.
 
-   If the inline list is empty, set `comments` to `[]`.
+### 2g. Tear down the team
 
-   Build the JSON payload directly using the Write tool — do not use jq for construction (its file-reading flags `-f`, `--rawfile`, `--slurpfile` trigger dangerous-flag security prompts).
+`TeamDelete` refuses to run while teammates are still alive — even after their assignment tasks are `completed` — so shut them down gracefully first:
 
-   **Shell Command Safety** — follow the same rules as agents (see preamble in step 2, or `.claude/references/shell-safety.md` for rationale).
+1. For each teammate in the roster, send a shutdown request: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`. Send all of them in a single message so they fire in parallel.
+2. Run `Bash sleep 15` with `run_in_background: true`, then `TaskOutput` with `block: true` to wait. Teammates wake on the request, approve (their work is done), and terminate.
+3. `TeamDelete()`.
 
-   The approach:
-   1. For each inline-eligible issue, use the Write tool to save its formatted body (per ISSUE_FORMAT) to a unique temp file (e.g., `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`).
-   2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md`.
-   3. **Construct the entire `$REVIEW_TMPDIR/payload.json` directly using the Write tool.** The agent has all issue data in memory (paths, line numbers, formatted bodies, commit SHA). Build a valid JSON object matching the target structure above. Ensure proper JSON escaping of all string values: escape `"` as `\"`, `\` as `\\`, newlines as `\n`, tabs as `\t`, and backticks need no escaping in JSON.
-   4. Validate the payload: `jq . $REVIEW_TMPDIR/payload.json`
+After teardown, the shared task list is gone and the lead's pre-existing task list (if any) returns to view. The team config under `~/.claude/teams/` is also removed.
 
-   **5b: Post the review** — Submit via a single API call:
+## 3. Filter — deduplication and gates
 
-   `gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input $REVIEW_TMPDIR/payload.json`
+**Pre-filter 1 — Deduplication across specialists:** Group findings by file path and line number (within ±3 lines). For each group, keep the finding with the highest confidence score. If tied, prefer the specialist whose domain best matches the issue category.
 
-   Replace OWNER, REPO, and NUMBER with the actual values from step 1.
+**Pre-filter 2 — Prior-review deduplication:** For each surviving finding, match against `$REVIEW_TMPDIR/prior-issues.json`:
 
-   **Fallback**: If the API call fails, write the full review summary body to a temp file using the Write tool (e.g., `$REVIEW_TMPDIR/fallback.md`), then post it with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. Include all issues (both inline-eligible and summary-only) in the body using `ISSUE_FORMAT`, each prefixed with the file path and line number (e.g., `**src/auth.ts:42**`). Log the API error in the comment footer: "Note: Inline comments failed ({error}). All issues listed below."
+1. Same file path.
+2. Line within ±5 lines of a prior issue's line OR snippet shares a 40+ character common substring with a prior issue's snippet.
+3. If matched AND the line is on unchanged code (context line ` `, not added line `+` in the diff) → remove the finding (already flagged in prior review).
+4. If matched BUT the code at that location has changed (`+` line in diff) → keep the finding and append to its explanation: "_Note: This issue was flagged in a prior review but the code has since changed._"
 
-   **ISSUE_FORMAT** (used for both inline comment bodies and summary-only issues):
+Log the count removed by this filter for reporting in step 4.
 
-   ````
-   {severity_emoji} **{Severity}** (Confidence: {N}/100) - {brief description}
+**Gate 1 — Confidence/Severity filter:**
 
-   **Explanation:** {detailed explanation. If CLAUDE.md-triggered, quote: "CLAUDE.md says: <...>"}
+- Confidence must be at least 50.
+- If confidence is between 50-74, only include if severity is Critical or Medium.
+- Confidence ≥ 75 is included regardless of severity.
 
-   **Code:**
+If no findings meet these criteria, do not proceed to posting — present the empty result in step 4.
 
-   ```{language}
-   {problematic code from PR}
-   ```
+**Gate 2 — Diff line validation:**
 
-   **Suggested fix:**
+Using the valid-line map from step 1b, validate that every surviving finding targets a line within a valid hunk range for that file:
 
-   ```{language}
-   {corrected code}
-   ```
-   ````
+- **In range**: mark as **inline-eligible**.
+- **Out of range, within 5 lines of nearest valid line**: snap to nearest valid line, prepend "_Note: This comment was placed on the nearest diff line; the issue actually occurs on line {original_line}._" Mark inline-eligible.
+- **Out of range, >5 lines away or file not in diff**: mark as **summary-only**.
+- **Multi-line** (`startLine` + `line`): if only `startLine` is out of range but `line` is valid, drop `startLine` (single-line). If `line` is out of range, apply snapping.
 
-   Severity emojis: 🔴 Critical, 🟡 Medium, 📝 Minor. For inline comments, omit the file path from the description (already attached to the line).
+Result: two lists (inline-eligible, summary-only). If both empty, stop. If only summary-only exists, skip step 5a's `comments` array.
 
-   **Review summary body** (the `body` field in the JSON payload) — all variants start with `### Code review` and end with:
+## 4. Present and confirm
 
-   ```
-   🤖 Generated with [Claude Code](https://claude.ai/code)
+Show the user the consolidated finding list with severity, confidence, file:line, and a one-line description for each. If issues were removed by prior-review dedup, include "Skipped N issue(s) already flagged in prior review ({last_review_date})." plus a brief list (file:line — description) so the user can override if needed.
 
-   <sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
-   ```
+Ask permission to post. If the user declines, skip step 5 (still run step 6 cleanup).
 
-   - **Has inline issues**: Summary table (columns: #, Severity, Confidence, File, Description) + "See inline comments for full details, code examples, and suggested fixes." If summary-only issues also exist, append `#### Additional issues (could not attach inline)` with explanation and each issue in ISSUE_FORMAT including `path:line`.
-   - **Only summary-only issues**: Post with an empty `comments` array. Header: "Found N issue(s). These could not be placed as inline comments because their line numbers fall outside the diff's visible range." List each in ISSUE_FORMAT in the `body`.
-   - **No issues**: Post with an empty `comments` array: "No issues found. Checked for CLAUDE.md compliance, security/authorization, API validation, infrastructure/database, and code quality."
+## 5. Post the review
 
-Examples of false positives, for steps 2 and 3:
+Use the GitHub Reviews API via `gh api` (single API call, single notification, inline comments on relevant diff lines).
 
-- Pre-existing issues on lines the PR did not modify, UNLESS the PR significantly amplifies the issue (adds new call sites, broadens exposure, or moves the pattern into shared code)
-- Pedantic nitpicks that a senior engineer wouldn't call out
-- Issues that a linter, typechecker, or compiler would catch (e.g., missing imports, type errors, formatting). Do not run build steps — assume CI handles these.
-- General code quality issues (test coverage, documentation) unless explicitly required in CLAUDE.md
-- Issues called out in CLAUDE.md but explicitly silenced in code (e.g., lint ignore comments)
-- Changes in functionality that are likely intentional or directly related to the broader change
-- Issues identical to those already flagged in a prior Claude Code review on unchanged code
+### 5a. Build the JSON payload
 
-Notes:
+Target structure:
 
-- Use `gh` for fetching PR data. Use `gh api repos/OWNER/REPO/pulls/NUMBER/reviews` for posting reviews with inline comments.
-- Cite and link every issue (e.g., if referring to a CLAUDE.md, link it)
-- When linking to code in inline comments, follow this format precisely: https://github.com/anthropics/claude-code/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-L15
-  - Requires full git sha
-  - You must provide the full sha. Commands like `https://github.com/owner/repo/blob/$(git rev-parse HEAD)/foo/bar` will not work, since your comment will be directly rendered in Markdown.
-  - Repo name must match the repo you're code reviewing
-  - # sign after the file name
-  - Line range format is L[start]-L[end]
-  - Provide at least 1 line of context before and after, centered on the line you are commenting about (eg. if you are commenting about lines 5-6, you should link to `L4-7`)
+```json
+{
+  "commit_id": "<full HEAD SHA>",
+  "event": "COMMENT",
+  "body": "<review summary — see formats below>",
+  "comments": [
+    {
+      "path": "relative/file/path",
+      "line": 42,
+      "side": "RIGHT",
+      "body": "<formatted comment per ISSUE_FORMAT>"
+    },
+    {
+      "path": "relative/file/path",
+      "start_line": 45,
+      "line": 50,
+      "start_side": "RIGHT",
+      "side": "RIGHT",
+      "body": "<formatted multi-line comment>"
+    }
+  ]
+}
+```
+
+Approach (avoid `jq -f`/`--rawfile`/`--slurpfile` — they trigger dangerous-flag prompts):
+
+1. Use the Write tool to save each inline-eligible issue's formatted body (per ISSUE_FORMAT below) to a unique temp file: `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`, etc.
+2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md`.
+3. **Construct `$REVIEW_TMPDIR/payload.json` directly using the Write tool.** Build a valid JSON object matching the structure above. Escape `"` as `\"`, `\` as `\\`, newlines as `\n`, tabs as `\t`. Backticks need no escaping.
+4. Validate: `jq . $REVIEW_TMPDIR/payload.json`.
+
+If only summary-only issues exist, set `comments` to `[]`.
+
+### 5b. Post
+
+`gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input $REVIEW_TMPDIR/payload.json`
+
+(Substitute actual OWNER, REPO, and NUMBER values.)
+
+**Fallback**: If the API call fails, write the full review summary body to `$REVIEW_TMPDIR/fallback.md`, then post with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. Include all issues (inline-eligible and summary-only) in the body using ISSUE_FORMAT, each prefixed with `**path:line**`. Footer: "Note: Inline comments failed ({error}). All issues listed below."
+
+### ISSUE_FORMAT (used for inline comment bodies and summary-only issues)
+
+````
+{severity_emoji} **{Severity}** (Confidence: {N}/100) - {brief description}
+
+**Explanation:** {detailed explanation. If CLAUDE.md-triggered, quote: "CLAUDE.md says: <...>"}
+
+**Code:**
+
+```{language}
+{problematic code from PR}
+```
+
+**Suggested fix:**
+
+```{language}
+{corrected code}
+```
+````
+
+Severity emojis: 🔴 Critical, 🟡 Medium, 📝 Minor. For inline comments, omit the file path from the description (already attached to the line).
+
+### Review summary body
+
+All variants start with `### Code review` and end with:
+
+```
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+<sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
+```
+
+- **Has inline issues**: Summary table (columns: #, Severity, Confidence, File, Description) + "See inline comments for full details, code examples, and suggested fixes." If summary-only issues also exist, append `#### Additional issues (could not attach inline)` with each in ISSUE_FORMAT including `path:line`.
+- **Only summary-only issues**: Empty `comments` array. Header: "Found N issue(s). These could not be placed as inline comments because their line numbers fall outside the diff's visible range." List each in ISSUE_FORMAT.
+- **No issues**: Empty `comments` array. Body: "No issues found. Reviewed by: <comma-separated roster roles>."
+
+### Linking to code in inline comments
+
+Format: `https://github.com/OWNER/REPO/blob/<full HEAD SHA>/<path>#L<start>-L<end>`
+
+Requires the full SHA (no `$(git rev-parse HEAD)` — it won't be expanded in markdown). Repo name must match the PR's repo. Provide at least 1 line of context before and after.
+
+## 6. Cleanup
+
+Remove the temp workspace. Sanity check before deletion: `$REVIEW_TMPDIR` must start with one of the two writable roots created in setup — `/tmp/pr-review-` or `$HOME/.claude/tmp/pr-review-` — and must equal the path created at the start of this run. If the prefix check fails, log a warning and skip cleanup rather than risk an unintended delete.
+
+Run `rm -rf $REVIEW_TMPDIR` only after the prefix check passes. If `rm` itself is denied by the project allowlist (some configurations grant `mktemp` but not `rm` against `/tmp/`), log a single-line warning naming the leftover path so the user can clean it manually, and continue — do not retry, do not fall back to a per-file deletion loop.
+
+This runs even if the user declined posting in step 4 (the workspace is no longer needed) and even if the API post failed (the fallback comment is already on the PR).
+
+## Notes
+
+- Use `gh` for fetching PR data. Use `gh api repos/OWNER/REPO/pulls/NUMBER/reviews` for posting.
+- Cite and link every issue (e.g., link CLAUDE.md when referenced).
+- The confidence/severity rubric, findings schema, cross-verification protocol, and false-positive list live in `.claude/references/code-review-rubrics.md`. Do not re-list them here — specialists and the lead both read that file.
