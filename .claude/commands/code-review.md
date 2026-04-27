@@ -25,10 +25,12 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 
 **Required reading for the lead (this session):**
 
-- `~/.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these.
-- `~/.claude/references/shell-safety.md` — every shell command must follow these rules.
+- `~/.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these. The lead also embeds the rubric verbatim into each specialist's spawn prompt (step 2d), so specialists do not need to Read it themselves.
+- `~/.claude/references/shell-safety.md` — every shell command must follow these rules. Specialists almost never invoke Bash beyond `date +%s`; they do not need to read this file.
 
 **Execution model:** Step 1 still uses inline `Agent` calls (one-shot prep agents). Step 2 builds an actual team: each specialist becomes a persistent teammate (custom subagent under `.claude/agents/code-review-*.md`) that can DM peers for cross-domain verification while it works. The lead orchestrates step 2 via `TeamCreate`, a shared task list, polling on the `findings/` directory, and a broadcast `finalize_now` DM, then runs steps 3-5 itself. Step 6 cleans up.
+
+**Cost shape:** specialists are the dominant token sink — 4 always-on plus up to 4 conditional, each paid the same shared context. Anything you can hand the specialist via the spawn prompt (which is one model input) avoids a tool-call round-trip and keeps the specialist scanning instead of reading. Step 2d below inlines the rubric, roster, prior-issues, and CLAUDE.md content for exactly this reason; only the diff (which can be large) is left as a file.
 
 **Lead-driven finalization (important):** Specialists never mark their own task `completed`. They write `findings/<role>.json` (the lead's "scan done" signal), then stay idle so peers who are still scanning can DM them for cross-verification. The lead waits for every specialist's findings file to land, then broadcasts `finalize_now` — that DM is the cue for specialists to mark their tasks `completed` and become available for shutdown. This guarantees a slow-scanning peer can always reach a fast peer.
 
@@ -122,6 +124,8 @@ Also write:
 - `$REVIEW_TMPDIR/prior-issues.json` — already written by step 1c.
 - Create the directory `$REVIEW_TMPDIR/findings/` (specialists will write files into it). Use `Bash` with `mkdir -p`.
 
+Then **read `~/.claude/references/code-review-rubrics.md` once with the Read tool** and keep its content available for the spawn prompts in step 2d. Embedding the rubric in the spawn prompt is what lets specialists skip the corresponding `Read` and start scanning sooner. The roster, prior-issues, claude-md-files, and changed-files JSON you just wrote should also be inlined into each spawn prompt — the on-disk copies remain as a fallback and as durable artifacts of the run, but specialists shouldn't have to fetch them.
+
 ### 2c. Create the team and assignment tasks
 
 1. `TeamCreate({team_name: "code-review-<PR_NUMBER>", description: "Multi-specialist review for PR <NUMBER>"})`.
@@ -141,50 +145,70 @@ Agent({
 })
 ```
 
-Where `<SPAWN_PROMPT>` is:
+The spawn prompt is the specialist's only model input besides its system prompt, so put everything they need to start scanning here. The diff is the one thing left as a file because it can be large; everything else (rubric, roster, prior issues, CLAUDE.md content, changed-file list) is small enough to inline and saves a `Read` round-trip per specialist:
 
 ```
 You are <role>-reviewer on the code review team for <OWNER>/<REPO> PR #<PR_NUMBER>.
 
-Inputs (absolute paths):
-- DIFF_FILE: $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff
-- SUMMARY: <one-paragraph summary from step 1b>
-- CHANGED_FILES: $REVIEW_TMPDIR/changed-files.json
-- CLAUDE_MD_FILES: $REVIEW_TMPDIR/claude-md-files.json
-- PRIOR_ISSUES_FILE: $REVIEW_TMPDIR/prior-issues.json
+CONTEXT VALUES
 - OWNER: <OWNER>
 - REPO: <REPO>
 - HEAD_SHA: <full HEAD SHA>
 - PR_NUMBER: <PR_NUMBER>
 - REVIEW_TMPDIR: $REVIEW_TMPDIR
-- ROSTER_FILE: $REVIEW_TMPDIR/roster.json
 - ASSIGNMENT_TASK_ID: <task id captured in 2c>
 
-Follow your agent's system prompt. Begin by reading ~/.claude/references/code-review-rubrics.md and ~/.claude/references/shell-safety.md.
+SUMMARY
+<one-paragraph summary from step 1b>
+
+DIFF
+The PR diff is on disk at: $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff
+Read it once when you start scanning. Don't refetch via `gh pr diff`.
+
+CHANGED FILES
+<JSON array of changed paths — verbatim contents of changed-files.json>
+
+ROSTER (active specialists on this team — DM peers by `name`)
+<verbatim contents of roster.json>
+
+PRIOR ISSUES (most recent prior Claude Code review on this PR; may be empty)
+<verbatim contents of prior-issues.json>
+
+CLAUDE.MD CONTENT (paths + contents from step 1a; may be empty)
+<verbatim contents of claude-md-files.json>
+
+RUBRIC (already loaded — do not Read the file)
+<verbatim contents of ~/.claude/references/code-review-rubrics.md>
+
+GETTING STARTED
+Begin by Read'ing $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff, then follow your agent system prompt's workflow and the rubric's "Specialist workflow" section. The rubric, roster, prior-issues, and CLAUDE.md content above are inline — do not Read those files.
 ```
 
 When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; the polling logic in 2e is what tells you when they're actually done.
 
 ### 2e. Wait for scans to land, then broadcast finalize
 
-Specialists self-bound their scan phase to ~120 s of their own wall-clock (rubrics file, workflow step 6) — every specialist will write `findings/<role>.json` either when its scan completes naturally or when its self-budget fires. The lead's role here is just to poll for those files and then broadcast `finalize_now`. The early-finalize backstop DM that the lead used to send is now an exception path, not the normal flow.
+Specialists self-bound their scan phase to ~180 s of their own wall-clock (rubrics file, workflow step 6) — every specialist will write `findings/<role>.json` either when its scan completes naturally or when its self-budget fires. The lead's role here is just to poll for those files and then broadcast `finalize_now`. The wake-up DM is an exception path, not the normal flow — most specialists land before it would fire.
 
 The "scan done" signal is the existence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` (and stay available to answer peer DMs) until the lead's `finalize_now` broadcast tells them to mark complete.
 
+The lead's poll cadence intentionally trails the specialist self-budget by ~30 s on each end. The lead spawns specialists, then waits a long first window (90 s) so the specialists' initial Read of the diff plus an early scanning pass can finish before the first findings check; the trailing 30 s recheck windows after that catch slow scans without prematurely declaring a specialist stuck.
+
 Note: leading-sleep commands (`sleep N` with no preceding work in the same call) are rejected by the harness, so each sleep below uses `Bash` with `run_in_background: true` and waits via `TaskOutput` (`block: true`).
 
-1. Right after the parallel `Agent` calls, sleep 60 s. This gives every specialist time for an initial scan and a round of cross-verification DMs. Most specialists land within this window.
-2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 5.
-3. Sleep another 30 s and recheck. With self-budgeting, specialists scanning past 90 s are still inside their own 120 s ceiling and will land momentarily. If everyone has now written findings, skip to step 5.
-4. Sleep one more 30 s window (total wait now ~120 s, matching the specialist self-budget) and recheck. Any specialist still missing a findings file at this point has either lost its self-budget timer or is genuinely stuck. **Exception path:** for each missing role, send a single wake-up DM:
+1. Right after the parallel `Agent` calls, sleep 90 s. This gives every specialist time for context ingestion, an initial diff read, a first scanning pass, and a round of cross-verification DMs. Most specialists land within this window.
+2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 6.
+3. Sleep another 30 s and recheck. Specialists scanning past ~120 s are still well inside their own 180 s ceiling and will land momentarily. If everyone has now written findings, skip to step 6.
+4. Sleep another 30 s and recheck (total wait now ~150 s). If everyone has now written findings, skip to step 6.
+5. Sleep one final 30 s window (total wait now ~180 s, matching the specialist self-budget) and recheck. Any specialist still missing a findings file at this point has either lost its self-budget timer or is genuinely stuck. **Exception path:** for each missing role, send a single wake-up DM:
    `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`.
    Send all such DMs in one message, sleep 15 s, then list `findings/` again. Don't loop — if a wake-up is needed, it's a single shot.
-5. **Broadcast finalize to everyone.** In a single message, send `finalize_now` to every roster member:
+6. **Broadcast finalize to everyone.** In a single message, send `finalize_now` to every roster member:
    `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`.
    Specialists whose findings are already on disk will simply mark their task `completed` per workflow step 9.
-6. Sleep 15 s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` (the specialist failed to process the broadcast), but proceed — the findings files are what matter for step 2f.
+7. Sleep 15 s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` (the specialist failed to process the broadcast), but proceed — the findings files are what matter for step 2f.
 
-Wall-clock budget: 60 + 30 + 30 + (0 or 15 if wake-up needed) + 15 = 135 to 150 s pre-task-check. Comfortably under the 300 s prompt-cache TTL even when the wake-up path fires.
+Wall-clock budget: 90 + 30 + 30 + 30 + (0 or 15 if wake-up needed) + 15 = 195 to 210 s pre-task-check. Still comfortably under the 300 s prompt-cache TTL for the lead's own context even when the wake-up path fires.
 
 ### 2f. Collect findings
 
