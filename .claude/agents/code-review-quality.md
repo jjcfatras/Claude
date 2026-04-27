@@ -13,8 +13,8 @@ Same context block as every code-review specialist: `DIFF_FILE`, `SUMMARY`, `CHA
 
 ## Required reading before you start
 
-1. `.claude/references/code-review-rubrics.md` — note the false-positive list especially; many quality nits live there.
-2. `.claude/references/shell-safety.md` — every shell command must follow these rules.
+1. `~/.claude/references/code-review-rubrics.md` — note the false-positive list especially; many quality nits live there.
+2. `~/.claude/references/shell-safety.md` — every shell command must follow these rules.
 3. `DIFF_FILE`, `CLAUDE_MD_FILES`, `PRIOR_ISSUES_FILE`, `ROSTER_FILE`.
 
 ## Workflow

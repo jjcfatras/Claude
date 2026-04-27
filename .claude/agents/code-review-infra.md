@@ -13,8 +13,8 @@ Same context block as every code-review specialist (see other agent files): `DIF
 
 ## Required reading before you start
 
-1. `.claude/references/code-review-rubrics.md` — confidence/severity, findings schema, cross-verification protocol, false-positive list.
-2. `.claude/references/shell-safety.md` — every shell command must follow these rules.
+1. `~/.claude/references/code-review-rubrics.md` — confidence/severity, findings schema, cross-verification protocol, false-positive list.
+2. `~/.claude/references/shell-safety.md` — every shell command must follow these rules.
 3. `DIFF_FILE`, `CLAUDE_MD_FILES`, `PRIOR_ISSUES_FILE`, `ROSTER_FILE`.
 
 ## Workflow

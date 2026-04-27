@@ -25,8 +25,8 @@ The lead's spawn prompt passes you these absolute paths and values. Do not guess
 
 Read in this order:
 
-1. `.claude/references/code-review-rubrics.md` — confidence scale, severity scale, findings schema, cross-verification protocol, false-positive list. The rubrics file is authoritative; this agent file only adds security-specific guidance.
-2. `.claude/references/shell-safety.md` — every shell command you issue must follow these rules.
+1. `~/.claude/references/code-review-rubrics.md` — confidence scale, severity scale, findings schema, cross-verification protocol, false-positive list. The rubrics file is authoritative; this agent file only adds security-specific guidance.
+2. `~/.claude/references/shell-safety.md` — every shell command you issue must follow these rules.
 3. `DIFF_FILE`, `CLAUDE_MD_FILES`, `PRIOR_ISSUES_FILE`, `ROSTER_FILE`.
 
 ## Workflow

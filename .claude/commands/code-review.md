@@ -25,8 +25,8 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 
 **Required reading for the lead (this session):**
 
-- `.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these.
-- `.claude/references/shell-safety.md` — every shell command must follow these rules.
+- `~/.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these.
+- `~/.claude/references/shell-safety.md` — every shell command must follow these rules.
 
 **Execution model:** Step 1 still uses inline `Agent` calls (one-shot prep agents). Step 2 builds an actual team: each specialist becomes a persistent teammate (custom subagent under `.claude/agents/code-review-*.md`) that can DM peers for cross-domain verification while it works. The lead orchestrates step 2 via `TeamCreate`, a shared task list, polling on the `findings/` directory, and a broadcast `finalize_now` DM, then runs steps 3-5 itself. Step 6 cleans up.
 
@@ -160,7 +160,7 @@ Inputs (absolute paths):
 - ROSTER_FILE: $REVIEW_TMPDIR/roster.json
 - ASSIGNMENT_TASK_ID: <task id captured in 2c>
 
-Follow your agent's system prompt. Begin by reading .claude/references/code-review-rubrics.md and .claude/references/shell-safety.md.
+Follow your agent's system prompt. Begin by reading ~/.claude/references/code-review-rubrics.md and ~/.claude/references/shell-safety.md.
 ```
 
 When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; the polling logic in 2e is what tells you when they're actually done.
@@ -357,4 +357,4 @@ This runs even if the user declined posting in step 4 (the workspace is no longe
 
 - Use `gh` for fetching PR data. Use `gh api repos/OWNER/REPO/pulls/NUMBER/reviews` for posting.
 - Cite and link every issue (e.g., link CLAUDE.md when referenced).
-- The confidence/severity rubric, findings schema, cross-verification protocol, and false-positive list live in `.claude/references/code-review-rubrics.md`. Do not re-list them here — specialists and the lead both read that file.
+- The confidence/severity rubric, findings schema, cross-verification protocol, and false-positive list live in `~/.claude/references/code-review-rubrics.md`. Do not re-list them here — specialists and the lead both read that file.

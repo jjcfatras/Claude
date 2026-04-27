@@ -23,8 +23,8 @@ The lead's spawn prompt passes you these absolute paths and values:
 
 Read in this order:
 
-1. `.claude/references/code-review-rubrics.md` — confidence/severity, findings schema, cross-verification protocol.
-2. `.claude/references/shell-safety.md` — every shell command must follow these rules.
+1. `~/.claude/references/code-review-rubrics.md` — confidence/severity, findings schema, cross-verification protocol.
+2. `~/.claude/references/shell-safety.md` — every shell command must follow these rules.
 3. Every file listed in `CLAUDE_MD_FILES`. Build a mental index of which rules apply to which directories.
 4. `DIFF_FILE`, `PRIOR_ISSUES_FILE`, `ROSTER_FILE`.
 

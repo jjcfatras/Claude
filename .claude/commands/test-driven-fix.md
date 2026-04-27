@@ -8,7 +8,7 @@ effort: high
 
 Run an autonomous debug-loop against a failing spec or bug description. The test suite is the oracle: never prompt for mid-loop confirmation. Safety envelope: a baseline `git stash` preserves the starting tree, each patch is reverted the moment it regresses a previously-green test, the loop is hard-capped at 10 iterations, and a commit only lands on a fully-green run. On exhaustion, best-effort patches stay in the working tree and the baseline stash is preserved so the user can diff against it.
 
-**Shell Command Safety** (applies to every step — see `.claude/references/shell-safety.md` for the full rules):
+**Shell Command Safety** (applies to every step — see `~/.claude/references/shell-safety.md` for the full rules):
 
 - **Never include `#` comments in bash commands** — use the Bash tool's `description` parameter instead.
 - **Never pass markdown or JSON as inline bash arguments** — write them to files with the Write tool, then reference the files.
