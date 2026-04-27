@@ -39,15 +39,19 @@ CLAUDE.md-flagged issues: cap confidence at 60 unless the rule is quoted verbati
 Every specialist follows this lifecycle. The lead's coordination depends on the contract — don't deviate.
 
 1. Mark your assignment task `in_progress` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "in_progress"})`).
-2. **Scan the diff** for issues in your domain. Use `Read` for surrounding context (function signatures, imports, call sites) when the diff alone isn't enough. Don't refetch via `gh pr diff` — the diff is already on disk at `DIFF_FILE`.
-3. **Send outgoing verification DMs** as you find uncertain cross-domain issues (see "Cross-verification protocol"). Continue scanning while replies are in flight.
-4. **Settle outgoing verifications.** Apply replies per the rubric. Anything still unanswered after the timeout becomes `peer_timeout`.
-5. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The presence of this file is the lead's signal that you've finished scanning. Treat it as immutable once written — incoming peer DMs after this point are for helping peers verify _their_ findings, not for revising yours.
-6. **Stay idle. Do _not_ mark your task complete on your own.** You remain available to answer incoming `VERIFICATION_REQUEST` DMs from peers who are still scanning. The harness wakes you for incoming messages — you don't need to poll.
-7. **On `finalize_now` DM from the lead**: this signals every peer has finished scanning, so no more cross-verifications can arrive. Mark your task `completed` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "completed"})`). If `finalize_now` arrived before you reached step 5 (the lead's wall-clock backstop fired while you were still scanning), write `findings/<role>.json` first with `scan_status: "timed_out"` and whatever findings you have, then mark complete.
-8. **On `shutdown_request` DM**: approve and terminate per the standard team protocol.
+2. **Record your scan-start wall-clock**: run `date +%s` and remember the value as `SCAN_START`. You will use this to self-bound the scan phase (step 6).
+3. **Scan the diff** for issues in your domain. Use `Read` for surrounding context (function signatures, imports, call sites) when the diff alone isn't enough. Don't refetch via `gh pr diff` — the diff is already on disk at `DIFF_FILE`.
+4. **Send outgoing verification DMs** as you find uncertain cross-domain issues (see "Cross-verification protocol"). Continue scanning while replies are in flight.
+5. **Settle outgoing verifications.** Apply replies per the rubric. Anything still unanswered after the timeout becomes `peer_timeout`.
+6. **Self-budget the scan phase.** Before each new `Read`, before each new outgoing DM, and before any other multi-second tool call during scanning, run `date +%s` and compute `elapsed = now - SCAN_START`. If `elapsed > 120` (seconds), stop scanning immediately and proceed to step 7 with whatever findings you have. Do not start new tool calls past the budget — finish the one in flight, then write findings. The 120 s budget is a ceiling, not a target — most specialists finish in under 60 s. The point is to bound legitimately slow scans (large PRs, many cross-package reads) and to bound stuck specialists (a `Read` on a generated bundle, a peer DM that's never coming) without a lead-side wall-clock backstop. Why 120 s: comfortably below the prompt-cache TTL (300 s), comfortably above the 90th percentile of normal scan times, and double the lead's first poll cycle (60 s) so most specialists land naturally in the lead's first check.
+7. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The presence of this file is the lead's signal that you've finished scanning. Treat it as immutable once written — incoming peer DMs after this point are for helping peers verify _their_ findings, not for revising yours.
+   - If you reached this step naturally (scan complete, all DMs settled): set `scan_status: "complete"`.
+   - If you reached this step because the self-budget in step 6 fired: set `scan_status: "timed_out"` and include whatever findings you accumulated. Do not omit partial findings — incomplete signal is more useful than no signal.
+8. **Stay idle. Do _not_ mark your task complete on your own.** You remain available to answer incoming `VERIFICATION_REQUEST` DMs from peers who are still scanning. The harness wakes you for incoming messages — you don't need to poll. The self-budget in step 6 bounds your scan phase only; idle-listening for peer DMs has no time cap.
+9. **On `finalize_now` DM from the lead**: this signals every peer has finished scanning, so no more cross-verifications can arrive. Mark your task `completed` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "completed"})`). If `finalize_now` arrived before you reached step 7 (rare with self-budgeting; would mean either your `date +%s` calls didn't fire often enough, or the lead's wall-clock fired exceptionally early), write `findings/<role>.json` first with `scan_status: "timed_out"` and whatever findings you have, then mark complete.
+10. **On `shutdown_request` DM**: approve and terminate per the standard team protocol.
 
-Why this shape: a peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible (step 7), not the individual specialist. "Task in_progress" means "available for DMs"; "task completed" means "no more DMs are coming."
+Why this shape: a peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible (step 9), not the individual specialist. "Task in*progress" means "available for DMs"; "task completed" means "no more DMs are coming." The scan-phase self-budget (step 6) is independent: it bounds the time spent \_producing* findings, not the time spent answering peer DMs from others.
 
 ## Findings file schema
 
@@ -92,7 +96,7 @@ Field rules:
 - `line` — line **in the new version of the file**, as it would appear when checked out at HEAD_SHA. Not the position within a hunk, not the diff-line offset. Concrete example: if a hunk header reads `@@ -28,3 +286,16 @@` and your finding is on the third added line, `line: 288`, not `line: 3`. For multi-line issues, set `startLine` and use `line` as the end. Must correspond to `+`-prefix or modified lines in the diff.
 - `language` — for fenced code blocks at posting time (`ts`, `tsx`, `py`, `sql`, `tf`, `yaml`, etc.).
 - `verifications` — empty array if you didn't DM anyone. One entry per peer asked.
-- `scan_status` — `"complete"` if you wrote this file normally at workflow step 5; `"timed_out"` if the lead's `finalize_now` interrupted you mid-scan and you're committing partial results per workflow step 7.
+- `scan_status` — `"complete"` if you wrote this file normally at workflow step 7 after a clean scan; `"timed_out"` if either the scan-phase self-budget in workflow step 6 fired with the scan still incomplete, or the lead's `finalize_now` interrupted you before you reached step 7 (rare with self-budgeting).
 
 ## Cross-verification protocol
 
@@ -104,7 +108,6 @@ Whether to DM a peer depends on the severity of the finding. The asymmetry is in
 2. Cross-domain knowledge is load-bearing for the finding — i.e., a specialist in another domain could raise or lower confidence with information you don't have direct authority on. Don't gate this on whether you _think_ you can answer it yourself; if a peer's expertise materially affects the finding, ask.
 
    Operational test for criterion 2: ask yourself "to score this finding, did I have to read or trust a file I didn't open?" If yes — a related-PR-touched file in another package, the contents of a CLAUDE.md section that lives in someone else's domain, a runtime contract you're inferring rather than verifying — DM the specialist whose domain owns that file (per the routing table). Examples that should fire a DM:
-
    - You're flagging "the JS generator should mirror this TS generator change" but you didn't open the JS generator file: DM `quality-reviewer` or `typescript-reviewer`.
    - You're flagging an authz bypass that depends on whether middleware upstream covers it: DM `security-reviewer`.
    - You're flagging a CLAUDE.md compliance issue but the rule's quote requires verifying TS types: DM `typescript-reviewer`.
@@ -179,7 +182,7 @@ You don't need to literally count seconds. Heuristics:
 
 - Send DMs early and continue scanning.
 - After your scan is complete, wait one more idle cycle to collect late responses.
-- When you reach step 5 of the workflow (writing findings), any still-pending outgoing DMs become `peer_timeout`. Don't hold up findings for a slow peer — your incoming-DM availability afterward (step 6) is unrelated to your outgoing verifications.
+- When you reach step 7 of the workflow (writing findings), any still-pending outgoing DMs become `peer_timeout`. Don't hold up findings for a slow peer — your incoming-DM availability afterward (step 8) is unrelated to your outgoing verifications.
 
 ### One round only
 

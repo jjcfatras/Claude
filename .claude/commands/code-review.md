@@ -167,20 +167,24 @@ When `Agent` is called with `team_name`, it returns immediately (the response in
 
 ### 2e. Wait for scans to land, then broadcast finalize
 
-The lead enforces a wall-clock backstop on top of the per-DM 30-second timeout that specialists use internally. The "scan done" signal is the existence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` (and stay available to answer peer DMs) until the lead's `finalize_now` broadcast tells them to mark complete.
+Specialists self-bound their scan phase to ~120 s of their own wall-clock (rubrics file, workflow step 6) — every specialist will write `findings/<role>.json` either when its scan completes naturally or when its self-budget fires. The lead's role here is just to poll for those files and then broadcast `finalize_now`. The early-finalize backstop DM that the lead used to send is now an exception path, not the normal flow.
+
+The "scan done" signal is the existence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` (and stay available to answer peer DMs) until the lead's `finalize_now` broadcast tells them to mark complete.
 
 Note: leading-sleep commands (`sleep N` with no preceding work in the same call) are rejected by the harness, so each sleep below uses `Bash` with `run_in_background: true` and waits via `TaskOutput` (`block: true`).
 
-1. Right after the parallel `Agent` calls, sleep 60s. This gives every specialist time for an initial scan and a round of cross-verification DMs.
+1. Right after the parallel `Agent` calls, sleep 60 s. This gives every specialist time for an initial scan and a round of cross-verification DMs. Most specialists land within this window.
 2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 5.
-3. Sleep another 30s and recheck. If everyone has now written findings, proceed to step 5.
-4. **Backstop (any role still missing findings after ~90s):** for each missing role, send a private early `finalize_now` DM:
-   `SendMessage({to: "<role>-reviewer", message: "finalize_now: lead-imposed deadline, commit whatever findings you have with scan_status: timed_out and mark complete"})`.
-   Send all such DMs in one message. Sleep 15s, then list `findings/` again so any partial files written in response have a chance to land.
+3. Sleep another 30 s and recheck. With self-budgeting, specialists scanning past 90 s are still inside their own 120 s ceiling and will land momentarily. If everyone has now written findings, skip to step 5.
+4. Sleep one more 30 s window (total wait now ~120 s, matching the specialist self-budget) and recheck. Any specialist still missing a findings file at this point has either lost its self-budget timer or is genuinely stuck. **Exception path:** for each missing role, send a single wake-up DM:
+   `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`.
+   Send all such DMs in one message, sleep 15 s, then list `findings/` again. Don't loop — if a wake-up is needed, it's a single shot.
 5. **Broadcast finalize to everyone.** In a single message, send `finalize_now` to every roster member:
    `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`.
-   Specialists who already marked complete in step 4 will see this message after their task is done — that's harmless (they no-op). Specialists whose findings are already on disk will simply mark their task `completed` per workflow step 7.
-6. Sleep 15s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` (the specialist failed to process the broadcast), but proceed — the findings files are what matter for step 2f.
+   Specialists whose findings are already on disk will simply mark their task `completed` per workflow step 9.
+6. Sleep 15 s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` (the specialist failed to process the broadcast), but proceed — the findings files are what matter for step 2f.
+
+Wall-clock budget: 60 + 30 + 30 + (0 or 15 if wake-up needed) + 15 = 135 to 150 s pre-task-check. Comfortably under the 300 s prompt-cache TTL even when the wake-up path fires.
 
 ### 2f. Collect findings
 
