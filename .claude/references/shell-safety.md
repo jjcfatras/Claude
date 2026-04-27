@@ -29,7 +29,7 @@ Claude Code's permission system flags certain shell patterns as potentially dang
 
 11. **No `jq -f`, `--rawfile`, or `--slurpfile` flags** — these trigger dangerous-flag security prompts. Construct JSON payloads directly using the Write tool. Only use `jq .` for validation or `gh api --jq` for filtering.
 
-12. **Fetching file contents at a specific SHA** — use this single-line pattern (substitute actual values): `gh api repos/OWNER/REPO/contents/PATH?ref=SHA | jq -r .content | base64 --decode`
+12. **Fetching file contents at a specific SHA** — use the `-f` query-string form so the command is shell-agnostic (the `?ref=SHA` query-string form is interpreted as a glob pattern by zsh's nullglob and gets rejected): `gh api -X GET repos/OWNER/REPO/contents/PATH -f ref=SHA | jq -r .content | base64 --decode`
 
 13. **No backtick command substitution (`` `cmd` ``)** — same family as `$()` (rule 6). The permission system flags both as expansion obfuscation. Save intermediate results to temp files with separate commands, then reference those files.
 
