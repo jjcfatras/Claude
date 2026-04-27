@@ -86,8 +86,10 @@ Every specialist writes its findings to `$REVIEW_TMPDIR/findings/<specialist>.js
 
 Field rules:
 
-- `file` — relative path from repo root, must match a path in the PR diff.
-- `line` — line in the **new** version. For multi-line issues, set `startLine` and use `line` as the end. Must correspond to `+`-prefix or modified lines.
+- `file` — relative path from repo root.
+  - **Default**: a path in the PR diff (the line you're flagging is on a `+` or modified line).
+  - **Cross-file omission findings** (e.g., "this PR added X to file A but should have mirrored it in file B"): set `file` to the **PR-touched file** (file A in the example), so the inline-eligibility check at step 3 has somewhere to anchor. Put the actually-missing path in the `explanation` body and in `out_of_diff_reason` if applicable. Anchoring to file B (which by definition isn't in the diff) routes the finding to summary-only and loses the inline-comment value.
+- `line` — line **in the new version of the file**, as it would appear when checked out at HEAD_SHA. Not the position within a hunk, not the diff-line offset. Concrete example: if a hunk header reads `@@ -28,3 +286,16 @@` and your finding is on the third added line, `line: 288`, not `line: 3`. For multi-line issues, set `startLine` and use `line` as the end. Must correspond to `+`-prefix or modified lines in the diff.
 - `language` — for fenced code blocks at posting time (`ts`, `tsx`, `py`, `sql`, `tf`, `yaml`, etc.).
 - `verifications` — empty array if you didn't DM anyone. One entry per peer asked.
 - `scan_status` — `"complete"` if you wrote this file normally at workflow step 5; `"timed_out"` if the lead's `finalize_now` interrupted you mid-scan and you're committing partial results per workflow step 7.
@@ -100,6 +102,14 @@ Whether to DM a peer depends on the severity of the finding. The asymmetry is in
 
 1. Your tentative confidence is < 75.
 2. Cross-domain knowledge is load-bearing for the finding — i.e., a specialist in another domain could raise or lower confidence with information you don't have direct authority on. Don't gate this on whether you _think_ you can answer it yourself; if a peer's expertise materially affects the finding, ask.
+
+   Operational test for criterion 2: ask yourself "to score this finding, did I have to read or trust a file I didn't open?" If yes — a related-PR-touched file in another package, the contents of a CLAUDE.md section that lives in someone else's domain, a runtime contract you're inferring rather than verifying — DM the specialist whose domain owns that file (per the routing table). Examples that should fire a DM:
+
+   - You're flagging "the JS generator should mirror this TS generator change" but you didn't open the JS generator file: DM `quality-reviewer` or `typescript-reviewer`.
+   - You're flagging an authz bypass that depends on whether middleware upstream covers it: DM `security-reviewer`.
+   - You're flagging a CLAUDE.md compliance issue but the rule's quote requires verifying TS types: DM `typescript-reviewer`.
+
+   The previous rule was correct in spirit but specialists treated "I think I can reason about it" as license to skip the DM. The operational test removes that wiggle room: if your evidence rests on a file you haven't opened, ask.
 
 **For Minor findings**, send a peer DM only if **all** of these are true:
 

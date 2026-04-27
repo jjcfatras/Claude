@@ -191,17 +191,30 @@ Read every `$REVIEW_TMPDIR/findings/<role>.json` that exists. For each role in t
 
 ### 2g. Tear down the team
 
-`TeamDelete` refuses to run while teammates are still alive — even after their assignment tasks are `completed` — so shut them down gracefully first:
+`TeamDelete` refuses to run while teammates are still alive — even after their assignment tasks are `completed` — so shut them down gracefully first. Teardown is best-effort with a hard wall-clock cap, because findings are already on disk by this point and a single uncooperative specialist must not block step 3.
 
 1. For each teammate in the roster, send a shutdown request: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`. Send all of them in a single message so they fire in parallel.
 2. Run `Bash sleep 15` with `run_in_background: true`, then `TaskOutput` with `block: true` to wait. Teammates wake on the request, approve (their work is done), and terminate.
-3. `TeamDelete()`.
+3. Call `TeamDelete()`.
+4. **If `TeamDelete` fails** with a "still active member(s)" error, the named member(s) didn't process the shutdown. Send one more `shutdown_request` to each named holdout, sleep 15s, retry `TeamDelete()`.
+5. **If the second attempt also fails** (any holdout still alive after ~30s of teardown effort), stop trying. Log a single warning naming the leftover team and the holdout member(s) (e.g., "team `code-review-<PR_NUMBER>` lingering — `<role>-reviewer` did not approve shutdown"). Continue to step 3 of the skill — findings are on disk, and the leftover team config under `~/.claude/teams/` is harmless until the user GCs it manually. Do not loop on `TeamDelete`; further retries are not productive.
 
-After teardown, the shared task list is gone and the lead's pre-existing task list (if any) returns to view. The team config under `~/.claude/teams/` is also removed.
+After successful teardown, the shared task list is gone and the lead's pre-existing task list (if any) returns to view. The team config under `~/.claude/teams/` is also removed. After unsuccessful teardown, the team lingers and the lead's pre-existing task list does not return until the team is removed by the user; this is a documented degraded state, not a failure.
 
 ## 3. Filter — deduplication and gates
 
-**Pre-filter 1 — Deduplication across specialists:** Group findings by file path and line number (within ±3 lines). For each group, keep the finding with the highest confidence score. If tied, prefer the specialist whose domain best matches the issue category.
+**Pre-filter 1 — Deduplication across specialists:** Apply two passes.
+
+_Pass 1 — Positional dedup_: Group findings by file path and line number (within ±3 lines). For each group, keep the finding with the highest confidence score. If tied, prefer the specialist whose domain best matches the issue category.
+
+_Pass 2 — Semantic dedup_: After positional dedup, look for findings that describe the same defect at different anchors. Two findings are semantic duplicates when **either** holds:
+
+1. One finding's `file` path appears as a path-string inside another finding's `explanation` field (case-sensitive, full path match), AND both findings have severity ≥ Medium.
+2. The two findings' `explanation` fields share a 60+ character common substring AND their `category` fields are related (security ↔ errors, quality ↔ claude-md, typescript ↔ react are related pairs; everything else is unrelated).
+
+When two findings match as semantic duplicates, keep the one with higher confidence; if tied, prefer the one whose `file` is **inside the diff** over one whose `file` is outside the diff (so dedup tends to leave an inline-eligible representative). Append a note to the kept finding's `explanation`: "_This finding was also independently raised by `<other-specialist>` (confidence `<N>`) at `<other-file>:<line>`._"
+
+This pass exists because positional dedup alone misses the common case where two specialists correctly identify the same cross-file omission from different angles (e.g., `quality` flags "JS generator missing X" while `claude-md` flags "CLAUDE.md says update both generators"). Both findings are real, but a reviewer reading the consolidated list shouldn't see the same defect twice.
 
 **Pre-filter 2 — Prior-review deduplication:** For each surviving finding, match against `$REVIEW_TMPDIR/prior-issues.json`:
 
