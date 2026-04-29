@@ -29,11 +29,9 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 - `~/.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these. The lead also embeds the rubric verbatim into each specialist's spawn prompt (step 2d), so specialists do not need to Read it themselves.
 - `~/.claude/references/shell-safety.md` — seven rules covering real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops, the `for x in "a" "b"` classifier-crash pattern). Heuristic-only rules retired with auto mode. Specialists rarely invoke Bash beyond `date +%s` and don't need to read this file.
 
-**Execution model:** Step 1 still uses inline `Agent` calls (one-shot prep agents). Step 2 builds an actual team: each specialist becomes a persistent teammate (custom subagent under `.claude/agents/code-review-*.md`) that can DM peers for cross-domain verification while it works. The lead orchestrates step 2 via `TeamCreate`, a shared task list, polling on the `findings/` directory, and a broadcast `finalize_now` DM, then runs steps 3-5 itself. Step 6 cleans up.
+**Execution model:** Step 1 uses inline `Agent` prep agents. Step 2 builds a team: each specialist is a persistent teammate (under `.claude/agents/code-review-*.md`) that DMs peers for cross-domain verification while scanning. Specialists write `findings/<role>.json` then stay idle for incoming peer DMs; the lead broadcasts `finalize_now` once every findings file has landed, which is the cue for specialists to mark their assignment task `completed`. Steps 3-5 run on the lead. Step 6 cleans up.
 
-**Cost shape:** specialists are the dominant token sink — 4 always-on plus up to 4 conditional, each paid the same shared context. Anything you can hand the specialist via the spawn prompt (which is one model input) avoids a tool-call round-trip and keeps the specialist scanning instead of reading. Step 2d below inlines the rubric, roster, prior-issues, and CLAUDE.md content for exactly this reason; only the diff (which can be large) is left as a file.
-
-**Lead-driven finalization (important):** Specialists never mark their own task `completed`. They write `findings/<role>.json` (the lead's "scan done" signal), then stay idle so peers who are still scanning can DM them for cross-verification. The lead waits for every specialist's findings file to land, then broadcasts `finalize_now` — that DM is the cue for specialists to mark their tasks `completed` and become available for shutdown. This guarantees a slow-scanning peer can always reach a fast peer.
+Design rationale (cost shape, finalization protocol, polling cadence, teardown degraded state, etc.) lives in `~/.claude/references/code-review-design-notes.md`. Not read at runtime.
 
 Follow these steps precisely:
 
@@ -147,9 +145,9 @@ Agent({
 })
 ```
 
-`mode: "auto"` is required so each specialist runs under the auto-mode classifier. The classifier auto-approves safe-but-heuristically-flagged shell patterns (heredocs, `$()`, `>` redirection, `{}` in jq, etc.) without prompting, which is what makes long unattended specialist scans practical.
+`mode: "auto"` is required so each specialist runs under the auto-mode classifier (auto-approves safe shell patterns without prompting; required for long unattended scans).
 
-The spawn prompt is the specialist's only model input besides its system prompt, so put everything they need to start scanning here. The diff is the one thing left as a file because it can be large; everything else (rubric, roster, prior issues, CLAUDE.md content, changed-file list) is small enough to inline and saves a `Read` round-trip per specialist:
+Inline the rubric, roster, prior-issues, CLAUDE.md content, and changed-file list directly into the spawn prompt. Only the diff stays as a file (size). Specialists must not Read the inlined files. Template:
 
 ```
 You are <role>-reviewer on the code review team for <OWNER>/<REPO> PR #<PR_NUMBER>.
@@ -192,27 +190,22 @@ When `Agent` is called with `team_name`, it returns immediately (the response in
 
 ### 2e. Wait for scans to land, then broadcast finalize
 
-Specialists self-bound their scan phase to ~180 s of their own wall-clock (rubrics file, workflow step 6) — every specialist will write `findings/<role>.json` either when its scan completes naturally or when its self-budget fires. The lead's role here is just to poll for those files and then broadcast `finalize_now`. The wake-up DM is an exception path, not the normal flow — most specialists land before it would fire.
+Specialists self-bound their scan phase to ~180 s. The "scan done" signal is the presence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` until `finalize_now` arrives.
 
-The "scan done" signal is the existence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` (and stay available to answer peer DMs) until the lead's `finalize_now` broadcast tells them to mark complete.
+Each sleep uses `Bash` with `run_in_background: true` so the harness owns the timer; wait via `TaskOutput` (`block: true`).
 
-The lead's poll cadence intentionally trails the specialist self-budget by ~30 s on each end. The lead spawns specialists, then waits a long first window (90 s) so the specialists' initial Read of the diff plus an early scanning pass can finish before the first findings check; the trailing 30 s recheck windows after that catch slow scans without prematurely declaring a specialist stuck.
-
-Note: each sleep below uses `Bash` with `run_in_background: true` so the harness owns the timer and captures any output; wait via `TaskOutput` (`block: true`).
-
-1. Right after the parallel `Agent` calls, sleep 90 s. This gives every specialist time for context ingestion, an initial diff read, a first scanning pass, and a round of cross-verification DMs. Most specialists land within this window.
+1. Right after the parallel `Agent` calls, sleep 90 s.
 2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 6.
-3. Sleep another 30 s and recheck. Specialists scanning past ~120 s are still well inside their own 180 s ceiling and will land momentarily. If everyone has now written findings, skip to step 6.
-4. Sleep another 30 s and recheck (total wait now ~150 s). If everyone has now written findings, skip to step 6.
-5. Sleep one final 30 s window (total wait now ~180 s, matching the specialist self-budget) and recheck. Any specialist still missing a findings file at this point has either lost its self-budget timer or is genuinely stuck. **Exception path:** for each missing role, send a single wake-up DM:
+3. Sleep another 30 s and recheck. If complete, skip to step 6.
+4. Sleep another 30 s and recheck (total ~150 s). If complete, skip to step 6.
+5. Sleep one final 30 s window (total ~180 s) and recheck. **Exception path:** for each missing role, send a single wake-up DM:
    `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`.
-   Send all such DMs in one message, sleep 15 s, then list `findings/` again. Don't loop — if a wake-up is needed, it's a single shot.
+   Send all such DMs in one message, sleep 15 s, then list `findings/` again. Single shot — don't loop.
 6. **Broadcast finalize to everyone.** In a single message, send `finalize_now` to every roster member:
    `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`.
-   Specialists whose findings are already on disk will simply mark their task `completed` per workflow step 9.
-7. Sleep 15 s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` (the specialist failed to process the broadcast), but proceed — the findings files are what matter for step 2f.
+7. Sleep 15 s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` and proceed — findings files are what matter for 2f.
 
-Wall-clock budget: 90 + 30 + 30 + 30 + (0 or 15 if wake-up needed) + 15 = 195 to 210 s pre-task-check. Still comfortably under the 300 s prompt-cache TTL for the lead's own context even when the wake-up path fires.
+Polling cadence + budget rationale: see `~/.claude/references/code-review-design-notes.md`.
 
 ### 2f. Collect findings
 
@@ -223,15 +216,15 @@ Read every `$REVIEW_TMPDIR/findings/<role>.json` that exists. For each role in t
 
 ### 2g. Tear down the team
 
-`TeamDelete` refuses to run while teammates are still alive — even after their assignment tasks are `completed` — so shut them down gracefully first. Teardown is best-effort with a hard wall-clock cap, because findings are already on disk by this point and a single uncooperative specialist must not block step 3.
+`TeamDelete` refuses while teammates are alive, so shut them down first. Best-effort with a hard wall-clock cap — findings are already on disk; one uncooperative specialist must not block step 3.
 
-1. For each teammate in the roster, send a shutdown request: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`. Send all of them in a single message so they fire in parallel.
-2. Run `Bash sleep 15` with `run_in_background: true`, then `TaskOutput` with `block: true` to wait. Teammates wake on the request, approve (their work is done), and terminate.
+1. Send a shutdown request to every teammate in a single message: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`.
+2. `Bash sleep 15` with `run_in_background: true`, wait via `TaskOutput` (`block: true`).
 3. Call `TeamDelete()`.
-4. **If `TeamDelete` fails** with a "still active member(s)" error, the named member(s) didn't process the shutdown. Send one more `shutdown_request` to each named holdout, sleep 15s, retry `TeamDelete()`.
-5. **If the second attempt also fails** (any holdout still alive after ~30s of teardown effort), stop trying. Log a single warning naming the leftover team and the holdout member(s) (e.g., "team `code-review-<PR_NUMBER>` lingering — `<role>-reviewer` did not approve shutdown"). Continue to step 3 of the skill — findings are on disk, and the leftover team config under `~/.claude/teams/` is harmless until the user GCs it manually. Do not loop on `TeamDelete`; further retries are not productive.
+4. **On "still active member(s)" error**, send one more `shutdown_request` to each named holdout, sleep 15 s, retry `TeamDelete()`.
+5. **On second failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
 
-After successful teardown, the shared task list is gone and the lead's pre-existing task list (if any) returns to view. The team config under `~/.claude/teams/` is also removed. After unsuccessful teardown, the team lingers and the lead's pre-existing task list does not return until the team is removed by the user; this is a documented degraded state, not a failure.
+Degraded-state explanation: see `~/.claude/references/code-review-design-notes.md`.
 
 ## 3. Filter — deduplication and gates
 
@@ -244,9 +237,7 @@ _Pass 2 — Semantic dedup_: After positional dedup, look for findings that desc
 1. One finding's `file` path appears as a path-string inside another finding's `explanation` field (case-sensitive, full path match), AND both findings have severity ≥ Medium.
 2. The two findings' `explanation` fields share a 60+ character common substring AND their `category` fields are related (security ↔ errors, quality ↔ claude-md, typescript ↔ react are related pairs; everything else is unrelated).
 
-When two findings match as semantic duplicates, keep the one with higher confidence; if tied, prefer the one whose `file` is **inside the diff** over one whose `file` is outside the diff (so dedup tends to leave an inline-eligible representative). Append a note to the kept finding's `explanation`: "_This finding was also independently raised by `<other-specialist>` (confidence `<N>`) at `<other-file>:<line>`._"
-
-This pass exists because positional dedup alone misses the common case where two specialists correctly identify the same cross-file omission from different angles (e.g., `quality` flags "JS generator missing X" while `claude-md` flags "CLAUDE.md says update both generators"). Both findings are real, but a reviewer reading the consolidated list shouldn't see the same defect twice.
+When two findings match as semantic duplicates, keep the one with higher confidence; if tied, prefer the one whose `file` is **inside the diff** (so dedup tends to leave an inline-eligible representative). Append a note to the kept finding's `explanation`: "_This finding was also independently raised by `<other-specialist>` (confidence `<N>`) at `<other-file>:<line>`._"
 
 **Pre-filter 2 — Prior-review deduplication:** For each surviving finding, match against `$REVIEW_TMPDIR/prior-issues.json`:
 
