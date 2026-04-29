@@ -8,7 +8,7 @@ effort: high
 
 Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix and reply confirming the change.
 
-**Shell Command Safety:** All bash commands — yours and agents' — must follow the rules in `~/.claude/references/shell-safety.md`. The condensed version is included in every agent preamble below.
+**Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The surviving rules in `~/.claude/references/shell-safety.md` cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops). The condensed version is included in every agent preamble below.
 
 Follow these steps precisely:
 
@@ -51,7 +51,7 @@ If a specific inline comment ID was provided in step 0, skip 1b–1d entirely �
 Review bodies are free-form markdown. Findings can appear as bullet points, numbered items, `###`-delimited subsections, or a single prose paragraph. Parse each surviving review body into a list of findings:
 
 - For review bodies with fewer than ~4 filtered reviews total, parse inline (read the body yourself and split it into findings).
-- For 4 or more, launch one Haiku agent per review in parallel, each bound by the **forbidden-bash preamble** from Step 2 (the exact text starting "You are a review-response analysis agent…"), with the per-agent role adjusted to "You are a review-body parsing agent." The agent's only job is to split a single review body into findings and return structured JSON — it must not hit the network beyond what it was given and must not post anything.
+- For 4 or more, launch one Sonnet 4.6 agent per review in parallel (`model: "sonnet"`, `mode: "auto"`), each bound by the **agent preamble** from Step 2 (the exact text starting "You are a review-response analysis agent…"), with the per-agent role adjusted to "You are a review-body parsing agent." The agent's only job is to split a single review body into findings and return structured JSON — it must not hit the network beyond what it was given and must not post anything.
 
 For each finding, emit:
 
@@ -69,7 +69,7 @@ When the skill posts a reply for a review-body finding (Step 5), it embeds a sta
 
 1. Fetch PR-level issue comments: `gh api --paginate repos/OWNER/REPO/issues/NUMBER/comments`. Save to `$TMPDIR/issue-comments.json` using the Write tool.
 2. Filter the list to comments authored by the current user.
-3. For each review-body finding from 1c, use the **Grep tool** (not the `grep` shell command — rule 4 of shell-safety) on `$TMPDIR/issue-comments.json` to check for its marker string. If the marker appears in any of our prior PR comments, drop the finding.
+3. For each review-body finding from 1c, use the **Grep tool** (ripgrep-backed; the `grep` shell command isn't in this skill's `allowed-tools`) on `$TMPDIR/issue-comments.json` to check for its marker string. If the marker appears in any of our prior PR comments, drop the finding.
 
 ### 1e — Merge into pending items
 
@@ -87,11 +87,11 @@ Display the count of pending items. If zero, report "No unaddressed review items
 
 ## Step 2: Analyze each item
 
-For each pending item in `$TMPDIR/pending-items.json`, perform the following analysis. If there are 3 or fewer items total, analyze sequentially. If there are more than 3, launch parallel agents (up to 5) to analyze batches.
+For each pending item in `$TMPDIR/pending-items.json`, perform the following analysis. If there are 3 or fewer items total, analyze sequentially. If there are more than 3, launch parallel agents (up to 5) to analyze batches; spawn each `Agent` call with `mode: "auto"` so the auto-mode classifier replaces heuristic prompts and the agents can use straightforward shell forms.
 
 **CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
 
-> You are a review-response analysis agent. FORBIDDEN: Never use `sed`, `awk`, `du`, or `grep` as Bash commands — they are not in the allowed tools and will trigger permission prompts that block the workflow. Use the Read tool to read files, the Grep tool to search content (ripgrep-backed — e.g. `pattern: "try\\s*\\{"`, `path: "src/"`, `output_mode: "files_with_matches"`; see `~/.claude/references/shell-safety.md` rule 4), and `jq`/`gh api --jq` for JSON processing. No `#` comments in bash commands. No heredocs. No multi-line bash commands. No `jq -f`/`--rawfile`/`--slurpfile`. No `$()` command substitution. No curly braces with quotes in the same command — pipe to `jq` instead of `--jq` when URLs contain braces. No output redirection (`>`, `>>`) — use the Write tool. No adjacent quote characters (e.g., `'"`, `"'`) at word start — simplify quoting or use the Write tool. No ANSI-C quoting (`$'...'`) — never place `$` immediately before a single quote. Do NOT post anything to GitHub — only the main skill posts replies in Step 5.
+> You are a review-response analysis agent. Use the Read/Grep/Write tools rather than `sed`/`awk`/`grep`/`du` — those aren't in this skill's `allowed-tools` and would be denied at the skill-permission layer regardless of permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 5.
 >
 > **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 

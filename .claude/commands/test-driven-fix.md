@@ -8,19 +8,12 @@ effort: high
 
 Run an autonomous debug-loop against a failing spec or bug description. The test suite is the oracle: never prompt for mid-loop confirmation. Safety envelope: a baseline `git stash` preserves the starting tree, each patch is reverted the moment it regresses a previously-green test, the loop is hard-capped at 10 iterations, and a commit only lands on a fully-green run. On exhaustion, best-effort patches stay in the working tree and the baseline stash is preserved so the user can diff against it.
 
-**Shell Command Safety** (applies to every step — see `~/.claude/references/shell-safety.md` for the full rules):
+**Shell Command Safety:** This skill runs under [auto permission mode](https://code.claude.com/docs/en/permission-modes). The classifier auto-approves safe shell patterns (heredocs, `$()`, `>` redirection, `{}` in jq filters, ANSI-C quoting, `jq -f` / `--rawfile` / `--slurpfile`, multi-line bash, etc.) without prompting, so the explicit anti-pattern list this skill once carried is retired. Two constraints still apply, both rooted in real concerns rather than heuristic prompts:
 
-- **Never include `#` comments in bash commands** — use the Bash tool's `description` parameter instead.
-- **Never pass markdown or JSON as inline bash arguments** — write them to files with the Write tool, then reference the files.
-- **Never use heredocs (`<<`, `<<<`)** — use the Write tool.
-- **Never use `sed`, `awk`, `du`, or `grep` as bash commands** — use the Read tool, the Grep tool, or `jq`.
-- **Never combine curly braces (`{`, `}`) with quote characters in the same bash command.**
-- **Never use `$()` command substitution** — save intermediate results to temp files with separate commands, then reference those files.
-- **Never use output redirection (`>`, `>>`)** — use the Write tool to create files.
-- **Never use adjacent/consecutive quote characters** (`'"`, `"'`, `''`).
-- **Never use ANSI-C quoting (`$'...'`).**
-- **Keep every Bash command on a single line** — chain with `&&` or `|`.
-- **Never use `jq -f`, `--rawfile`, or `--slurpfile`** — build JSON with the Write tool.
+- **Never use `sed`, `awk`, `grep`, or `du` as bash commands** — they're not in this skill's `allowed-tools` (see frontmatter) and will be denied at the skill-permission layer regardless of permission mode. Use the Read tool, the Grep tool, or `jq` instead.
+- **Never pass markdown or JSON as inline bash arguments** — write them to files first using the Write tool, then reference (e.g., `pnpm test -- --reporters=default 2> $TMPDIR/test-stderr.log`-style patterns are fine, but multi-line markdown bodies or JSON payloads should live in files). Quoting reliability is real regardless of mode.
+
+The full surviving rules live in `~/.claude/references/shell-safety.md`.
 
 Follow these steps precisely. Do not ask the user for confirmation between iterations.
 
@@ -31,7 +24,7 @@ Follow these steps precisely. Do not ask the user for confirmation between itera
    - If `ls $ARGUMENTS` succeeds (i.e., the string resolves to an existing file), treat it as a **spec path** and record `INPUT_KIND=path`, `SPEC_PATH=$ARGUMENTS`.
    - Otherwise, treat it as a **free-text bug description** and record `INPUT_KIND=text`, `BUG_DESC=$ARGUMENTS`.
 3. Run `git rev-parse HEAD` — record as `BASELINE_SHA`.
-4. Run `git status --porcelain` and use `wc -l` to count modified/untracked lines. Save the count to `$TMPDIR/dirty-count.txt` via the Bash tool output (do not use `>`).
+4. Run `git status --porcelain | wc -l > $TMPDIR/dirty-count.txt` to save the count of modified/untracked lines.
 5. If the dirty count is non-zero, run `git stash push -u -m tdf-baseline` and then `git stash list` and Read the output to capture the resulting stash ref (first line, format `stash@{0}`). Record as `BASELINE_STASH`. If the dirty count is zero, set `BASELINE_STASH=none` and skip stash management at the end.
 6. **Detect commands** by reading repo metadata (use the Read tool, not bash):
    - If `package.json` exists, Read it and inspect `scripts`. Prefer `test`, `lint`, `typecheck` (or `tsc`) keys. Record the package manager by checking for `pnpm-lock.yaml`, `yarn.lock`, or `package-lock.json` (Read each; whichever exists wins; default to `npm`). Build `TEST_CMD`, `LINT_CMD`, `TYPECHECK_CMD` as `<pm> run <script>`. If `typecheck` is missing, fall back to `<pm> exec tsc --noEmit` when `tsconfig.json` exists.
@@ -63,7 +56,7 @@ Follow these steps precisely. Do not ask the user for confirmation between itera
 
 ## Step 1: Baseline run and failure parsing
 
-1. Run `TEST_CMD` via the Bash tool. The tool captures stdout/stderr — do not redirect. Write the captured output to `$TMPDIR/test.log` using the Write tool.
+1. Run `TEST_CMD` via the Bash tool. The tool captures stdout/stderr; write the captured output to `$TMPDIR/test.log` using the Write tool (or redirect with `>` if you prefer — both work under auto mode).
 2. Run `LINT_CMD`; Write output to `$TMPDIR/lint.log`.
 3. Run `TYPECHECK_CMD`; Write output to `$TMPDIR/typecheck.log`.
 4. Parse each log into failure objects using the Read + Grep tools. Do not use `grep`/`sed`/`awk` as bash commands.

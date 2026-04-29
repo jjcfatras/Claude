@@ -1,6 +1,7 @@
 ---
 allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(ls:*), Bash(sleep:*), Bash(rm:*), Bash(date:*), Read, Write, Grep, Glob, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage, mcp__*, Skill
 description: Code review a pull request via a multi-specialist agent team. Spawns one custom subagent per applicable category (security, types, react, infra, errors, perf, quality, claude-md), coordinates them via a shared task list and peer DMs for cross-domain verification, and posts inline review comments. Cleans up its temp workspace (under /tmp) after posting.
+argument-hint: [pr-number]
 disable-model-invocation: false
 model: opus
 effort: xhigh
@@ -26,7 +27,7 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 **Required reading for the lead (this session):**
 
 - `~/.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these. The lead also embeds the rubric verbatim into each specialist's spawn prompt (step 2d), so specialists do not need to Read it themselves.
-- `~/.claude/references/shell-safety.md` — every shell command must follow these rules. Specialists almost never invoke Bash beyond `date +%s`; they do not need to read this file.
+- `~/.claude/references/shell-safety.md` — seven rules covering real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops, the `for x in "a" "b"` classifier-crash pattern). Heuristic-only rules retired with auto mode. Specialists rarely invoke Bash beyond `date +%s` and don't need to read this file.
 
 **Execution model:** Step 1 still uses inline `Agent` calls (one-shot prep agents). Step 2 builds an actual team: each specialist becomes a persistent teammate (custom subagent under `.claude/agents/code-review-*.md`) that can DM peers for cross-domain verification while it works. The lead orchestrates step 2 via `TeamCreate`, a shared task list, polling on the `findings/` directory, and a broadcast `finalize_now` DM, then runs steps 3-5 itself. Step 6 cleans up.
 
@@ -36,15 +37,15 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 
 Follow these steps precisely:
 
-## 1. Prep agents (Haiku, inline) — unchanged
+## 1. Prep agents (Sonnet 4.6, inline)
 
-Launch all three prep agents in a single message (foreground):
+Launch all three prep agents in a single message (foreground). Spawn each `Agent` call with `model: "sonnet"` and `mode: "auto"` — the auto-mode classifier replaces heuristic prompts so each prep agent can use straightforward shell forms (redirection, single jq filters, etc.) without manual workarounds. Sonnet 4.6 is the minimum model the classifier supports.
 
 a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md files: the root CLAUDE.md (if any) and CLAUDE.md files in directories modified by the PR.
 
 b. **PR Summary Agent**: View the pull request and:
 
-- Run `gh pr diff NUMBER` to get the diff content, then save it to `$REVIEW_TMPDIR/pr-NUMBER.diff` using the Write tool.
+- Run `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` to save the diff in one step.
 - Extract a **valid-line map** from the diff by parsing `diff --git` lines (for file paths) and `@@ ... +newStart,newCount @@` hunk headers. The map is: `file path → list of [newStart, newStart+newCount-1]` ranges.
   - **Binary files**: Skip lines containing `Binary files ... differ`. Include the file in the changed-files list but omit it from the valid-line map.
   - **Renamed files**: Use the **new** path (the `b/` path) as the map key. Pure renames with no content changes get included in the changed-files list but omitted from the valid-line map.
@@ -53,7 +54,7 @@ b. **PR Summary Agent**: View the pull request and:
 c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
 
 - Fetch all reviews: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews`
-- Filter for the most recent review whose `body` contains `Generated with [Claude Code]`. Decompose into small single-purpose `jq` calls so each filter stays simple — the original `[.[] | select(.body | test("Generated with .Claude Code."))]` form trips the harness's expansion-obfuscation check (regex `test()` + nested quote/bracket/paren stack). The safe pattern: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq -c '.[]' | jq -c 'select((.body // "") | contains("Generated with [Claude Code]"))' | jq -s 'sort_by(.submitted_at) | last'`. Do not use `jq -f` or pass jq filters through temp files. If even that decomposition is denied in the current environment, fall back to fetching the raw paginated reviews with a minimal `--jq '.[]'` filter and inspect the bodies in-agent.
+- Filter for the most recent review whose `body` contains `Generated with [Claude Code]`: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // "") | contains("Generated with [Claude Code]"))] | sort_by(.submitted_at) | last'`.
 - If found, extract `id`, `submitted_at`, and `commit_id`.
 - Fetch its inline comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments`
 - Extract `path`, `line`, `start_line`, snippet (between first triple-backtick fences in body), and first-line description.
@@ -140,10 +141,13 @@ Agent({
   team_name: "code-review-<PR_NUMBER>",
   name: "<role>-reviewer",
   subagent_type: "code-review-<role>",
+  mode: "auto",
   description: "Code review specialist — <role>",
   prompt: <SPAWN_PROMPT>
 })
 ```
+
+`mode: "auto"` is required so each specialist runs under the auto-mode classifier. The classifier auto-approves safe-but-heuristically-flagged shell patterns (heredocs, `$()`, `>` redirection, `{}` in jq, etc.) without prompting, which is what makes long unattended specialist scans practical.
 
 The spawn prompt is the specialist's only model input besides its system prompt, so put everything they need to start scanning here. The diff is the one thing left as a file because it can be large; everything else (rubric, roster, prior issues, CLAUDE.md content, changed-file list) is small enough to inline and saves a `Read` round-trip per specialist:
 
@@ -194,7 +198,7 @@ The "scan done" signal is the existence of `$REVIEW_TMPDIR/findings/<role>.json`
 
 The lead's poll cadence intentionally trails the specialist self-budget by ~30 s on each end. The lead spawns specialists, then waits a long first window (90 s) so the specialists' initial Read of the diff plus an early scanning pass can finish before the first findings check; the trailing 30 s recheck windows after that catch slow scans without prematurely declaring a specialist stuck.
 
-Note: leading-sleep commands (`sleep N` with no preceding work in the same call) are rejected by the harness, so each sleep below uses `Bash` with `run_in_background: true` and waits via `TaskOutput` (`block: true`).
+Note: each sleep below uses `Bash` with `run_in_background: true` so the harness owns the timer and captures any output; wait via `TaskOutput` (`block: true`).
 
 1. Right after the parallel `Agent` calls, sleep 90 s. This gives every specialist time for context ingestion, an initial diff read, a first scanning pass, and a round of cross-verification DMs. Most specialists land within this window.
 2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 6.
@@ -310,14 +314,15 @@ Target structure:
 }
 ```
 
-Approach (avoid `jq -f`/`--rawfile`/`--slurpfile` — they trigger dangerous-flag prompts):
+Approach:
 
-1. Use the Write tool to save each inline-eligible issue's formatted body (per ISSUE_FORMAT below) to a unique temp file: `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`, etc.
-2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md`.
-3. **Construct `$REVIEW_TMPDIR/payload.json` directly using the Write tool.** Build a valid JSON object matching the structure above. Escape `"` as `\"`, `\` as `\\`, newlines as `\n`, tabs as `\t`. Backticks need no escaping.
-4. Validate: `jq . $REVIEW_TMPDIR/payload.json`.
+1. Use the Write tool to save each inline-eligible issue's formatted body (per ISSUE_FORMAT below) to a unique temp file: `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`, etc. (Raw markdown — kept as a debugging aid.)
+2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md` (raw markdown — no escaping needed; `--rawfile` reads it verbatim).
+3. Use the Write tool to save `$REVIEW_TMPDIR/comments-array.json`: a JSON array of objects matching the comment structure above (`path`, `line`, `side`, `body`, plus `start_line` / `start_side` for multi-line). Embed each `comment-N.md` content into its `body` field as a properly-escaped JSON string. If only summary-only issues exist, write `[]`.
+4. Assemble the final payload via jq: `jq -n --arg sha "$HEAD_SHA" --rawfile summary $REVIEW_TMPDIR/summary.md --slurpfile comments $REVIEW_TMPDIR/comments-array.json '{commit_id: $sha, event: "COMMENT", body: $summary, comments: $comments[0]}' > $REVIEW_TMPDIR/payload.json`.
+5. Validate: `jq . $REVIEW_TMPDIR/payload.json`.
 
-If only summary-only issues exist, set `comments` to `[]`.
+If only summary-only issues exist, the `$comments[0]` value is an empty array and the resulting `comments` field is `[]`.
 
 ### 5b. Post
 

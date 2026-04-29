@@ -30,7 +30,3 @@ Each skill in `.claude/commands/` is a markdown file with YAML frontmatter:
 - `effort` — set to `high` for thorough analysis
 - `argument-hint` — usage hint shown to the user (optional)
 - `disable-model-invocation` — if `true`, only the user can trigger it (optional)
-
-## Shell Command Safety
-
-Skills issue `gh`, `jq`, and other shell commands under a strict permission system. When writing or editing skills, follow the rules in @.claude/references/shell-safety.md — they explain why patterns like heredocs, `$()`, `>>`, and `jq -f` are rejected and how to rewrite them.

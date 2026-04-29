@@ -17,7 +17,7 @@ The lead's spawn prompt already contains the rubric (confidence/severity scales,
 
 Begin by Read'ing the diff at the path given in the spawn prompt's CONTEXT VALUES. Use `Read` and `Grep` on surrounding source as your scan demands.
 
-Shell-safety: you almost never need Bash beyond `date +%s` for self-budget timestamps. If you do invoke Bash for anything else, follow `~/.claude/references/shell-safety.md` (no heredocs, no `$()`, no `>` redirects).
+Shell-safety: you almost never need Bash beyond `date +%s` for self-budget timestamps. The auto-mode classifier handles common safe patterns; the surviving rules in `~/.claude/references/shell-safety.md` matter only when you'd run `rm -rf`, pipe to a shell interpreter, or hit an `allowed-tools` gap.
 
 ## Workflow
 
@@ -85,4 +85,4 @@ Empty findings array + `scan_status: "complete"` if you find nothing — that's 
 
 ## Do not post to GitHub
 
-The lead handles posting. Don't write to the PR or any GitHub endpoint — your output is the findings file and your DM replies. If a shell command hits a permission prompt, rewrite per `shell-safety.md` rather than retrying.
+The lead handles posting. Don't write to the PR or any GitHub endpoint — your output is the findings file and your DM replies. If you hit a permission prompt under auto mode, the classifier flagged the command as potentially unsafe — rewrite per `shell-safety.md` rather than retrying.
