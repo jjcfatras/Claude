@@ -198,6 +198,15 @@ Do not chain verifications. If a peer DMs you and you're unsure, give your best 
 - Functional changes that are clearly intentional or directly related to the broader change.
 - Issues identical to those already flagged in a prior Claude Code review on unchanged code (use the prior-issues file).
 
+## Specialist boundary rules
+
+These apply to every `code-review-*` specialist in addition to the workflow above.
+
+- **Don't post to GitHub.** The lead handles all posting. Your output is `$REVIEW_TMPDIR/findings/<role>.json` and your DM replies — nothing else.
+- **Bash usage is rare.** You almost never need Bash beyond `date +%s` for self-budget timestamps. When you do shell out, follow `~/.claude/references/shell-safety.md` — auto mode handles common patterns; the surviving rules cover real concerns (allowed-tools gaps, destructive ops, RCE).
+- **Build the findings JSON with the Write tool**, not `echo`/heredoc/redirection. Write is more reliable for embedding code snippets that contain quotes, backticks, and newlines (a quoting-fidelity concern, not a permission concern).
+- **Spawn-prompt context is authoritative.** The lead inlines the rubric, roster, prior-review issues, CLAUDE.md content, and changed-file list directly into your spawn prompt. Don't Read those files — they're already in your context.
+
 ## Verifying claims with Context7
 
 When a finding's validity hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before finalizing. Call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs`. If docs contradict or don't support the flagged behavior, drop the finding or score it low.
