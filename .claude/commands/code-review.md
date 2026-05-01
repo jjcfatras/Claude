@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(ls:*), Bash(sleep:*), Bash(rm:*), Bash(date:*), Read, Write, Grep, Glob, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage, mcp__*, Skill
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage, mcp__*, Skill
 description: Code review a pull request via a multi-specialist agent team. Spawns one custom subagent per applicable category (security, types, react, infra, errors, perf, quality, claude-md), coordinates them via a shared task list and peer DMs for cross-domain verification, and posts inline review comments. Cleans up its temp workspace (under /tmp) after posting.
 argument-hint: [pr-number]
 disable-model-invocation: false
@@ -192,15 +192,15 @@ When `Agent` is called with `team_name`, it returns immediately (the response in
 
 Specialists DM `team-lead` with `scan_complete: <role>` once they've written `findings/<role>.json` (rubric workflow step 8). The findings file is the source of truth; the DM is the wake signal. There is no polling cadence — the lead ends its turn after spawning and each DM resumes it for one short turn.
 
-In **the same message** as the parallel `Agent` calls in 2d, also issue **one** safety timer:
-`Bash({command: "sleep 300", run_in_background: true, description: "scan-complete safety timer"})`. This is the single backstop in the rare case where a specialist crashes before sending any DM (its 180 s self-budget should preclude this, but the timer keeps the skill from hanging if a specialist is structurally broken). On the happy path, every roster role DMs well before the timer fires and you broadcast finalize without ever consulting it.
+In **the same message** as the parallel `Agent` calls in 2d, also arm **one** safety wake via `Monitor`:
+`Monitor({command: "sleep 300; echo scan_complete_timer_fired", timeout_ms: 305000, persistent: false, description: "code-review scan-complete safety timer"})`. This is the single backstop in the rare case where a specialist crashes before sending any DM (its 180 s self-budget should preclude this, but the monitor keeps the skill from hanging if a specialist is structurally broken). On the happy path, every roster role DMs well before the monitor emits and you broadcast finalize without ever consulting it. (Per `~/.claude/references/shell-safety.md` rule #8, `Monitor` is the wake-on-event primitive — never `Bash sleep N` to pace the lead's turn.)
 
-After the spawn-and-timer message, **end your turn**. The next time the harness invokes you, it will be because either (a) a teammate sent a DM or (b) the safety timer fired. On every such wakeup turn:
+After the spawn-and-timer message, **end your turn**. The next time the harness invokes you, it will be because either (a) a teammate sent a DM or (b) the safety monitor emitted its `scan_complete_timer_fired` line. On every such wakeup turn:
 
-1. List `$REVIEW_TMPDIR/findings/`.
+1. Use the Glob tool (`pattern: "findings/*.json", path: "$REVIEW_TMPDIR"`) to enumerate which `<role>.json` files have landed. (Per shell-safety rule #9, do not use `Bash ls` to poll a peer-shared directory; the Glob tool is the one-shot directory-listing primitive when you need it. The wake itself is the DM, not the listing.)
 2. If every roster role has a corresponding `<role>.json`, send `finalize_now` to every roster member in one SendMessage block (`SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`) and proceed to 2f.
-3. Otherwise, look at what woke you. If it was a teammate DM (or any wake before the safety timer fired), end the turn — another DM (or the timer) will wake you again.
-4. **Once the safety timer has fired and any role is still missing**, send one wake-up DM to each missing role in a single message: `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`. Issue one more `Bash({command: "sleep 60", run_in_background: true, description: "scan-complete grace window"})` as a grace window and end the turn. Single shot — don't keep issuing wake-ups.
+3. Otherwise, look at what woke you. If it was a teammate DM (or any wake before the safety monitor emitted), end the turn — another DM (or the monitor) will wake you again.
+4. **Once the safety monitor has fired and any role is still missing**, send one wake-up DM to each missing role in a single message: `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`. Arm one more `Monitor({command: "sleep 60; echo scan_complete_grace_fired", timeout_ms: 65000, persistent: false, description: "code-review scan-complete grace window"})` as a grace window and end the turn. Single shot — don't keep issuing wake-ups.
 5. **On the grace-window wake**, if a role is still missing, treat it as unreachable: track the role name in an `unreachable_roles` list (in your turn text), broadcast `finalize_now` to every roster member, and proceed to 2f. Do **not** write a stub findings file — step 2f's missing-file branch handles consolidation correctly, and a stub races with a slow-but-live agent that may still write its real findings during teardown.
 
 Notification-flow + safety-timer rationale: see `~/.claude/references/code-review-design-notes.md`.
@@ -214,15 +214,17 @@ Read every `$REVIEW_TMPDIR/findings/<role>.json` that exists. For each role in t
 
 ### 2g. Tear down the team
 
-`TeamDelete` refuses while teammates are alive, so shut them down first. Best-effort with a hard wall-clock cap — findings are already on disk; one uncooperative specialist must not block step 3. Three attempts with widening sleep windows (15 s → 30 s → 30 s, ~75 s worst case). Happy-path latency is unchanged: `TeamDelete` succeeds on attempt 1.
+`TeamDelete` refuses while teammates are alive, so shut them down first. Best-effort with a hard wall-clock cap — findings are already on disk; one uncooperative specialist must not block step 3. Three attempts with widening Monitor windows (15 s → 30 s → 30 s, ~75 s worst case). Happy-path latency is unchanged: `TeamDelete` succeeds on attempt 1.
+
+Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash sleep N` — so the harness owns the wake and the user isn't prompted on each iteration.
 
 1. Send a shutdown request to every teammate in a single message: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`.
-2. `Bash sleep 15` with `run_in_background: true`, wait via `TaskOutput` (`block: true`).
+2. Arm `Monitor({command: "sleep 15; echo teardown_wait_done", timeout_ms: 20000, persistent: false, description: "code-review teardown wait 1"})` and end the turn; the emit-line wakes you.
 3. Call `TeamDelete()`. On success, proceed to step 3 of the skill.
 4. **On "still active member(s)" error (attempt 1 failed)**:
-   a. **Re-list `$REVIEW_TMPDIR/findings/`.** If any role previously in `unreachable_roles` (or any `scan_status: "timed_out"` role) now has a real findings file (not the missing/timed-out state you saw at 2f), Read it and merge into the consolidated list. A slow-but-live agent often writes its real findings during teardown — this is the deterministic recovery path that replaces the previous lucky re-Read.
-   b. Send one more `shutdown_request` to each named holdout, `sleep 30 s`, retry `TeamDelete()`.
-5. **On second failure (attempt 2 failed)**: call `TaskList` to inspect holdout state. If the holdout's assignment task is already `completed`, the runtime is just slow to GC the agent slot — `sleep 30 s` and retry `TeamDelete()` once more (attempt 3). If the holdout's task is still `in_progress`, the agent is genuinely deadlocked — same `sleep 30 s` + retry, but expect the retry to fail.
+   a. **Re-enumerate `$REVIEW_TMPDIR/findings/` via the Glob tool** (`pattern: "findings/*.json", path: "$REVIEW_TMPDIR"`). If any role previously in `unreachable_roles` (or any `scan_status: "timed_out"` role) now has a real findings file (not the missing/timed-out state you saw at 2f), Read it and merge into the consolidated list. A slow-but-live agent often writes its real findings during teardown — this is the deterministic recovery path that replaces the previous lucky re-Read.
+   b. Send one more `shutdown_request` to each named holdout, arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 2"})`, end the turn, then retry `TeamDelete()` on the wake.
+5. **On second failure (attempt 2 failed)**: call `TaskList` to inspect holdout state. If the holdout's assignment task is already `completed`, the runtime is just slow to GC the agent slot — arm a 30 s `Monitor` wait as in 4b and retry `TeamDelete()` once more (attempt 3). If the holdout's task is still `in_progress`, the agent is genuinely deadlocked — same 30 s Monitor + retry, but expect the retry to fail.
 6. **On third failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
 
 Degraded-state explanation: see `~/.claude/references/code-review-design-notes.md`.
