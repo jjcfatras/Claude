@@ -29,9 +29,9 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 - `~/.claude/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these. The lead also embeds the rubric verbatim into each specialist's spawn prompt (step 2d), so specialists do not need to Read it themselves.
 - `~/.claude/references/shell-safety.md` — seven rules covering real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops, the `for x in "a" "b"` classifier-crash pattern). Heuristic-only rules retired with auto mode. Specialists rarely invoke Bash beyond `date +%s` and don't need to read this file.
 
-**Execution model:** Step 1 uses inline `Agent` prep agents. Step 2 builds a team: each specialist is a persistent teammate (under `.claude/agents/code-review-*.md`) that DMs peers for cross-domain verification while scanning. Specialists write `findings/<role>.json` then stay idle for incoming peer DMs; the lead broadcasts `finalize_now` once every findings file has landed, which is the cue for specialists to mark their assignment task `completed`. Steps 3-5 run on the lead. Step 6 cleans up.
+**Execution model:** Step 1 uses inline `Agent` prep agents. Step 2 builds a team: each specialist is a persistent teammate (under `.claude/agents/code-review-*.md`) that DMs peers for cross-domain verification while scanning. Specialists write `findings/<role>.json`, DM `team-lead` with `scan_complete: <role>` to wake the lead, then stay idle for incoming peer DMs. The lead's turn ends after spawning; each `scan_complete` DM resumes it for one short turn to check whether all findings have landed. Once they have, the lead broadcasts `finalize_now`, which is the cue for specialists to mark their assignment task `completed`. Steps 3-5 run on the lead. Step 6 cleans up.
 
-Design rationale (cost shape, finalization protocol, polling cadence, teardown degraded state, etc.) lives in `~/.claude/references/code-review-design-notes.md`. Not read at runtime.
+Design rationale (cost shape, finalization protocol, notification flow, teardown degraded state, etc.) lives in `~/.claude/references/code-review-design-notes.md`. Not read at runtime.
 
 Follow these steps precisely:
 
@@ -186,26 +186,24 @@ GETTING STARTED
 Begin by Read'ing $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff, then follow your agent system prompt's workflow and the rubric's "Specialist workflow" section. The rubric, roster, prior-issues, and CLAUDE.md content above are inline — do not Read those files.
 ```
 
-When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; the polling logic in 2e is what tells you when they're actually done.
+When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; you'll be woken via a `scan_complete` DM as each one's findings file lands (see 2e).
 
-### 2e. Wait for scans to land, then broadcast finalize
+### 2e. Wait for scan_complete DMs, then broadcast finalize
 
-Specialists self-bound their scan phase to ~180 s. The "scan done" signal is the presence of `$REVIEW_TMPDIR/findings/<role>.json` for every roster role — _not_ task status. Specialists keep their task `in_progress` until `finalize_now` arrives.
+Specialists DM `team-lead` with `scan_complete: <role>` once they've written `findings/<role>.json` (rubric workflow step 8). The findings file is the source of truth; the DM is the wake signal. There is no polling cadence — the lead ends its turn after spawning and each DM resumes it for one short turn.
 
-Each sleep uses `Bash` with `run_in_background: true` so the harness owns the timer; wait via `TaskOutput` (`block: true`).
+In **the same message** as the parallel `Agent` calls in 2d, also issue **one** safety timer:
+`Bash({command: "sleep 300", run_in_background: true, description: "scan-complete safety timer"})`. This is the single backstop in the rare case where a specialist crashes before sending any DM (its 180 s self-budget should preclude this, but the timer keeps the skill from hanging if a specialist is structurally broken). On the happy path, every roster role DMs well before the timer fires and you broadcast finalize without ever consulting it.
 
-1. Right after the parallel `Agent` calls, sleep 90 s.
-2. List `$REVIEW_TMPDIR/findings/`. If every roster role has a corresponding `<role>.json`, skip to step 6.
-3. Sleep another 30 s and recheck. If complete, skip to step 6.
-4. Sleep another 30 s and recheck (total ~150 s). If complete, skip to step 6.
-5. Sleep one final 30 s window (total ~180 s) and recheck. **Exception path:** for each missing role, send a single wake-up DM:
-   `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`.
-   Send all such DMs in one message, sleep 15 s, then list `findings/` again. Single shot — don't loop.
-6. **Broadcast finalize to everyone.** In a single message, send `finalize_now` to every roster member:
-   `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`.
-7. Sleep 15 s, then call `TaskList`. Expect every assignment task at `status == "completed"`. Log a warning for any still `in_progress` and proceed — findings files are what matter for 2f.
+After the spawn-and-timer message, **end your turn**. The next time the harness invokes you, it will be because either (a) a teammate sent a DM or (b) the safety timer fired. On every such wakeup turn:
 
-Polling cadence + budget rationale: see `~/.claude/references/code-review-design-notes.md`.
+1. List `$REVIEW_TMPDIR/findings/`.
+2. If every roster role has a corresponding `<role>.json`, send `finalize_now` to every roster member in one SendMessage block (`SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`) and proceed to 2f.
+3. Otherwise, look at what woke you. If it was a teammate DM (or any wake before the safety timer fired), end the turn — another DM (or the timer) will wake you again.
+4. **Once the safety timer has fired and any role is still missing**, send one wake-up DM to each missing role in a single message: `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`. Issue one more `Bash({command: "sleep 60", run_in_background: true, description: "scan-complete grace window"})` as a grace window and end the turn. Single shot — don't keep issuing wake-ups.
+5. **On the grace-window wake**, if a role is still missing, treat it as unreachable: track the role name in an `unreachable_roles` list (in your turn text), broadcast `finalize_now` to every roster member, and proceed to 2f. Do **not** write a stub findings file — step 2f's missing-file branch handles consolidation correctly, and a stub races with a slow-but-live agent that may still write its real findings during teardown.
+
+Notification-flow + safety-timer rationale: see `~/.claude/references/code-review-design-notes.md`.
 
 ### 2f. Collect findings
 
@@ -216,13 +214,16 @@ Read every `$REVIEW_TMPDIR/findings/<role>.json` that exists. For each role in t
 
 ### 2g. Tear down the team
 
-`TeamDelete` refuses while teammates are alive, so shut them down first. Best-effort with a hard wall-clock cap — findings are already on disk; one uncooperative specialist must not block step 3.
+`TeamDelete` refuses while teammates are alive, so shut them down first. Best-effort with a hard wall-clock cap — findings are already on disk; one uncooperative specialist must not block step 3. Three attempts with widening sleep windows (15 s → 30 s → 30 s, ~75 s worst case). Happy-path latency is unchanged: `TeamDelete` succeeds on attempt 1.
 
 1. Send a shutdown request to every teammate in a single message: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`.
 2. `Bash sleep 15` with `run_in_background: true`, wait via `TaskOutput` (`block: true`).
-3. Call `TeamDelete()`.
-4. **On "still active member(s)" error**, send one more `shutdown_request` to each named holdout, sleep 15 s, retry `TeamDelete()`.
-5. **On second failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
+3. Call `TeamDelete()`. On success, proceed to step 3 of the skill.
+4. **On "still active member(s)" error (attempt 1 failed)**:
+   a. **Re-list `$REVIEW_TMPDIR/findings/`.** If any role previously in `unreachable_roles` (or any `scan_status: "timed_out"` role) now has a real findings file (not the missing/timed-out state you saw at 2f), Read it and merge into the consolidated list. A slow-but-live agent often writes its real findings during teardown — this is the deterministic recovery path that replaces the previous lucky re-Read.
+   b. Send one more `shutdown_request` to each named holdout, `sleep 30 s`, retry `TeamDelete()`.
+5. **On second failure (attempt 2 failed)**: call `TaskList` to inspect holdout state. If the holdout's assignment task is already `completed`, the runtime is just slow to GC the agent slot — `sleep 30 s` and retry `TeamDelete()` once more (attempt 3). If the holdout's task is still `in_progress`, the agent is genuinely deadlocked — same `sleep 30 s` + retry, but expect the retry to fail.
+6. **On third failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
 
 Degraded-state explanation: see `~/.claude/references/code-review-design-notes.md`.
 
