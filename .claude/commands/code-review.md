@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, SendMessage, mcp__*, Skill
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, TaskStop, SendMessage, mcp__*, Skill
 description: Code review a pull request via a multi-specialist agent team. Spawns one custom subagent per applicable category (security, types, react, infra, errors, perf, quality, claude-md), coordinates them via a shared task list and peer DMs for cross-domain verification, and posts inline review comments. Cleans up its temp workspace (under /tmp) after posting.
 argument-hint: [pr-number]
 disable-model-invocation: false
@@ -224,7 +224,7 @@ Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash
 4. **On "still active member(s)" error (attempt 1 failed)**:
    a. **Re-enumerate `$REVIEW_TMPDIR/findings/` via the Glob tool** (`pattern: "findings/*.json", path: "$REVIEW_TMPDIR"`). If any role previously in `unreachable_roles` (or any `scan_status: "timed_out"` role) now has a real findings file (not the missing/timed-out state you saw at 2f), Read it and merge into the consolidated list. A slow-but-live agent often writes its real findings during teardown — this is the deterministic recovery path that replaces the previous lucky re-Read.
    b. Send one more `shutdown_request` to each named holdout, arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 2"})`, end the turn, then retry `TeamDelete()` on the wake.
-5. **On second failure (attempt 2 failed)**: call `TaskList` to inspect holdout state. If the holdout's assignment task is already `completed`, the runtime is just slow to GC the agent slot — arm a 30 s `Monitor` wait as in 4b and retry `TeamDelete()` once more (attempt 3). If the holdout's task is still `in_progress`, the agent is genuinely deadlocked — same 30 s Monitor + retry, but expect the retry to fail.
+5. **On second failure (attempt 2 failed) — escalate via `TaskStop`.** Cooperative shutdown has demonstrably failed; the holdout is producing output on each `shutdown_request` wake (a real failure mode observed in transcript `b466fe08` where `quality-reviewer` violated rubric step 10 and kept the slot active across three `TeamDelete` calls). For each holdout: call `TaskList` to look up its assignment task ID, then `TaskStop({task_id: <holdout's ASSIGNMENT_TASK_ID>})` to forcibly terminate the slot. Arm a `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 3"})`, end the turn, then retry `TeamDelete()` on the wake (attempt 3). `TaskStop` is the deterministic recovery primitive — no further DM round-trip is required.
 6. **On third failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
 
 Degraded-state explanation: see `~/.claude/references/code-review-design-notes.md`.
@@ -358,7 +358,7 @@ All variants start with `### Code review` and end with:
 <sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
 ```
 
-- **Has inline issues**: Summary table (columns: #, Severity, Confidence, File, Description) + "See inline comments for full details, code examples, and suggested fixes." If summary-only issues also exist, append `#### Additional issues (could not attach inline)` with each in ISSUE_FORMAT including `path:line`.
+- **Has inline issues**: Summary table with columns `#`, `Severity`, `Confidence`, `File`, `Description`. The `File` cell must be a markdown link of the form `[<basename>:<line>](https://github.com/OWNER/REPO/blob/<full HEAD SHA>/<path>#L<line>)` — display text is the file basename and line number only, never the full repo path (full paths force GitHub to wrap the Description column across many lines). After the table, append "See inline comments for full details, code examples, and suggested fixes." If summary-only issues also exist, append `#### Additional issues (could not attach inline)` with each in ISSUE_FORMAT including the full `path:line`.
 - **Only summary-only issues**: Empty `comments` array. Header: "Found N issue(s). These could not be placed as inline comments because their line numbers fall outside the diff's visible range." List each in ISSUE_FORMAT.
 - **No issues**: Empty `comments` array. Body: "No issues found. Reviewed by: <comma-separated roster roles>."
 
