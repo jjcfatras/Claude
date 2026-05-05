@@ -14,19 +14,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pnpm prettier --write .` — format all files
 - `pnpm prettier --check .` — check formatting without writing
 
-Note: `.claude/settings.json` registers a `PostToolUse` hook that runs `prettier --write` on every file touched by Edit/Write. Don't run the formatter manually after editing — it's already done.
+Go helper (only needed when releasing the `code-review` plugin):
+
+- `cd plugins/code-review/tools/code-review-helper && make release` — cross-compile prebuilts for darwin/linux × amd64/arm64 into `plugins/code-review/bin/`
+- `make test` — run Go tests for the helper
+
+Note: `.claude/settings.json` registers a `PostToolUse` hook that auto-formats every file touched by Edit/Write — `gofmt -w` for `.go`, `prettier --write` for everything else. Don't run formatters manually.
 
 ## Project Structure
 
-This is a Claude Code skills/customization project. The `.claude/commands/` directory contains custom skill definitions (markdown files with frontmatter) that extend Claude Code's capabilities — e.g., `code-review.md` defines a structured PR review workflow. Shared reference docs live under `.claude/references/`.
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping four plugins under `plugins/`:
 
-## Skill File Structure
+- `cherry-pick`, `test-driven-fix`, `respond-to-review` — single slash command each
+- `code-review` — multi-agent review; ships agents, references, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`)
 
-Each skill in `.claude/commands/` is a markdown file with YAML frontmatter:
+Per-plugin layout:
 
-- `description` — what the skill does (shown in `/` menu)
-- `allowed-tools` — restricts which tools the skill can invoke
-- `model` — which Claude model to use: `haiku` for simple tasks, `sonnet` for moderate complexity, `opus` for complex multi-agent orchestration
-- `effort` — set to `high` for thorough analysis
-- `argument-hint` — usage hint shown to the user (optional)
-- `disable-model-invocation` — if `true`, only the user can trigger it (optional)
+```
+plugins/<name>/
+  .claude-plugin/plugin.json   # plugin manifest
+  commands/<name>.md           # slash command(s)
+  agents/, references/, bin/, tools/   # only where needed
+```
+
+`code-review-workspace/` at the repo root is a gitignored scratch dir for the skill-creator workflow — safe to ignore.
+
+## Plugin & Command File Structure
+
+Each plugin has a manifest at `plugins/<name>/.claude-plugin/plugin.json` (name, version, description, repository, license, keywords).
+
+Each slash command is a markdown file in `plugins/<name>/commands/` with YAML frontmatter:
+
+- `description` — what the command does (shown in `/` menu)
+- `allowed-tools` — restricts which tools the command can invoke
+- `model` — `haiku` / `sonnet` / `opus` (simple → moderate → multi-agent orchestration)
+- `effort` — `high` for thorough analysis
+- `argument-hint` — usage hint (optional)
+- `disable-model-invocation` — `true` = user-only trigger (optional)
+
+Reference docs and shared rubrics live under `plugins/<name>/references/`. Use `${CLAUDE_PLUGIN_ROOT}` inside command files to resolve plugin-relative paths at runtime.

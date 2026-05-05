@@ -1,0 +1,15 @@
+{
+  "name": "code-review",
+  "version": "1.0.0",
+  "description": "Multi-specialist code review of a PR via a sub-agent team (security, types, react, infra, errors, perf, quality, claude-md)",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "pull-request",
+    "code-review",
+    "static-analysis",
+    "multi-agent"
+  ]
+}

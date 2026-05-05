@@ -1,0 +1,34 @@
+{
+  "name": "jjcfatras-tools",
+  "owner": { "name": "jjcfatras" },
+  "plugins": [
+    {
+      "name": "cherry-pick",
+      "source": "./plugins/cherry-pick",
+      "description": "Cherry-pick commits from another branch with conflict resolution",
+      "version": "1.0.0",
+      "category": "git"
+    },
+    {
+      "name": "test-driven-fix",
+      "source": "./plugins/test-driven-fix",
+      "description": "Autonomously fix failing tests by iterating patch → test → revert-on-regression, with a 10-iteration cap",
+      "version": "1.0.0",
+      "category": "testing"
+    },
+    {
+      "name": "respond-to-review",
+      "source": "./plugins/respond-to-review",
+      "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones",
+      "version": "1.0.0",
+      "category": "code-review"
+    },
+    {
+      "name": "code-review",
+      "source": "./plugins/code-review",
+      "description": "Multi-specialist code review of a PR via a sub-agent team",
+      "version": "1.0.0",
+      "category": "code-review"
+    }
+  ]
+}

@@ -2,7 +2,8 @@ node_modules
 
 # Build artifacts
 **/.DS_Store
-tools/code-review-helper/bin/
+# Local Go build output (not the plugin's bin/ — those prebuilts are tracked).
+plugins/code-review/tools/code-review-helper/bin/
 
 # Claude
 CLAUDE.local.md

@@ -30,13 +30,36 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in */plugins/code-review/bin/*) echo \"prebuilt binary: regenerate via (cd plugins/code-review/tools/code-review-helper && make release)\" >&2; exit 2 ;; esac"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "file=$(jq -r '.tool_input.file_path'); [ -z \"$file\" ] || [ \"$file\" = \"null\" ] || case \"$file\" in *.go) gofmt -w \"$file\" ;; *) pnpm exec prettier --write \"$file\" ;; esac"
+            "command": "f=$(jq -r '.tool_input.file_path'); [ -z \"$f\" ] || [ \"$f\" = \"null\" ] || case \"$f\" in *.go) gofmt -w \"$f\" ;; *) pnpm exec prettier --write \"$f\" ;; esac"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in */.claude-plugin/plugin.json) jq -e . \"$f\" >/dev/null && jq -e '.name and .version' \"$f\" >/dev/null || { echo \"invalid plugin.json: missing parse, .name, or .version: $f\" >&2; exit 1; } ;; */.claude-plugin/marketplace.json) jq -e . \"$f\" >/dev/null && jq -e '.name and .plugins' \"$f\" >/dev/null || { echo \"invalid marketplace.json: missing parse, .name, or .plugins: $f\" >&2; exit 1; } ;; esac"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in */plugins/*/commands/*.md) head -1 \"$f\" | grep -q '^---$' || { echo \"$f: command frontmatter must start with ---\" >&2; exit 1; }; awk 'NR==1{next} /^---[[:space:]]*$/{exit} 1' \"$f\" | grep -q '^description:' || { echo \"$f: command frontmatter missing description field\" >&2; exit 1; } ;; esac"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in */plugins/code-review/tools/code-review-helper/*.go) (cd \"$CLAUDE_PROJECT_DIR/plugins/code-review/tools/code-review-helper\" && go vet ./...) >&2 || exit 1 ;; esac"
           }
         ]
       }
