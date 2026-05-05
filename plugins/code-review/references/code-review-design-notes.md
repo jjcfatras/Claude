@@ -4,7 +4,14 @@ Maintainer-only context for `${CLAUDE_PLUGIN_ROOT}/commands/code-review.md` and 
 
 ## Cost shape
 
-Specialists are the dominant token sink — 4 always-on plus up to 4 conditional, each paid the same shared context. Anything you can hand the specialist via the spawn prompt (which is one model input) avoids a tool-call round-trip and keeps the specialist scanning instead of reading. Step 2d inlines the rubric, roster, prior-issues, and CLAUDE.md content for exactly this reason; only the diff (which can be large) is left as a file.
+Two cost surfaces matter, and they do not point the same way:
+
+1. **Per-specialist input tokens.** 4 always-on specialists plus up to 4 conditional, each paid the same shared context (rubric + roster + prior-issues + claude-md-files + changed-files). On its own, this argues for handing the specialist everything in the spawn prompt so it skips a Read round-trip and starts scanning sooner.
+2. **Lead serial output streaming.** Whatever the lead inlines into the specialist spawn prompt gets _generated_ by the lead `roster_size ×` (once per specialist) on a single serial output stream. With 6 specialists × a ~5K-token rubric, that is ~30K extra output tokens, which at ~80–100 tok/s adds ~150 s of wall-clock streaming on the lead before any specialist can start. The lead is the bottleneck because no specialist runs until the lead's spawn message finishes streaming.
+
+Surface (2) dominates above ~3 specialists and grows linearly with roster size. The current design (step 2b writes a single `$REVIEW_TMPDIR/spawn-context.md` bundle that every specialist Reads once at startup) trades a per-specialist Read (~1–2 s, in parallel) for the avoided lead-side serial streaming. Concretely: a real run on 6 specialists hit 18,353 output tokens in the spawn message (`610967f5-…` transcript, May 2026) which is what motivated the disk-bundle move; reverting to inline would put that ~150 s back on the critical path.
+
+Specialists remain the dominant _input_ token sink, but lead output is the dominant _latency_ sink.
 
 ## Lead-driven finalization
 
@@ -24,9 +31,13 @@ The 90 s first sleep gives every specialist time for context ingestion, an initi
 
 The 180 s scan-phase self-budget in the specialist workflow is a ceiling, not a target — most specialists finish well inside it. The point is to bound legitimately slow scans (large PRs, many cross-package reads) and to bound stuck specialists (a `Read` on a generated bundle, a peer DM that's never coming) without a lead-side wall-clock backstop. Why 180 s: still below the prompt-cache TTL (300 s), comfortably above realistic scan times even on large PRs (initial diff Read + several cross-file Reads + a peer DM round-trip), and twice the lead's first poll cycle (90 s) so most specialists land naturally in the lead's first check.
 
-## Spawn-prompt inlining
+## Spawn-prompt inlining (and why the bundle is on disk)
 
-The spawn prompt is the specialist's only model input besides its system prompt, so put everything they need to start scanning there. The diff is the one thing left as a file because it can be large; everything else (rubric, roster, prior issues, CLAUDE.md content, changed-file list) is small enough to inline and saves a `Read` round-trip per specialist.
+Earlier revisions inlined everything (rubric + roster + prior-issues + CLAUDE.md content + changed-file list) into each specialist spawn prompt to save a `Read` round-trip per specialist. That accounting was incomplete — see "Cost shape" above. The full math: inlining costs `roster_size ×` lead output tokens of duplicated content on a single serial stream; one shared on-disk bundle costs each specialist a single Read in parallel. For roster ≥4, the bundle wins by tens of seconds and grows linearly worse for inline as roster size goes up.
+
+Current shape: step 2b builds `$REVIEW_TMPDIR/spawn-context.md` once (rubric verbatim + per-PR sections + verbatim JSON artifacts) and the spawn prompt in 2d points at it. The diff stays as a separate on-disk file because it can be large and is consumed per-specialist anyway.
+
+If the rubric/roster/etc. ever shrinks dramatically (say, < ~500 tokens combined) the math flips back. Until then, keep the bundle on disk and keep the spawn prompt small.
 
 ## Teardown degraded state
 

@@ -29,53 +29,75 @@ This pre-flight runs **before** step 1 deliberately — step 1 spends several mi
 - `${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md` — confidence/severity rubric, findings file schema, cross-verification protocol, false-positive list. The dedup, gating, and posting steps below all reference these. The lead also embeds the rubric verbatim into each specialist's spawn prompt (step 2d), so specialists do not need to Read it themselves.
 - `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` — seven rules covering real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops, the `for x in "a" "b"` classifier-crash pattern). Heuristic-only rules retired with auto mode. Specialists rarely invoke Bash beyond `date +%s` and don't need to read this file.
 
-**Execution model:** Step 1 uses inline `Agent` prep agents. Step 2 builds a team: each specialist is a persistent teammate (under `.claude/agents/code-review-*.md`) that DMs peers for cross-domain verification while scanning. Specialists write `findings/<role>.json`, DM `team-lead` with `scan_complete: <role>` to wake the lead, then stay idle for incoming peer DMs. The lead's turn ends after spawning; each `scan_complete` DM resumes it for one short turn to check whether all findings have landed. Once they have, the lead broadcasts `finalize_now`, which is the cue for specialists to mark their assignment task `completed`. Steps 3-5 run on the lead. Step 6 cleans up.
+**Execution model:** Step 1 does the deterministic shell + Read work inline on the lead and dispatches a single Sonnet 4.6 prep agent for the LLM-needing summary paragraph. Step 2 builds a team: each specialist is a persistent teammate (under `.claude/agents/code-review-*.md`) that DMs peers for cross-domain verification while scanning. Specialists write `findings/<role>.json`, DM `team-lead` with `scan_complete: <role>` to wake the lead, then stay idle for incoming peer DMs. The lead's turn ends after spawning; each `scan_complete` DM resumes it for one short turn to check whether all findings have landed. Once they have, the lead broadcasts `finalize_now`, which is the cue for specialists to mark their assignment task `completed`. Steps 3-5 run on the lead. Step 6 cleans up.
 
 Design rationale (cost shape, finalization protocol, notification flow, teardown degraded state, etc.) lives in `${CLAUDE_PLUGIN_ROOT}/references/code-review-design-notes.md`. Not read at runtime.
 
 Follow these steps precisely:
 
-## 1. Prep agents (Sonnet 4.6, inline)
+## 1. Prep (lead-inline + one Sonnet 4.6 prep agent)
 
-Launch all three prep agents in a single message (foreground). Spawn each `Agent` call with `model: "sonnet"` and `mode: "auto"` — the auto-mode classifier replaces heuristic prompts so each prep agent can use straightforward shell forms (redirection, single jq filters, etc.) without manual workarounds. Sonnet 4.6 is the minimum model the classifier supports.
+Earlier revisions of this skill ran three prep agents in parallel. In practice the model often emitted only one `Agent` tool_use in the first turn and waited for it to return before launching the others (~75 s of wasted serial time). The current shape avoids that: the lead does the deterministic shell + Read work itself, and only the LLM-needing summary paragraph is dispatched as a single Sonnet 4.6 agent. One `Agent` call → no parallel-emission concern.
 
-a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md files: the root CLAUDE.md (if any) and CLAUDE.md files in directories modified by the PR.
+### 1a. Lead-inline gh + helper (parallel Bash + Write)
 
-b. **PR Summary Agent**: View the pull request and:
+Capture identifiers and prep the diff. In a single message, run in parallel:
 
-- Run `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` to save the diff in one step.
-- Run the helper to extract the changed-files list and valid-line map: `code-review-helper diff --in $REVIEW_TMPDIR/pr-NUMBER.diff --out-changed-files $REVIEW_TMPDIR/changed-files.json --out-valid-lines $REVIEW_TMPDIR/valid-lines.json`. The helper handles binary files, renames, deletions, and `+0,0` deletion-only hunks deterministically — do not parse the diff yourself.
-- Return: (1) summary, (2) `$DIFF_FILE` path, (3) `$REVIEW_TMPDIR/changed-files.json` path + parsed contents, (4) `OWNER` and `REPO`, (5) PR `NUMBER`, (6) full HEAD SHA (`gh pr view NUMBER --json headRefOid -q .headRefOid`), (7) `$REVIEW_TMPDIR/valid-lines.json` path + parsed contents.
+- `gh pr view NUMBER --json headRefOid,headRepository -q '{sha: .headRefOid, owner: .headRepository.owner.login, repo: .headRepository.name}'` — capture the full HEAD SHA, OWNER, REPO. (Resolve the OWNER/REPO of the **head** repo because forks differ; you'll still post against the base via the PR's `OWNER/REPO/pulls/NUMBER` route below.)
+- `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` — save the diff once. Specialists Read this from disk; don't refetch.
+- Fetch and filter prior Claude Code reviews:
+  - `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // "") | contains("Generated with [Claude Code]"))] | sort_by(.submitted_at) | last'` — pick the most recent matching review (if any). Capture its `id`, `submitted_at`, `commit_id`.
+  - If found: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments` and extract `path`, `line`, `start_line`, snippet (text between the first pair of triple-backtick fences in `body`), and first-line description (first line of `body` after stripping the snippet).
+  - Use the Write tool to write `$REVIEW_TMPDIR/prior-issues.json`. Schema:
+
+    ```json
+    {
+      "last_review_date": "...",
+      "last_review_commit": "...",
+      "issues": [
+        {
+          "path": "...",
+          "line": 0,
+          "start_line": 0,
+          "snippet": "...",
+          "description": "..."
+        }
+      ]
+    }
+    ```
+
+    If no prior Claude Code review exists, write the file with `last_review_date` / `last_review_commit` set to `null` and an empty `issues` array.
+
+After the diff file lands, run the helper to extract the changed-files list and valid-line map:
+
+```
+code-review-helper diff \
+  --in  $REVIEW_TMPDIR/pr-NUMBER.diff \
+  --out-changed-files $REVIEW_TMPDIR/changed-files.json \
+  --out-valid-lines   $REVIEW_TMPDIR/valid-lines.json
+```
+
+The helper handles binary files, renames, deletions, and `+0,0` deletion-only hunks deterministically — do not parse the diff yourself.
 
 If `code-review-helper` is missing (the plugin's `bin/` shim or its prebuilt platform binary is unavailable), abort with: "code-review-helper not on PATH. Reinstall the plugin via `/plugin install code-review@jjcfatras-tools`, or rebuild from source: `cd ${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper && make release`." Don't auto-build.
 
-c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
+### 1b. Walk CLAUDE.md (lead-inline Read)
 
-- Fetch all reviews: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews`
-- Filter for the most recent review whose `body` contains `Generated with [Claude Code]`: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // "") | contains("Generated with [Claude Code]"))] | sort_by(.submitted_at) | last'`.
-- If found, extract `id`, `submitted_at`, and `commit_id`.
-- Fetch its inline comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments`
-- Extract `path`, `line`, `start_line`, snippet (between first triple-backtick fences in body), and first-line description.
-- Write the result as JSON to `$REVIEW_TMPDIR/prior-issues.json` using the Write tool. Schema:
+From `$REVIEW_TMPDIR/changed-files.json`, derive the set of unique parent directories of changed files and walk each up to repo root. List candidate `CLAUDE.md` paths (root + every walked-up dir, deduplicated). Use the Read tool on each that exists. Build `$REVIEW_TMPDIR/claude-md-files.json` (Write tool) as `{ "<path>": "<contents>", … }` with verbatim contents. Write `{}` if no CLAUDE.md files were found.
 
-  ```json
-  {
-    "last_review_date": "...",
-    "last_review_commit": "...",
-    "issues": [
-      {
-        "path": "...",
-        "line": 0,
-        "start_line": 0,
-        "snippet": "...",
-        "description": "..."
-      }
-    ]
-  }
-  ```
+### 1c. PR Summary prep agent (Sonnet 4.6, single Agent call, foreground)
 
-- If no prior Claude Code review exists, write the file with `last_review_date` / `last_review_commit` set to `null` and an empty `issues` array.
-- Return the file path and the prior-issues data.
+Spawn one `Agent` call with `model: "sonnet"`, `mode: "auto"` (Sonnet 4.6 is the minimum the auto-mode classifier supports — without it, simple shell forms like redirection prompt for permission and stall the agent). Prompt:
+
+```
+You are the PR Summary prep agent for PR #NUMBER in OWNER/REPO.
+
+Read $REVIEW_TMPDIR/pr-NUMBER.diff once.
+
+Return a single-paragraph technical summary of the change: what the PR does, which files/areas it touches, the user-visible behavior change, and any obvious test scope. No bulleted lists, no preamble — just the paragraph. Output the paragraph as your final response (no Write call needed).
+```
+
+The returned paragraph becomes the `SUMMARY` section in step 2b's spawn-context bundle.
 
 ## 2. Build the team and run the multi-specialist review
 
@@ -85,7 +107,7 @@ The pre-flight at the top of the skill has already confirmed the team-coordinati
 
 Based on the changed-file list:
 
-- **HAS_CLAUDE_MD**: true if step 1a found CLAUDE.md files.
+- **HAS_CLAUDE_MD**: true if step 1b found CLAUDE.md files (i.e. `claude-md-files.json` is non-empty).
 - **HAS_TYPESCRIPT**: true if any changed file ends in `.ts` or `.tsx`.
 - **HAS_FRONTEND**: true if any changed file is in a frontend dir (e.g., `src/components/`, `src/pages/`, `src/hooks/`, `app/`) or has a `.tsx`/`.jsx` extension that contains React components.
 - **HAS_INFRASTRUCTURE**: true if any changed file matches migration / terraform / docker / config patterns (`*.sql`, `migrations/`, `*.tf`, `*.hcl`, `docker*`, `Dockerfile*`, infra/deploy directories, or files referencing `secret_manager_path`).
@@ -116,14 +138,45 @@ Build `$REVIEW_TMPDIR/roster.json` using the Write tool. Schema:
 
 Use `<role>-reviewer` as the teammate `name` (the rubrics file's routing table refers to peers by these names — do not deviate). Include only roles that apply per 2a.
 
-Also write:
+The other shared artifacts are already on disk from step 1:
 
-- `$REVIEW_TMPDIR/changed-files.json` — JSON array of changed paths.
-- `$REVIEW_TMPDIR/claude-md-files.json` — JSON object `{ "<path>": "<contents>", … }` from step 1a (or `{}`).
-- `$REVIEW_TMPDIR/prior-issues.json` — already written by step 1c.
-- Create the directory `$REVIEW_TMPDIR/findings/` (specialists will write files into it). Use `Bash` with `mkdir -p`.
+- `$REVIEW_TMPDIR/changed-files.json` — written by the helper in 1a.
+- `$REVIEW_TMPDIR/claude-md-files.json` — written by the lead in 1b (or `{}` if none).
+- `$REVIEW_TMPDIR/prior-issues.json` — written by the lead in 1a.
 
-Then **read `${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md` once with the Read tool** and keep its content available for the spawn prompts in step 2d. Embedding the rubric in the spawn prompt is what lets specialists skip the corresponding `Read` and start scanning sooner. The roster, prior-issues, claude-md-files, and changed-files JSON you just wrote should also be inlined into each spawn prompt — the on-disk copies remain as a fallback and as durable artifacts of the run, but specialists shouldn't have to fetch them.
+Also create the directory `$REVIEW_TMPDIR/findings/` (specialists will write files into it). Use `Bash` with `mkdir -p`.
+
+**Build the spawn-context bundle.** Read `${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md` once with the Read tool, then use the Write tool to create `$REVIEW_TMPDIR/spawn-context.md` with the structure below. Each specialist Reads this single file at startup instead of receiving an inlined copy in its spawn prompt — that's what keeps the lead's spawn message small (every additional inlined token would multiply across roster size on the lead's serial output stream).
+
+```
+# Code review spawn context (PR #<NUMBER>, <OWNER>/<REPO>)
+
+## Per-PR
+- HEAD_SHA: <full HEAD SHA>
+- PR_NUMBER: <NUMBER>
+- REVIEW_TMPDIR: <$REVIEW_TMPDIR>
+- DIFF: $REVIEW_TMPDIR/pr-<NUMBER>.diff
+
+## Summary
+<paragraph returned by step 1c PR Summary agent>
+
+## Changed files
+<verbatim contents of changed-files.json>
+
+## Roster (active specialists — DM peers by `name`)
+<verbatim contents of roster.json>
+
+## Prior issues (most recent prior Claude Code review on this PR; may be empty)
+<verbatim contents of prior-issues.json>
+
+## CLAUDE.md content (paths + contents from step 1b; may be empty `{}`)
+<verbatim contents of claude-md-files.json>
+
+## Rubric
+<verbatim contents of ${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md>
+```
+
+Concatenate verbatim — don't paraphrase, don't reformat the JSON, don't strip the rubric's headings. The on-disk JSON artifacts remain as durable run artifacts; specialists should not Read them separately because the bundle already contains them.
 
 ### 2c. Create the team and assignment tasks
 
@@ -147,44 +200,19 @@ Agent({
 
 `mode: "auto"` is required so each specialist runs under the auto-mode classifier (auto-approves safe shell patterns without prompting; required for long unattended scans).
 
-Inline the rubric, roster, prior-issues, CLAUDE.md content, and changed-file list directly into the spawn prompt. Only the diff stays as a file (size). Specialists must not Read the inlined files. Template:
+Keep the spawn prompt small. Every shared section (rubric, roster, prior-issues, CLAUDE.md content, changed files, summary) lives in `$REVIEW_TMPDIR/spawn-context.md` from 2b — specialists Read it once at startup. Each additional inlined token here would multiply across roster size on the lead's serial output stream; in earlier revisions a full-inline spawn message hit 18k+ output tokens and added ~150 s of streaming before any specialist could start. Template:
 
 ```
 You are <role>-reviewer on the code review team for <OWNER>/<REPO> PR #<PR_NUMBER>.
 
-CONTEXT VALUES
-- OWNER: <OWNER>
-- REPO: <REPO>
-- HEAD_SHA: <full HEAD SHA>
-- PR_NUMBER: <PR_NUMBER>
-- REVIEW_TMPDIR: $REVIEW_TMPDIR
-- ASSIGNMENT_TASK_ID: <task id captured in 2c>
+ASSIGNMENT_TASK_ID: <task id captured in 2c>
 
-SUMMARY
-<one-paragraph summary from step 1b>
+Your first action is to Read $REVIEW_TMPDIR/spawn-context.md once before doing anything else. It contains every per-PR value (HEAD_SHA, REVIEW_TMPDIR, diff path, summary, changed files, roster, prior issues, CLAUDE.md content) and the rubric. Do not Read the rubric file or any of the JSON artifacts (roster, prior-issues, claude-md-files, changed-files) separately — they are inside the bundle.
 
-DIFF
-The PR diff is on disk at: $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff
-Read it once when you start scanning. Don't refetch via `gh pr diff`.
-
-CHANGED FILES
-<JSON array of changed paths — verbatim contents of changed-files.json>
-
-ROSTER (active specialists on this team — DM peers by `name`)
-<verbatim contents of roster.json>
-
-PRIOR ISSUES (most recent prior Claude Code review on this PR; may be empty)
-<verbatim contents of prior-issues.json>
-
-CLAUDE.MD CONTENT (paths + contents from step 1a; may be empty)
-<verbatim contents of claude-md-files.json>
-
-RUBRIC (already loaded — do not Read the file)
-<verbatim contents of ${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md>
-
-GETTING STARTED
-Begin by Read'ing $REVIEW_TMPDIR/pr-<PR_NUMBER>.diff, then follow your agent system prompt's workflow and the rubric's "Specialist workflow" section. The rubric, roster, prior-issues, and CLAUDE.md content above are inline — do not Read those files.
+After reading the bundle, follow your agent system prompt's workflow and the rubric's "Specialist workflow" section.
 ```
+
+The spawn prompt stays small on purpose — every additional inlined token multiplies across roster size and adds serial streaming time on the lead.
 
 When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; you'll be woken via a `scan_complete` DM as each one's findings file lands (see 2e).
 
