@@ -1,0 +1,21 @@
+{
+  "specialist": "errors",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "err-1",
+      "category": "errors",
+      "file": "package.json",
+      "line": 160,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "near-diff finding to test snap path",
+      "explanation": "The pnpm.overrides block doesn't surface when an override fails to apply. If a transitive consumer pins an incompatible range, pnpm will silently keep the old version. Recommend adding a postinstall guard.",
+      "code": "\"pnpm\": {",
+      "suggested_fix": null,
+      "language": "json",
+      "verifications": []
+    }
+  ]
+}

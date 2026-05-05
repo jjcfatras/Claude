@@ -2,6 +2,7 @@ node_modules
 
 # Build artifacts
 **/.DS_Store
+tools/code-review-helper/bin/
 
 # Claude
 CLAUDE.local.md

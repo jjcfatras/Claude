@@ -1,0 +1,94 @@
+{
+  "inline_eligible": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 49,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Minor",
+      "rationale": "decode+encode round-trip on every URL segment",
+      "explanation": "_Note: This comment was placed on the nearest diff line; the issue actually occurs on line 48._\n\ncanonicalizeURLPart now runs on every catchall and dynamic segment for every navigation. The decode/encode round-trip is fast individually but adds up with deep catchalls; consider memoizing for repeat keys.",
+      "code": "// Pathname parts come from URL.pathname.split('/')",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    },
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 121,
+      "startLine": null,
+      "confidence": 78,
+      "severity": "Medium",
+      "rationale": "decoded user-controlled URL parts re-encoded without explicit allow-list",
+      "explanation": "canonicalizeURLPart blindly decodeURIComponent's the input then re-encodes. If a malicious pathname part contains a UTF-8 sequence that survives decode but produces unexpected characters after re-encoding, the resulting segment could mismatch server-side routing in ways that bypass middleware checks.\n\n_Note: This issue was flagged in a prior review but the code has since changed._",
+      "code": "return canonicalizeURLPart(pathnameParts[partIndex])",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": [],
+      "cross_refs": [
+        {
+          "specialist": "security",
+          "confidence": 78,
+          "file": "packages/next/src/client/route-params.ts",
+          "line": 120
+        }
+      ]
+    },
+    {
+      "id": "react-1",
+      "category": "react",
+      "file": "test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx",
+      "line": 18,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "checked toggle without controlled-onChange parity loses NormalizedPathname brand",
+      "explanation": "The function signature of canonicalizeURLPart returns a plain string which loses the NormalizedPathname brand applied earlier in the file. Downstream callers that consume the result must re-cast or risk a silent type-narrowing escape — the same concern surfaces in this LinkAccordion's controlled state where href is passed through without re-narrowing.",
+      "code": "\u003cinput type=\"checkbox\" checked={isVisible} onChange={() =\u003e setIsVisible(!isVisible)} /\u003e",
+      "suggested_fix": null,
+      "language": "tsx",
+      "verifications": [],
+      "cross_refs": [
+        {
+          "specialist": "typescript",
+          "confidence": 65,
+          "file": "packages/next/src/client/route-params.ts",
+          "line": 55
+        }
+      ]
+    }
+  ],
+  "summary_only": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 200,
+      "startLine": null,
+      "confidence": 78,
+      "severity": "Medium",
+      "rationale": "out-of-diff helper duplication that should be unified",
+      "explanation": "There is an existing helper in this module that performs a similar decode/encode round-trip on the server side. Maintaining two slightly-different helpers will drift; recommend extracting a shared canonicalizeURLPart utility used by both sides.",
+      "code": "// arbitrary code at line 200",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    }
+  ],
+  "dropped_prior_review": [],
+  "specialists_used": [
+    "errors",
+    "perf",
+    "quality",
+    "react",
+    "security",
+    "typescript"
+  ],
+  "timed_out_roles": [],
+  "missing_roles": [],
+  "last_review_date": "2026-04-30T12:00:00Z"
+}

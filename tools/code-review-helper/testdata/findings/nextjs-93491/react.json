@@ -1,0 +1,21 @@
+{
+  "specialist": "react",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "react-1",
+      "category": "react",
+      "file": "test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx",
+      "line": 18,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "checked toggle without controlled-onChange parity loses NormalizedPathname brand",
+      "explanation": "The function signature of canonicalizeURLPart returns a plain string which loses the NormalizedPathname brand applied earlier in the file. Downstream callers that consume the result must re-cast or risk a silent type-narrowing escape — the same concern surfaces in this LinkAccordion's controlled state where href is passed through without re-narrowing.",
+      "code": "<input type=\"checkbox\" checked={isVisible} onChange={() => setIsVisible(!isVisible)} />",
+      "suggested_fix": null,
+      "language": "tsx",
+      "verifications": []
+    }
+  ]
+}

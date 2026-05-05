@@ -1,0 +1,36 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 121,
+      "startLine": null,
+      "confidence": 78,
+      "severity": "Medium",
+      "rationale": "decoded user-controlled URL parts re-encoded without explicit allow-list",
+      "explanation": "canonicalizeURLPart blindly decodeURIComponent's the input then re-encodes. If a malicious pathname part contains a UTF-8 sequence that survives decode but produces unexpected characters after re-encoding, the resulting segment could mismatch server-side routing in ways that bypass middleware checks.",
+      "code": "return canonicalizeURLPart(pathnameParts[partIndex])",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    },
+    {
+      "id": "sec-2",
+      "category": "security",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 120,
+      "startLine": null,
+      "confidence": 78,
+      "severity": "Medium",
+      "rationale": "context-line lookup adjacent to changed code",
+      "explanation": "The empty-string fallback at this control-flow branch silently swallows malformed paths. Combined with the new canonicalizeURLPart call, this can mask injection attempts rather than rejecting them.",
+      "code": "}",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    }
+  ]
+}

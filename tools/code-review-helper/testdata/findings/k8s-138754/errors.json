@@ -1,0 +1,36 @@
+{
+  "specialist": "errors",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "err-1",
+      "category": "errors",
+      "file": "pkg/scheduler/framework/runtime/framework.go",
+      "line": 358,
+      "startLine": null,
+      "confidence": 75,
+      "severity": "Critical",
+      "rationale": "duplicate of security finding at the same call site",
+      "explanation": "Same call site as the security finding — race-condition risk if GenericWorkload feature flag flips during scheduler runtime since newOpportunisticBatch caches the value once.",
+      "code": "f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    },
+    {
+      "id": "err-2",
+      "category": "errors",
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 174,
+      "startLine": null,
+      "confidence": 60,
+      "severity": "Medium",
+      "rationale": "nested condition in batchStateCompatible adds branching that is hard to follow",
+      "explanation": "The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.",
+      "code": "if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {\n    b.logUnusableState(logger, cycleCount, metrics.BatchFlushPodSkipped)\n    return false\n}",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "specialist": "quality",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "package.json",
+      "line": 170,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Minor",
+      "rationale": "override key naming inconsistent with the rest of the file",
+      "explanation": "The new override key '@azure/msal-node>uuid' uses pnpm's nested-override syntax while peers use the bare package name. Document this in a comment so future maintainers know the syntax is intentional.",
+      "code": "\"@azure/msal-node>uuid\": \">=14.0.0\"",
+      "suggested_fix": null,
+      "language": "json",
+      "verifications": []
+    },
+    {
+      "id": "qual-2",
+      "category": "quality",
+      "file": "package.json",
+      "line": 173,
+      "startLine": 165,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "multi-line block needs a shared rationale comment",
+      "explanation": "The full overrides block grew from 7 to 10 entries this PR. Without inline rationale comments it will be hard for future contributors to know which overrides exist for security versus compatibility.",
+      "code": "\"overrides\": {\n  \"form-data\": \">=4.0.4\",\n  \"hono\": \">=4.12.14\",\n  ...\n}",
+      "suggested_fix": null,
+      "language": "json",
+      "verifications": []
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, TaskStop, SendMessage, mcp__*, Skill
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Bash(~/.claude/bin/code-review-helper:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, TaskStop, SendMessage, mcp__*, Skill
 description: Code review a pull request via a multi-specialist agent team. Spawns one custom subagent per applicable category (security, types, react, infra, errors, perf, quality, claude-md), coordinates them via a shared task list and peer DMs for cross-domain verification, and posts inline review comments. Cleans up its temp workspace (under /tmp) after posting.
 argument-hint: [pr-number]
 disable-model-invocation: false
@@ -44,10 +44,10 @@ a. **CLAUDE.md Agent**: Return file paths and contents of relevant CLAUDE.md fil
 b. **PR Summary Agent**: View the pull request and:
 
 - Run `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` to save the diff in one step.
-- Extract a **valid-line map** from the diff by parsing `diff --git` lines (for file paths) and `@@ ... +newStart,newCount @@` hunk headers. The map is: `file path → list of [newStart, newStart+newCount-1]` ranges.
-  - **Binary files**: Skip lines containing `Binary files ... differ`. Include the file in the changed-files list but omit it from the valid-line map.
-  - **Renamed files**: Use the **new** path (the `b/` path) as the map key. Pure renames with no content changes get included in the changed-files list but omitted from the valid-line map.
-- Return: (1) summary, (2) `$DIFF_FILE` path, (3) changed file list, (4) `OWNER` and `REPO`, (5) PR `NUMBER`, (6) full HEAD SHA (`gh pr view NUMBER --json headRefOid -q .headRefOid`), (7) valid-line map.
+- Run the helper to extract the changed-files list and valid-line map: `~/.claude/bin/code-review-helper diff --in $REVIEW_TMPDIR/pr-NUMBER.diff --out-changed-files $REVIEW_TMPDIR/changed-files.json --out-valid-lines $REVIEW_TMPDIR/valid-lines.json`. The helper handles binary files, renames, deletions, and `+0,0` deletion-only hunks deterministically — do not parse the diff yourself.
+- Return: (1) summary, (2) `$DIFF_FILE` path, (3) `$REVIEW_TMPDIR/changed-files.json` path + parsed contents, (4) `OWNER` and `REPO`, (5) PR `NUMBER`, (6) full HEAD SHA (`gh pr view NUMBER --json headRefOid -q .headRefOid`), (7) `$REVIEW_TMPDIR/valid-lines.json` path + parsed contents.
+
+If `~/.claude/bin/code-review-helper` is missing (the user has never built it), abort with: "code-review-helper binary not found. Run `cd $REVIEW_REPO/tools/code-review-helper && make install` and retry." Don't auto-build.
 
 c. **Prior Reviews Agent**: Check for prior Claude Code reviews on the PR:
 
@@ -207,10 +207,7 @@ Notification-flow + safety-timer rationale: see `~/.claude/references/code-revie
 
 ### 2f. Collect findings
 
-Read every `$REVIEW_TMPDIR/findings/<role>.json` that exists. For each role in the roster:
-
-- If the file exists and parses, append its `findings` array to the consolidated list.
-- If the file is missing or has `scan_status: "timed_out"`, log it and continue with whatever made it through.
+The findings files in `$REVIEW_TMPDIR/findings/` are the input to step 3's helper invocation. There is nothing to read or merge here — the helper enumerates the directory itself, tolerates `scan_status: "timed_out"`, and reports missing roster roles via `consolidated.json`'s `missing_roles` field. The only thing this step needs is to confirm (via a Glob check) that _some_ `<role>.json` files actually landed; if the directory is empty, abort the review and surface that to the user rather than feeding an empty workspace to the helper.
 
 ### 2g. Tear down the team
 
@@ -222,57 +219,44 @@ Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash
 2. Arm `Monitor({command: "sleep 15; echo teardown_wait_done", timeout_ms: 20000, persistent: false, description: "code-review teardown wait 1"})` and end the turn; the emit-line wakes you.
 3. Call `TeamDelete()`. On success, proceed to step 3 of the skill.
 4. **On "still active member(s)" error (attempt 1 failed)**:
-   a. **Re-enumerate `$REVIEW_TMPDIR/findings/` via the Glob tool** (`pattern: "findings/*.json", path: "$REVIEW_TMPDIR"`). If any role previously in `unreachable_roles` (or any `scan_status: "timed_out"` role) now has a real findings file (not the missing/timed-out state you saw at 2f), Read it and merge into the consolidated list. A slow-but-live agent often writes its real findings during teardown — this is the deterministic recovery path that replaces the previous lucky re-Read.
+   a. The slow-but-live recovery path that used to require a manual re-Read + re-merge is now implicit: any findings file a holdout writes between attempt 1 and attempt 3 will be picked up automatically when step 3's helper runs (the helper enumerates `$REVIEW_TMPDIR/findings/` once, fresh). No explicit merge step is needed here.
    b. Send one more `shutdown_request` to each named holdout, arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 2"})`, end the turn, then retry `TeamDelete()` on the wake.
 5. **On second failure (attempt 2 failed) — escalate via `TaskStop`.** Cooperative shutdown has demonstrably failed; the holdout is producing output on each `shutdown_request` wake (a real failure mode observed in transcript `b466fe08` where `quality-reviewer` violated rubric step 10 and kept the slot active across three `TeamDelete` calls). For each holdout: call `TaskList` to look up its assignment task ID, then `TaskStop({task_id: <holdout's ASSIGNMENT_TASK_ID>})` to forcibly terminate the slot. Arm a `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 3"})`, end the turn, then retry `TeamDelete()` on the wake (attempt 3). `TaskStop` is the deterministic recovery primitive — no further DM round-trip is required.
 6. **On third failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
 
 Degraded-state explanation: see `~/.claude/references/code-review-design-notes.md`.
 
-## 3. Filter — deduplication and gates
+## 3. Filter — deduplication, gates, payload assembly
 
-**Pre-filter 1 — Deduplication across specialists:** Apply two passes.
+The deterministic pipeline (positional dedup → semantic dedup → prior-review dedup → confidence/severity gate → inline-eligibility classification → payload + fallback assembly) lives in `~/.claude/bin/code-review-helper`. The contract — every rule used to live in prose here — is documented in the helper source under `tools/code-review-helper/internal/` and exhaustively tested. Don't reimplement any of those rules in this skill.
 
-_Pass 1 — Positional dedup_: Group findings by file path and line number (within ±3 lines). For each group, keep the finding with the highest confidence score. If tied, prefer the specialist whose domain best matches the issue category.
+Run:
 
-_Pass 2 — Semantic dedup_: After positional dedup, look for findings that describe the same defect at different anchors. Two findings are semantic duplicates when **either** holds:
+```
+~/.claude/bin/code-review-helper finalize \
+  --diff $REVIEW_TMPDIR/pr-<NUMBER>.diff \
+  --findings-dir $REVIEW_TMPDIR/findings \
+  --prior-issues $REVIEW_TMPDIR/prior-issues.json \
+  --head-sha <full HEAD SHA> \
+  --owner <OWNER> --repo <REPO> --pr-number <NUMBER> \
+  --expected-roles <comma-separated roster role names> \
+  --out-consolidated $REVIEW_TMPDIR/consolidated.json \
+  --out-payload     $REVIEW_TMPDIR/payload.json \
+  --out-fallback    $REVIEW_TMPDIR/fallback.md
+```
 
-1. One finding's `file` path appears as a path-string inside another finding's `explanation` field (case-sensitive, full path match), AND both findings have severity ≥ Medium.
-2. The two findings' `explanation` fields share a 60+ character common substring AND their `category` fields are related (security ↔ errors, quality ↔ claude-md, typescript ↔ react are related pairs; everything else is unrelated).
+The helper:
 
-When two findings match as semantic duplicates, keep the one with higher confidence; if tied, prefer the one whose `file` is **inside the diff** (so dedup tends to leave an inline-eligible representative). Append a note to the kept finding's `explanation`: "_This finding was also independently raised by `<other-specialist>` (confidence `<N>`) at `<other-file>:<line>`._"
+- Loads every `findings/<role>.json` (tolerating `scan_status: "timed_out"` and missing files; the role names supplied via `--expected-roles` are checked so the consolidated output reports which roster roles never delivered).
+- Runs both dedup passes, prior-review dedup, the confidence/severity gate, and inline-eligibility snapping.
+- Writes `consolidated.json` (`{inline_eligible, summary_only, dropped_prior_review, specialists_used, timed_out_roles, missing_roles, last_review_date}`) — read this at step 4.
+- Writes `payload.json` already shaped for `gh api ... reviews --input` and `fallback.md` for `gh pr comment -F` if posting fails.
 
-**Pre-filter 2 — Prior-review deduplication:** For each surviving finding, match against `$REVIEW_TMPDIR/prior-issues.json`:
-
-1. Same file path.
-2. Line within ±5 lines of a prior issue's line OR snippet shares a 40+ character common substring with a prior issue's snippet.
-3. If matched AND the line is on unchanged code (context line ` `, not added line `+` in the diff) → remove the finding (already flagged in prior review).
-4. If matched BUT the code at that location has changed (`+` line in diff) → keep the finding and append to its explanation: "_Note: This issue was flagged in a prior review but the code has since changed._"
-
-Log the count removed by this filter for reporting in step 4.
-
-**Gate 1 — Confidence/Severity filter:**
-
-- Confidence must be at least 50.
-- If confidence is between 50-74, only include if severity is Critical or Medium.
-- Confidence ≥ 75 is included regardless of severity.
-
-If no findings meet these criteria, do not proceed to posting — present the empty result in step 4.
-
-**Gate 2 — Diff line validation:**
-
-Using the valid-line map from step 1b, validate that every surviving finding targets a line within a valid hunk range for that file:
-
-- **In range**: mark as **inline-eligible**.
-- **Out of range, within 5 lines of nearest valid line**: snap to nearest valid line, prepend "_Note: This comment was placed on the nearest diff line; the issue actually occurs on line {original_line}._" Mark inline-eligible.
-- **Out of range, >5 lines away or file not in diff**: mark as **summary-only**.
-- **Multi-line** (`startLine` + `line`): if only `startLine` is out of range but `line` is valid, drop `startLine` (single-line). If `line` is out of range, apply snapping.
-
-Result: two lists (inline-eligible, summary-only). If both empty, stop. If only summary-only exists, skip step 5a's `comments` array.
+Read `consolidated.json` after the call. If `inline_eligible` and `summary_only` are both empty, stop and present the empty result in step 4.
 
 ## 4. Present and confirm
 
-Show the user the consolidated finding list with severity, confidence, file:line, and a one-line description for each. If issues were removed by prior-review dedup, include "Skipped N issue(s) already flagged in prior review ({last_review_date})." plus a brief list (file:line — description) so the user can override if needed.
+Read `$REVIEW_TMPDIR/consolidated.json`. Show the user the inline-eligible + summary-only findings (severity, confidence, file:line, description) for each. If `dropped_prior_review` is non-empty, include "Skipped N issue(s) already flagged in prior review (`<last_review_date>`)." plus a brief list (file:line — description) so the user can override if needed. If `missing_roles` or `timed_out_roles` is non-empty, surface those names so the user knows the review may be incomplete.
 
 Ask permission to post. If the user declines, skip step 5 (still run step 6 cleanup).
 
@@ -280,43 +264,11 @@ Ask permission to post. If the user declines, skip step 5 (still run step 6 clea
 
 Use the GitHub Reviews API via `gh api` (single API call, single notification, inline comments on relevant diff lines).
 
-### 5a. Build the JSON payload
+### 5a. Validate the payload
 
-Target structure:
+The helper already produced `$REVIEW_TMPDIR/payload.json` (GitHub Reviews API shape, ready for `--input`) and `$REVIEW_TMPDIR/fallback.md` (markdown body for `gh pr comment -F` if posting fails). Sanity check: `jq . $REVIEW_TMPDIR/payload.json`. If `jq` rejects it, the helper has a bug — surface the parse error and stop; don't try to repair the JSON by hand.
 
-```json
-{
-  "commit_id": "<full HEAD SHA>",
-  "event": "COMMENT",
-  "body": "<review summary — see formats below>",
-  "comments": [
-    {
-      "path": "relative/file/path",
-      "line": 42,
-      "side": "RIGHT",
-      "body": "<formatted comment per ISSUE_FORMAT>"
-    },
-    {
-      "path": "relative/file/path",
-      "start_line": 45,
-      "line": 50,
-      "start_side": "RIGHT",
-      "side": "RIGHT",
-      "body": "<formatted multi-line comment>"
-    }
-  ]
-}
-```
-
-Approach:
-
-1. Use the Write tool to save each inline-eligible issue's formatted body (per ISSUE_FORMAT below) to a unique temp file: `$REVIEW_TMPDIR/comment-1.md`, `$REVIEW_TMPDIR/comment-2.md`, etc. (Raw markdown — kept as a debugging aid.)
-2. Use the Write tool to save the review summary body to `$REVIEW_TMPDIR/summary.md` (raw markdown — no escaping needed; `--rawfile` reads it verbatim).
-3. Use the Write tool to save `$REVIEW_TMPDIR/comments-array.json`: a JSON array of objects matching the comment structure above (`path`, `line`, `side`, `body`, plus `start_line` / `start_side` for multi-line). Embed each `comment-N.md` content into its `body` field as a properly-escaped JSON string. If only summary-only issues exist, write `[]`.
-4. Assemble the final payload via jq: `jq -n --arg sha "$HEAD_SHA" --rawfile summary $REVIEW_TMPDIR/summary.md --slurpfile comments $REVIEW_TMPDIR/comments-array.json '{commit_id: $sha, event: "COMMENT", body: $summary, comments: $comments[0]}' > $REVIEW_TMPDIR/payload.json`.
-5. Validate: `jq . $REVIEW_TMPDIR/payload.json`.
-
-If only summary-only issues exist, the `$comments[0]` value is an empty array and the resulting `comments` field is `[]`.
+ISSUE_FORMAT, the three review-summary variants, summary-table column rules, GitHub blob-link format, and severity emojis (🔴 Critical, 🟡 Medium, 📝 Minor) are all owned by `tools/code-review-helper/internal/render/`. If the format needs to change, edit the renderers and their golden tests — do not edit the JSON the helper produced.
 
 ### 5b. Post
 
@@ -324,49 +276,7 @@ If only summary-only issues exist, the `$comments[0]` value is an empty array an
 
 (Substitute actual OWNER, REPO, and NUMBER values.)
 
-**Fallback**: If the API call fails, write the full review summary body to `$REVIEW_TMPDIR/fallback.md`, then post with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. Include all issues (inline-eligible and summary-only) in the body using ISSUE_FORMAT, each prefixed with `**path:line**`. Footer: "Note: Inline comments failed ({error}). All issues listed below."
-
-### ISSUE_FORMAT (used for inline comment bodies and summary-only issues)
-
-````
-{severity_emoji} **{Severity}** (Confidence: {N}/100) - {brief description}
-
-**Explanation:** {detailed explanation. If CLAUDE.md-triggered, quote: "CLAUDE.md says: <...>"}
-
-**Code:**
-
-```{language}
-{problematic code from PR}
-```
-
-**Suggested fix:**
-
-```{language}
-{corrected code}
-```
-````
-
-Severity emojis: 🔴 Critical, 🟡 Medium, 📝 Minor. For inline comments, omit the file path from the description (already attached to the line).
-
-### Review summary body
-
-All variants start with `### Code review` and end with:
-
-```
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-<sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
-```
-
-- **Has inline issues**: Summary table with columns `#`, `Severity`, `Confidence`, `File`, `Description`. The `File` cell must be a markdown link of the form `[<basename>:<line>](https://github.com/OWNER/REPO/blob/<full HEAD SHA>/<path>#L<line>)` — display text is the file basename and line number only, never the full repo path (full paths force GitHub to wrap the Description column across many lines). After the table, append "See inline comments for full details, code examples, and suggested fixes." If summary-only issues also exist, append `#### Additional issues (could not attach inline)` with each in ISSUE_FORMAT including the full `path:line`.
-- **Only summary-only issues**: Empty `comments` array. Header: "Found N issue(s). These could not be placed as inline comments because their line numbers fall outside the diff's visible range." List each in ISSUE_FORMAT.
-- **No issues**: Empty `comments` array. Body: "No issues found. Reviewed by: <comma-separated roster roles>."
-
-### Linking to code in inline comments
-
-Format: `https://github.com/OWNER/REPO/blob/<full HEAD SHA>/<path>#L<start>-L<end>`
-
-Requires the full SHA (no `$(git rev-parse HEAD)` — it won't be expanded in markdown). Repo name must match the PR's repo. Provide at least 1 line of context before and after.
+**Fallback**: If the API call fails, Read `$REVIEW_TMPDIR/fallback.md` and use the Edit tool to replace the literal placeholder `{API_ERROR}` with the actual error message, then post with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. (`fallback.md` already lists every issue with its `**path:line**` prefix; only the error message needs to be patched in.)
 
 ## 6. Cleanup
 

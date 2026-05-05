@@ -1,0 +1,21 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "pkg/scheduler/framework/runtime/framework.go",
+      "line": 358,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "feature-gate value captured at construction time without re-check",
+      "explanation": "newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.",
+      "code": "f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    }
+  ]
+}

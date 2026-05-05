@@ -1,0 +1,127 @@
+diff --git a/pkg/scheduler/framework/runtime/batch.go b/pkg/scheduler/framework/runtime/batch.go
+index 71ee9c9c65b25..976cbd39e1a4b 100644
+--- a/pkg/scheduler/framework/runtime/batch.go
++++ b/pkg/scheduler/framework/runtime/batch.go
+@@ -38,6 +38,8 @@ type OpportunisticBatch struct {
+ 	// Used primarily for tests, count the total pods we
+ 	// have successfully batched.
+ 	batchedPods int64
++
++	genericWorkloadEnabled bool
+ }
+ 
+ type batchState struct {
+@@ -168,8 +170,12 @@ func (b *OpportunisticBatch) batchStateCompatible(ctx context.Context, pod *v1.P
+ 
+ 	// In this case, a previous pod was scheduled by another profile, meaning we can't use the state anymore.
+ 	if cycleCount != b.lastCycle.cycleCount+1 {
+-		b.logUnusableState(logger, cycleCount, metrics.BatchFlushPodSkipped)
+-		return false
++		// In case of PodGroup scheduling cycle, multiple pods can share the same cycle count.
++		// The batch state can be reused in that case.
++		if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {
++			b.logUnusableState(logger, cycleCount, metrics.BatchFlushPodSkipped)
++			return false
++		}
+ 	}
+ 
+ 	// If our last pod failed we can't use the state.
+@@ -228,8 +234,9 @@ func (b *OpportunisticBatch) stateEmpty() bool {
+ 	return b.state == nil || b.state.sortedNodes == nil || b.state.sortedNodes.Len() == 0
+ }
+ 
+-func newOpportunisticBatch(h fwk.Handle) *OpportunisticBatch {
++func newOpportunisticBatch(h fwk.Handle, genericWorkloadEnabled bool) *OpportunisticBatch {
+ 	return &OpportunisticBatch{
+-		handle: h,
++		handle:                 h,
++		genericWorkloadEnabled: genericWorkloadEnabled,
+ 	}
+ }
+diff --git a/pkg/scheduler/framework/runtime/batch_test.go b/pkg/scheduler/framework/runtime/batch_test.go
+index faa4677a7b568..f8b2918d82888 100644
+--- a/pkg/scheduler/framework/runtime/batch_test.go
++++ b/pkg/scheduler/framework/runtime/batch_test.go
+@@ -195,6 +195,8 @@ func TestBatchBasic(t *testing.T) {
+ 		firstChosenNode string
+ 		// firstOtherNodes is supposed to set only if firstPodScheduledSuccessfully is true.
+ 		firstOtherNodes framework.SortedScoredNodes
++		// if it's true, the test case behaves as if the pods are processed during the same PodGroup scheduling cycle.
++		sameCycle bool
+ 		// if it's true, the test case behaves as if there is another pod handled by another profile between the first and second pod.
+ 		skipPod                    bool
+ 		secondPodID                string
+@@ -202,6 +204,7 @@ func TestBatchBasic(t *testing.T) {
+ 		secondSig                  string
+ 		secondChosenNode           string
+ 		secondOtherNodes           framework.SortedScoredNodes
++		genericWorkloadEnabled     bool
+ 		expectedHint               string
+ 		expectedState              *batchState
+ 	}{
+@@ -290,6 +293,34 @@ func TestBatchBasic(t *testing.T) {
+ 			secondChosenNode:              "n1",
+ 			expectedHint:                  "",
+ 		},
++		{
++			name:                          "pod doesn't use batch from preceding pod when they are from the same cycle state, but GenericWorkload is disabled",
++			firstPodID:                    blockingPodID("1"),
++			firstSig:                      "sig",
++			firstChosenNode:               "n3",
++			firstOtherNodes:               newTestNodes([]string{"n1"}),
++			firstPodScheduledSuccessfully: true,
++			sameCycle:                     true,
++			secondPodID:                   blockingPodID("2"),
++			secondSig:                     "sig",
++			secondChosenNode:              "n1",
++			genericWorkloadEnabled:        false,
++			expectedHint:                  "",
++		},
++		{
++			name:                          "pod uses batch from preceding pod when they are from the same cycle state and GenericWorkload is enabled",
++			firstPodID:                    blockingPodID("1"),
++			firstSig:                      "sig",
++			firstChosenNode:               "n3",
++			firstOtherNodes:               newTestNodes([]string{"n1"}),
++			firstPodScheduledSuccessfully: true,
++			sameCycle:                     true,
++			secondPodID:                   blockingPodID("2"),
++			secondSig:                     "sig",
++			secondChosenNode:              "n1",
++			genericWorkloadEnabled:        true,
++			expectedHint:                  "n1",
++		},
+ 		{
+ 			name:                          "pod uses batch from preceding pod and leaves remaining batch to next pod",
+ 			firstPodID:                    blockingPodID("1"),
+@@ -339,7 +370,7 @@ func TestBatchBasic(t *testing.T) {
+ 			}
+ 
+ 			signature := fwk.PodSignature(tt.firstSig)
+-			batch := newOpportunisticBatch(testFwk)
++			batch := newOpportunisticBatch(testFwk, tt.genericWorkloadEnabled)
+ 			state := framework.NewCycleState()
+ 
+ 			// Run the first "pod" through
+@@ -354,6 +385,8 @@ func TestBatchBasic(t *testing.T) {
+ 			var cycleCount int64 = 2
+ 			if tt.skipPod {
+ 				cycleCount = 3
++			} else if tt.sameCycle {
++				cycleCount = 1
+ 			}
+ 
+ 			// Run the second pod
+diff --git a/pkg/scheduler/framework/runtime/framework.go b/pkg/scheduler/framework/runtime/framework.go
+index aafdce0e27620..22f686c7f5407 100644
+--- a/pkg/scheduler/framework/runtime/framework.go
++++ b/pkg/scheduler/framework/runtime/framework.go
+@@ -356,7 +356,7 @@ func NewFramework(ctx context.Context, r Registry, profile *config.KubeScheduler
+ 	}
+ 
+ 	if utilfeature.DefaultFeatureGate.Enabled(features.OpportunisticBatching) {
+-		f.batch = newOpportunisticBatch(f)
++		f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))
+ 	}
+ 
+ 	if len(f.extenders) > 0 {

@@ -1,0 +1,21 @@
+{
+  "specialist": "errors",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "err-1",
+      "category": "errors",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 55,
+      "startLine": null,
+      "confidence": 50,
+      "severity": "Critical",
+      "rationale": "decodeURIComponent throws but try/catch returns the encoded form silently",
+      "explanation": "When decodeURIComponent fails on a malformed sequence, the catch returns the original part. This is a silent fallback that hides the malformation from any caller — a more defensive option would be to throw an InvalidPathError or at least log a warning so observability picks up bad input.",
+      "code": "try { return encodeURIComponent(decodeURIComponent(part)) } catch { return part }",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    }
+  ]
+}

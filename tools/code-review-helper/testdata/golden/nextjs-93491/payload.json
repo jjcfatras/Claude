@@ -1,0 +1,25 @@
+{
+  "commit_id": "0000000000000000000000000000000000000000",
+  "event": "COMMENT",
+  "body": "### Code review\n\n| # | Severity | Confidence | File | Description |\n| - | -------- | ---------- | ---- | ----------- |\n| 1 | 📝 Minor | 80 | [route-params.ts:49](https://github.com/test-owner/test-repo/blob/0000000000000000000000000000000000000000/packages/next/src/client/route-params.ts#L49) | decode+encode round-trip on every URL segment |\n| 2 | 🟡 Medium | 78 | [route-params.ts:121](https://github.com/test-owner/test-repo/blob/0000000000000000000000000000000000000000/packages/next/src/client/route-params.ts#L121) | decoded user-controlled URL parts re-encoded without explicit allow-list |\n| 3 | 🟡 Medium | 65 | [link-accordion.tsx:18](https://github.com/test-owner/test-repo/blob/0000000000000000000000000000000000000000/test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx#L18) | checked toggle without controlled-onChange parity loses NormalizedPathname brand |\n\nSee inline comments for full details, code examples, and suggested fixes.\n\n#### Additional issues (could not attach inline)\n\n**packages/next/src/client/route-params.ts:200**\n\n🟡 **Medium** (Confidence: 78/100) - out-of-diff helper duplication that should be unified\n\n**Explanation:** There is an existing helper in this module that performs a similar decode/encode round-trip on the server side. Maintaining two slightly-different helpers will drift; recommend extracting a shared canonicalizeURLPart utility used by both sides.\n\n**Code:**\n\n```typescript\n// arbitrary code at line 200\n```\n\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\n\u003csub\u003eIf this code review was useful, please react with 👍. Otherwise, react with 👎.\u003c/sub\u003e",
+  "comments": [
+    {
+      "path": "packages/next/src/client/route-params.ts",
+      "line": 49,
+      "side": "RIGHT",
+      "body": "📝 **Minor** (Confidence: 80/100) - decode+encode round-trip on every URL segment\n\n**Explanation:** _Note: This comment was placed on the nearest diff line; the issue actually occurs on line 48._\n\ncanonicalizeURLPart now runs on every catchall and dynamic segment for every navigation. The decode/encode round-trip is fast individually but adds up with deep catchalls; consider memoizing for repeat keys.\n\n**Code:**\n\n```typescript\n// Pathname parts come from URL.pathname.split('/')\n```\n"
+    },
+    {
+      "path": "packages/next/src/client/route-params.ts",
+      "line": 121,
+      "side": "RIGHT",
+      "body": "🟡 **Medium** (Confidence: 78/100) - decoded user-controlled URL parts re-encoded without explicit allow-list\n\n**Explanation:** canonicalizeURLPart blindly decodeURIComponent's the input then re-encodes. If a malicious pathname part contains a UTF-8 sequence that survives decode but produces unexpected characters after re-encoding, the resulting segment could mismatch server-side routing in ways that bypass middleware checks.\n\n_Note: This issue was flagged in a prior review but the code has since changed._\n\n_This finding was also independently raised by `security` (confidence 78) at `packages/next/src/client/route-params.ts:120`._\n\n**Code:**\n\n```typescript\nreturn canonicalizeURLPart(pathnameParts[partIndex])\n```\n"
+    },
+    {
+      "path": "test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx",
+      "line": 18,
+      "side": "RIGHT",
+      "body": "🟡 **Medium** (Confidence: 65/100) - checked toggle without controlled-onChange parity loses NormalizedPathname brand\n\n**Explanation:** The function signature of canonicalizeURLPart returns a plain string which loses the NormalizedPathname brand applied earlier in the file. Downstream callers that consume the result must re-cast or risk a silent type-narrowing escape — the same concern surfaces in this LinkAccordion's controlled state where href is passed through without re-narrowing.\n\n_This finding was also independently raised by `typescript` (confidence 65) at `packages/next/src/client/route-params.ts:55`._\n\n**Code:**\n\n```tsx\n\u003cinput type=\"checkbox\" checked={isVisible} onChange={() =\u003e setIsVisible(!isVisible)} /\u003e\n```\n"
+    }
+  ]
+}

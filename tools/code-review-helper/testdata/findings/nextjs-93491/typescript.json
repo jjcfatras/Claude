@@ -1,0 +1,21 @@
+{
+  "specialist": "typescript",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "ts-1",
+      "category": "typescript",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 55,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "return type loses NormalizedPathname brand",
+      "explanation": "The function signature of canonicalizeURLPart returns a plain string which loses the NormalizedPathname brand applied earlier in the file. Downstream callers that consume the result must re-cast or risk a silent type-narrowing escape.",
+      "code": "function canonicalizeURLPart(part: string): string {",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    }
+  ]
+}

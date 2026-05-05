@@ -1,0 +1,21 @@
+{
+  "specialist": "perf",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 175,
+      "startLine": null,
+      "confidence": 55,
+      "severity": "Minor",
+      "rationale": "extra branch on the hot path",
+      "explanation": "batchStateCompatible runs once per pod scheduling cycle. The added `!b.genericWorkloadEnabled` short-circuit adds a predictable branch but still costs a load + compare on every invocation, including when GenericWorkload is disabled. Negligible at small scale, may add up at high pod throughput.",
+      "code": "if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    }
+  ]
+}

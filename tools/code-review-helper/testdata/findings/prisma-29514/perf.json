@@ -1,0 +1,21 @@
+{
+  "specialist": "perf",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "pnpm-lock.yaml",
+      "line": 1000,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Minor",
+      "rationale": "uuid major bump increases bundle size",
+      "explanation": "uuid 14.0.0 ships an additional crypto-backed v7 implementation; the import surface in client-engine-runtime should be checked to confirm tree-shaking still drops the unused versions.",
+      "code": "    version: 14.0.0",
+      "suggested_fix": null,
+      "language": "yaml",
+      "verifications": []
+    }
+  ]
+}
