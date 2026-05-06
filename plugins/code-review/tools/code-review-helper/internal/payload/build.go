@@ -76,19 +76,19 @@ func buildReview(in BuildInput, event string) Review {
 		}),
 		Comments: make([]Comment, 0, len(in.InlineEligible)),
 	}
-	for _, f := range in.InlineEligible {
-		c := Comment{
-			Path: f.File,
-			Line: f.Line,
+	for _, finding := range in.InlineEligible {
+		comment := Comment{
+			Path: finding.File,
+			Line: finding.Line,
 			Side: "RIGHT",
-			Body: render.Issue(f, render.IssueOptions{}),
+			Body: render.Issue(finding, render.IssueOptions{}),
 		}
-		if f.StartLine != nil && *f.StartLine != f.Line {
-			start := *f.StartLine
-			c.StartLine = &start
-			c.StartSide = "RIGHT"
+		if finding.StartLine != nil && *finding.StartLine != finding.Line {
+			start := *finding.StartLine
+			comment.StartLine = &start
+			comment.StartSide = "RIGHT"
 		}
-		rev.Comments = append(rev.Comments, c)
+		rev.Comments = append(rev.Comments, comment)
 	}
 	return rev
 }
@@ -116,8 +116,8 @@ func Fallback(in BuildInput, apiErr string) string {
 		b.WriteString("No issues found.\n\n")
 	} else {
 		b.WriteString("Inline comment posting failed. All issues listed below.\n\n")
-		for _, f := range all {
-			b.WriteString(render.Issue(f, render.IssueOptions{IncludePath: true}))
+		for _, finding := range all {
+			b.WriteString(render.Issue(finding, render.IssueOptions{IncludePath: true}))
 			b.WriteString("\n")
 		}
 	}

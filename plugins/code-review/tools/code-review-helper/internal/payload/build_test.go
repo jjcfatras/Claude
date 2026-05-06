@@ -33,25 +33,25 @@ func TestBuild_SingleLine(t *testing.T) {
 	if len(rev.Comments) != 1 {
 		t.Fatalf("want 1 comment, got %d", len(rev.Comments))
 	}
-	c := rev.Comments[0]
-	if c.Path != "src/auth/handler.ts" || c.Line != 42 || c.Side != "RIGHT" {
-		t.Errorf("comment fields drift: %+v", c)
+	comment := rev.Comments[0]
+	if comment.Path != "src/auth/handler.ts" || comment.Line != 42 || comment.Side != "RIGHT" {
+		t.Errorf("comment fields drift: %+v", comment)
 	}
-	if c.StartLine != nil {
+	if comment.StartLine != nil {
 		t.Errorf("StartLine should be nil for single-line comment")
 	}
-	if !strings.Contains(c.Body, "🔴 **Critical**") {
-		t.Errorf("comment body missing severity line: %s", c.Body)
+	if !strings.Contains(comment.Body, "🔴 **Critical**") {
+		t.Errorf("comment body missing severity line: %s", comment.Body)
 	}
 }
 
 func TestBuild_MultiLine(t *testing.T) {
-	f := sampleFinding()
+	finding := sampleFinding()
 	start := 40
-	f.StartLine = &start
+	finding.StartLine = &start
 	rev := Build(BuildInput{
 		HeadSHA: "sha", Owner: "o", Repo: "r",
-		InlineEligible: []findings.Finding{f},
+		InlineEligible: []findings.Finding{finding},
 	})
 	if rev.Comments[0].StartLine == nil || *rev.Comments[0].StartLine != 40 {
 		t.Errorf("multi-line: StartLine should be 40")
@@ -77,12 +77,12 @@ func TestMarshal_RoundTrip(t *testing.T) {
 		Owner:   "o", Repo: "r",
 		InlineEligible: []findings.Finding{sampleFinding()},
 	})
-	b, err := MarshalJSON(rev)
+	data, err := MarshalJSON(rev)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	var got Review
-	if err := json.Unmarshal(b, &got); err != nil {
+	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if got.CommitID != rev.CommitID || got.Event != rev.Event {
@@ -90,8 +90,8 @@ func TestMarshal_RoundTrip(t *testing.T) {
 	}
 	// `start_line` must be omitted (omitempty) for single-line — verify the JSON
 	// shape directly.
-	if strings.Contains(string(b), `"start_line"`) {
-		t.Errorf("single-line comment should not emit start_line, got:\n%s", b)
+	if strings.Contains(string(data), `"start_line"`) {
+		t.Errorf("single-line comment should not emit start_line, got:\n%s", data)
 	}
 }
 
@@ -101,11 +101,11 @@ func TestFallback_IncludesAllIssues(t *testing.T) {
 		InlineEligible: []findings.Finding{sampleFinding()},
 		SummaryOnly: []findings.Finding{
 			func() findings.Finding {
-				f := sampleFinding()
-				f.ID = "f-2"
-				f.File = "out.ts"
-				f.Line = 1
-				return f
+				finding := sampleFinding()
+				finding.ID = "f-2"
+				finding.File = "out.ts"
+				finding.Line = 1
+				return finding
 			}(),
 		},
 		Specialists: []string{"security"},
@@ -156,21 +156,21 @@ func TestBuildPending_OmitsEvent(t *testing.T) {
 		t.Errorf("Comments length drift: %d vs %d", len(rev.Comments), len(full.Comments))
 	}
 
-	b, err := MarshalJSON(rev)
+	data, err := MarshalJSON(rev)
 	if err != nil {
 		t.Fatalf("marshal pending: %v", err)
 	}
-	if strings.Contains(string(b), `"event"`) {
-		t.Errorf("pending payload must not include the \"event\" key, got:\n%s", b)
+	if strings.Contains(string(data), `"event"`) {
+		t.Errorf("pending payload must not include the \"event\" key, got:\n%s", data)
 	}
 }
 
 func TestBodyOnly_MarshalShape(t *testing.T) {
-	b, err := json.MarshalIndent(BodyOnly{Body: "## Hello\n"}, "", "  ")
+	data, err := json.MarshalIndent(BodyOnly{Body: "## Hello\n"}, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got := string(b)
+	got := string(data)
 	if !strings.Contains(got, `"body"`) {
 		t.Errorf("BodyOnly must emit a body key, got:\n%s", got)
 	}

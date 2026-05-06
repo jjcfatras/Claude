@@ -39,27 +39,27 @@ func (r Run) MarshalJSON() ([]byte, error) {
 	return []byte("[" + strconv.Itoa(r.Start) + "," + strconv.Itoa(r.End) + "]"), nil
 }
 
-func (r *Run) UnmarshalJSON(b []byte) error {
-	s := strings.Trim(string(b), "[] ")
-	parts := strings.Split(s, ",")
+func (r *Run) UnmarshalJSON(data []byte) error {
+	text := strings.Trim(string(data), "[] ")
+	parts := strings.Split(text, ",")
 	if len(parts) != 2 {
-		return strconvErr(s)
+		return strconvErr(text)
 	}
-	a, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 	if err != nil {
 		return err
 	}
-	c, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	end, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil {
 		return err
 	}
-	r.Start = a
-	r.End = c
+	r.Start = start
+	r.End = end
 	return nil
 }
 
-func strconvErr(s string) error {
-	return &strconv.NumError{Func: "Atoi", Num: s, Err: strconv.ErrSyntax}
+func strconvErr(text string) error {
+	return &strconv.NumError{Func: "Atoi", Num: text, Err: strconv.ErrSyntax}
 }
 
 var (
@@ -68,12 +68,12 @@ var (
 )
 
 // Parse reads a unified diff and produces ChangedFiles + ValidLines + AddedLines.
-func Parse(r io.Reader) (*Parsed, error) {
-	p := &Parsed{
+func Parse(reader io.Reader) (*Parsed, error) {
+	parsed := &Parsed{
 		ValidLines: make(map[string][]Run),
 		AddedLines: make(map[string]map[int]bool),
 	}
-	scanner := bufio.NewScanner(r)
+	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 
 	var currentPath string
@@ -85,7 +85,7 @@ func Parse(r io.Reader) (*Parsed, error) {
 			return
 		}
 		seen[path] = true
-		p.ChangedFiles = append(p.ChangedFiles, path)
+		parsed.ChangedFiles = append(parsed.ChangedFiles, path)
 	}
 
 	for scanner.Scan() {
@@ -107,10 +107,10 @@ func Parse(r io.Reader) (*Parsed, error) {
 				continue
 			case '+':
 				if !strings.HasPrefix(line, "+++") {
-					if p.AddedLines[currentPath] == nil {
-						p.AddedLines[currentPath] = make(map[int]bool)
+					if parsed.AddedLines[currentPath] == nil {
+						parsed.AddedLines[currentPath] = make(map[int]bool)
 					}
-					p.AddedLines[currentPath][nextNewLine] = true
+					parsed.AddedLines[currentPath][nextNewLine] = true
 					nextNewLine++
 					continue
 				}
@@ -131,8 +131,8 @@ func Parse(r io.Reader) (*Parsed, error) {
 
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
-			if m := diffGitRE.FindStringSubmatch(line); m != nil {
-				currentPath = m[2]
+			if match := diffGitRE.FindStringSubmatch(line); match != nil {
+				currentPath = match[2]
 				addFile(currentPath)
 			}
 			inHunkBody = false
@@ -140,7 +140,7 @@ func Parse(r io.Reader) (*Parsed, error) {
 			newPath := strings.TrimPrefix(line, "rename to ")
 			if newPath != currentPath {
 				if seen[currentPath] {
-					p.ChangedFiles = removeStr(p.ChangedFiles, currentPath)
+					parsed.ChangedFiles = removeStr(parsed.ChangedFiles, currentPath)
 					delete(seen, currentPath)
 				}
 				currentPath = newPath
@@ -154,20 +154,20 @@ func Parse(r io.Reader) (*Parsed, error) {
 			}
 		case strings.HasPrefix(line, "+++ /dev/null"):
 		default:
-			if m := hunkRE.FindStringSubmatch(line); m != nil {
+			if match := hunkRE.FindStringSubmatch(line); match != nil {
 				if currentPath == "" {
 					continue
 				}
-				newStart, _ := strconv.Atoi(m[1])
+				newStart, _ := strconv.Atoi(match[1])
 				newCount := 1
-				if m[2] != "" {
-					newCount, _ = strconv.Atoi(m[2])
+				if match[2] != "" {
+					newCount, _ = strconv.Atoi(match[2])
 				}
 				if newCount == 0 {
 					inHunkBody = false
 					continue
 				}
-				p.ValidLines[currentPath] = append(p.ValidLines[currentPath],
+				parsed.ValidLines[currentPath] = append(parsed.ValidLines[currentPath],
 					Run{Start: newStart, End: newStart + newCount - 1})
 				nextNewLine = newStart
 				inHunkBody = true
@@ -178,21 +178,21 @@ func Parse(r io.Reader) (*Parsed, error) {
 		return nil, err
 	}
 
-	for path, runs := range p.ValidLines {
+	for path, runs := range parsed.ValidLines {
 		if len(runs) == 0 {
-			delete(p.ValidLines, path)
+			delete(parsed.ValidLines, path)
 		}
 	}
 
-	sort.Strings(p.ChangedFiles)
-	return p, nil
+	sort.Strings(parsed.ChangedFiles)
+	return parsed, nil
 }
 
-func removeStr(s []string, target string) []string {
-	out := s[:0]
-	for _, v := range s {
-		if v != target {
-			out = append(out, v)
+func removeStr(slice []string, target string) []string {
+	out := slice[:0]
+	for _, item := range slice {
+		if item != target {
+			out = append(out, item)
 		}
 	}
 	return out
@@ -206,8 +206,8 @@ func (p *Parsed) IsAddedLine(path string, line int) bool {
 
 // InRange reports whether `line` falls within any run for `path`.
 func (p *Parsed) InRange(path string, line int) bool {
-	for _, r := range p.ValidLines[path] {
-		if line >= r.Start && line <= r.End {
+	for _, run := range p.ValidLines[path] {
+		if line >= run.Start && line <= run.End {
 			return true
 		}
 	}
@@ -223,13 +223,13 @@ func (p *Parsed) NearestValid(path string, line int) (int, bool) {
 	}
 	best := -1
 	bestDist := -1
-	for _, r := range runs {
+	for _, run := range runs {
 		var candidate int
 		switch {
-		case line < r.Start:
-			candidate = r.Start
-		case line > r.End:
-			candidate = r.End
+		case line < run.Start:
+			candidate = run.Start
+		case line > run.End:
+			candidate = run.End
 		default:
 			return line, true
 		}
@@ -242,9 +242,9 @@ func (p *Parsed) NearestValid(path string, line int) (int, bool) {
 	return best, true
 }
 
-func abs(x int) int {
-	if x < 0 {
-		return -x
+func abs(value int) int {
+	if value < 0 {
+		return -value
 	}
-	return x
+	return value
 }

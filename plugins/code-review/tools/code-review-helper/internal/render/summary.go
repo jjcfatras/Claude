@@ -48,20 +48,20 @@ func summaryWithInline(in SummaryInput) string {
 	b.WriteString("### Code review\n\n")
 	b.WriteString("| # | Severity | Confidence | File |\n")
 	b.WriteString("| - | -------- | ---------- | ---- |\n")
-	for i, f := range in.InlineEligible {
+	for i, finding := range in.InlineEligible {
 		fmt.Fprintf(&b, "| %d | %s %s | %d | %s |\n",
 			i+1,
-			f.Severity.Emoji(), f.Severity,
-			f.Confidence,
-			fileLink(in, f),
+			finding.Severity.Emoji(), finding.Severity,
+			finding.Confidence,
+			fileLink(in, finding),
 		)
 	}
 	b.WriteString("\nSee inline comments for full details, code examples, and suggested fixes.\n")
 
 	if len(in.SummaryOnly) > 0 {
 		b.WriteString("\n#### Additional issues (could not attach inline)\n\n")
-		for _, f := range in.SummaryOnly {
-			b.WriteString(Issue(f, IssueOptions{IncludePath: true}))
+		for _, finding := range in.SummaryOnly {
+			b.WriteString(Issue(finding, IssueOptions{IncludePath: true}))
 			b.WriteString("\n")
 		}
 	}
@@ -75,8 +75,8 @@ func summaryOnlyAll(in SummaryInput) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### Code review\n\nFound %d issue(s). These could not be placed as inline comments because their line numbers fall outside the diff's visible range.\n\n",
 		len(in.SummaryOnly))
-	for _, f := range in.SummaryOnly {
-		b.WriteString(Issue(f, IssueOptions{IncludePath: true}))
+	for _, finding := range in.SummaryOnly {
+		b.WriteString(Issue(finding, IssueOptions{IncludePath: true}))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -84,12 +84,12 @@ func summaryOnlyAll(in SummaryInput) string {
 	return b.String()
 }
 
-func fileLink(in SummaryInput, f findings.Finding) string {
-	base := path.Base(f.File)
-	if f.StartLine != nil && *f.StartLine != f.Line {
+func fileLink(in SummaryInput, finding findings.Finding) string {
+	base := path.Base(finding.File)
+	if finding.StartLine != nil && *finding.StartLine != finding.Line {
 		return fmt.Sprintf("[%s:%d-%d](https://github.com/%s/%s/blob/%s/%s#L%d-L%d)",
-			base, *f.StartLine, f.Line, in.Owner, in.Repo, in.HeadSHA, f.File, *f.StartLine, f.Line)
+			base, *finding.StartLine, finding.Line, in.Owner, in.Repo, in.HeadSHA, finding.File, *finding.StartLine, finding.Line)
 	}
 	return fmt.Sprintf("[%s:%d](https://github.com/%s/%s/blob/%s/%s#L%d)",
-		base, f.Line, in.Owner, in.Repo, in.HeadSHA, f.File, f.Line)
+		base, finding.Line, in.Owner, in.Repo, in.HeadSHA, finding.File, finding.Line)
 }

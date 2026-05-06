@@ -22,9 +22,9 @@ func mkFinding(id, specialist, category, file string, line, conf int, sev findin
 }
 
 func TestPositional_DropsCloseLine(t *testing.T) {
-	a := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "issue A", "code")
-	b := mkFinding("b", "quality", "security", "src/x.ts", 12, 60, findings.SeverityCritical, "issue B", "code")
-	out := Positional([]findings.Finding{a, b})
+	findingA := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "issue A", "code")
+	findingB := mkFinding("b", "quality", "security", "src/x.ts", 12, 60, findings.SeverityCritical, "issue B", "code")
+	out := Positional([]findings.Finding{findingA, findingB})
 	if len(out) != 1 {
 		t.Fatalf("want 1 finding, got %d", len(out))
 	}
@@ -40,19 +40,19 @@ func TestPositional_DropsCloseLine(t *testing.T) {
 }
 
 func TestPositional_KeepsFarLines(t *testing.T) {
-	a := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "A", "")
-	b := mkFinding("b", "quality", "quality", "src/x.ts", 14, 60, findings.SeverityMedium, "B", "")
+	findingA := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "A", "")
+	findingB := mkFinding("b", "quality", "quality", "src/x.ts", 14, 60, findings.SeverityMedium, "B", "")
 	// 14-10 = 4 > 3 → no merge
-	out := Positional([]findings.Finding{a, b})
+	out := Positional([]findings.Finding{findingA, findingB})
 	if len(out) != 2 {
 		t.Fatalf("want 2, got %d", len(out))
 	}
 }
 
 func TestPositional_DomainTieBreak(t *testing.T) {
-	a := mkFinding("a", "quality", "security", "src/x.ts", 10, 80, findings.SeverityCritical, "A", "")
-	b := mkFinding("b", "security", "security", "src/x.ts", 11, 80, findings.SeverityCritical, "B", "")
-	out := Positional([]findings.Finding{a, b})
+	findingA := mkFinding("a", "quality", "security", "src/x.ts", 10, 80, findings.SeverityCritical, "A", "")
+	findingB := mkFinding("b", "security", "security", "src/x.ts", 11, 80, findings.SeverityCritical, "B", "")
+	out := Positional([]findings.Finding{findingA, findingB})
 	if len(out) != 1 {
 		t.Fatalf("want 1, got %d", len(out))
 	}
@@ -62,21 +62,21 @@ func TestPositional_DomainTieBreak(t *testing.T) {
 }
 
 func TestPositional_DifferentFilesNotMerged(t *testing.T) {
-	a := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "A", "")
-	b := mkFinding("b", "security", "security", "src/y.ts", 10, 75, findings.SeverityCritical, "B", "")
-	out := Positional([]findings.Finding{a, b})
+	findingA := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "A", "")
+	findingB := mkFinding("b", "security", "security", "src/y.ts", 10, 75, findings.SeverityCritical, "B", "")
+	out := Positional([]findings.Finding{findingA, findingB})
 	if len(out) != 2 {
 		t.Fatalf("want 2 (different files), got %d", len(out))
 	}
 }
 
 func TestSemantic_FileInExplanation(t *testing.T) {
-	a := mkFinding("a", "quality", "quality", "src/generators/ts.ts", 10, 70, findings.SeverityMedium,
+	findingA := mkFinding("a", "quality", "quality", "src/generators/ts.ts", 10, 70, findings.SeverityMedium,
 		"TS generator updated. The JS counterpart at src/generators/js.ts should mirror this.", "")
-	b := mkFinding("b", "claude-md", "claude-md", "src/generators/js.ts", 5, 65, findings.SeverityMedium,
+	findingB := mkFinding("b", "claude-md", "claude-md", "src/generators/js.ts", 5, 65, findings.SeverityMedium,
 		"CLAUDE.md says update both generators in lockstep.", "")
-	inDiff := func(p string) bool { return p == "src/generators/ts.ts" }
-	out := Semantic([]findings.Finding{a, b}, inDiff)
+	inDiff := func(path string) bool { return path == "src/generators/ts.ts" }
+	out := Semantic([]findings.Finding{findingA, findingB}, inDiff)
 	if len(out) != 1 {
 		t.Fatalf("want 1, got %d", len(out))
 	}
@@ -86,11 +86,11 @@ func TestSemantic_FileInExplanation(t *testing.T) {
 }
 
 func TestSemantic_FileMatchSkippedBelowMedium(t *testing.T) {
-	a := mkFinding("a", "quality", "quality", "x.ts", 10, 50, findings.SeverityMinor,
+	findingA := mkFinding("a", "quality", "quality", "x.ts", 10, 50, findings.SeverityMinor,
 		"the file y.ts is mentioned here", "")
-	b := mkFinding("b", "claude-md", "claude-md", "y.ts", 5, 50, findings.SeverityMinor,
+	findingB := mkFinding("b", "claude-md", "claude-md", "y.ts", 5, 50, findings.SeverityMinor,
 		"unrelated", "")
-	out := Semantic([]findings.Finding{a, b}, func(string) bool { return true })
+	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return true })
 	if len(out) != 2 {
 		t.Errorf("Minor severity should skip rule 1, got %d", len(out))
 	}
@@ -98,11 +98,11 @@ func TestSemantic_FileMatchSkippedBelowMedium(t *testing.T) {
 
 func TestSemantic_RelatedCategorySubstring(t *testing.T) {
 	shared := strings.Repeat("X", 60) + " — same defect text appears here"
-	a := mkFinding("a", "security", "security", "x.ts", 10, 70, findings.SeverityMedium,
+	findingA := mkFinding("a", "security", "security", "x.ts", 10, 70, findings.SeverityMedium,
 		"prefix "+shared+" suffix A", "")
-	b := mkFinding("b", "errors", "errors", "y.ts", 20, 65, findings.SeverityMedium,
+	findingB := mkFinding("b", "errors", "errors", "y.ts", 20, 65, findings.SeverityMedium,
 		"prefix B "+shared+" end", "")
-	out := Semantic([]findings.Finding{a, b}, func(string) bool { return false })
+	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return false })
 	if len(out) != 1 {
 		t.Fatalf("want 1 (related category + substring match), got %d", len(out))
 	}
@@ -110,11 +110,11 @@ func TestSemantic_RelatedCategorySubstring(t *testing.T) {
 
 func TestSemantic_UnrelatedCategorySubstring(t *testing.T) {
 	shared := strings.Repeat("X", 80)
-	a := mkFinding("a", "security", "security", "x.ts", 10, 70, findings.SeverityMedium,
+	findingA := mkFinding("a", "security", "security", "x.ts", 10, 70, findings.SeverityMedium,
 		shared, "")
-	b := mkFinding("b", "perf", "perf", "y.ts", 20, 65, findings.SeverityMedium,
+	findingB := mkFinding("b", "perf", "perf", "y.ts", 20, 65, findings.SeverityMedium,
 		shared, "")
-	out := Semantic([]findings.Finding{a, b}, func(string) bool { return false })
+	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return false })
 	if len(out) != 2 {
 		t.Errorf("unrelated categories should not merge: got %d", len(out))
 	}
@@ -180,25 +180,25 @@ func TestSemantic_NoDuplicateEmit(t *testing.T) {
 	// Three findings on the same file. A is the eventual loser of a Rule 1 match
 	// against C; B exists to populate A's CrossRefs (legitimately, via positional)
 	// before semantic runs.
-	a := mkFinding("a", "errors", "errors", "src/x.ts", 100, 70, findings.SeverityMedium,
+	findingA := mkFinding("a", "errors", "errors", "src/x.ts", 100, 70, findings.SeverityMedium,
 		"issue at hot path", "")
-	b := mkFinding("b", "perf", "perf", "src/x.ts", 102, 60, findings.SeverityMinor,
+	findingB := mkFinding("b", "perf", "perf", "src/x.ts", 102, 60, findings.SeverityMinor,
 		"adjacent perf nit", "")
-	c := mkFinding("c", "quality", "quality", "src/x.ts", 200, 70, findings.SeverityMedium,
-		// c's explanation mentions a's file → triggers semantic Rule 1.
+	findingC := mkFinding("c", "quality", "quality", "src/x.ts", 200, 70, findings.SeverityMedium,
+		// findingC's explanation mentions findingA's file → triggers semantic Rule 1.
 		"the function in src/x.ts duplicates work", "")
 
-	// Run positional first (a + b cluster, kept=a with cross-ref to b).
-	step1 := Positional([]findings.Finding{a, b, c})
+	// Run positional first (findingA + findingB cluster, kept=findingA with cross-ref to findingB).
+	step1 := Positional([]findings.Finding{findingA, findingB, findingC})
 	out := Semantic(step1, func(_ string) bool { return true })
 
 	seen := make(map[string]int)
-	for _, f := range out {
-		seen[f.ID]++
+	for _, finding := range out {
+		seen[finding.ID]++
 	}
-	for id, n := range seen {
-		if n > 1 {
-			t.Errorf("finding %s emitted %d times; expected at most 1", id, n)
+	for id, count := range seen {
+		if count > 1 {
+			t.Errorf("finding %s emitted %d times; expected at most 1", id, count)
 		}
 	}
 }
@@ -218,14 +218,14 @@ func TestPositionalThenSemantic_NoFilePathCascade(t *testing.T) {
 		"out-of-diff coverage gap on test side", "")
 
 	step1 := Positional([]findings.Finding{errFinding, perfFinding, qualFinding})
-	out := Semantic(step1, func(p string) bool { return p == "pkg/batch.go" })
+	out := Semantic(step1, func(path string) bool { return path == "pkg/batch.go" })
 
 	if len(out) != 2 {
 		t.Fatalf("expected 2 survivors (err-after-positional + qual); got %d: %+v", len(out), out)
 	}
 	ids := map[string]bool{}
-	for _, f := range out {
-		ids[f.ID] = true
+	for _, finding := range out {
+		ids[finding.ID] = true
 	}
 	if !ids["err"] || !ids["qual"] {
 		t.Errorf("expected both err and qual to survive; got: %v", ids)
@@ -234,18 +234,18 @@ func TestPositionalThenSemantic_NoFilePathCascade(t *testing.T) {
 
 func TestLongestCommonSubstringLen(t *testing.T) {
 	cases := []struct {
-		a, b string
-		want int
+		left, right string
+		want        int
 	}{
 		{"", "", 0},
 		{"abc", "xyz", 0},
 		{"abcdef", "zzcdezz", 3},
 		{strings.Repeat("a", 100), "bbb" + strings.Repeat("a", 60) + "ccc", 60},
 	}
-	for _, c := range cases {
-		got := longestCommonSubstringLen(c.a, c.b)
-		if got != c.want {
-			t.Errorf("LCS(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+	for _, tc := range cases {
+		got := longestCommonSubstringLen(tc.left, tc.right)
+		if got != tc.want {
+			t.Errorf("LCS(%q, %q) = %d, want %d", tc.left, tc.right, got, tc.want)
 		}
 	}
 }

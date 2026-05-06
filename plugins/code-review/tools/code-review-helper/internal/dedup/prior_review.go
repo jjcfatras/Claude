@@ -40,33 +40,33 @@ type addedLineLookup func(path string, line int) bool
 // the prior issue, which the skill uses to render the "Skipped N issues"
 // summary.
 func PriorReview(in []findings.Finding, prior PriorIssuesFile, isAdded addedLineLookup) (kept []findings.Finding, dropped []findings.Finding) {
-	for _, f := range in {
-		match, ok := matchPrior(f, prior.Issues)
+	for _, finding := range in {
+		match, ok := matchPrior(finding, prior.Issues)
 		if !ok {
-			kept = append(kept, f)
+			kept = append(kept, finding)
 			continue
 		}
-		if isAdded(f.File, f.Line) {
-			f.Explanation += priorReviewKeptNote
-			kept = append(kept, f)
+		if isAdded(finding.File, finding.Line) {
+			finding.Explanation += priorReviewKeptNote
+			kept = append(kept, finding)
 			continue
 		}
 		_ = match
-		dropped = append(dropped, f)
+		dropped = append(dropped, finding)
 	}
 	return kept, dropped
 }
 
-func matchPrior(f findings.Finding, prior []PriorIssue) (PriorIssue, bool) {
-	for _, p := range prior {
-		if p.Path != f.File {
+func matchPrior(finding findings.Finding, prior []PriorIssue) (PriorIssue, bool) {
+	for _, priorIssue := range prior {
+		if priorIssue.Path != finding.File {
 			continue
 		}
-		if abs(p.Line-f.Line) <= priorLineWindow {
-			return p, true
+		if abs(priorIssue.Line-finding.Line) <= priorLineWindow {
+			return priorIssue, true
 		}
-		if longestCommonSubstringLen(p.Snippet, f.Code) >= priorSnippetOverlapN {
-			return p, true
+		if longestCommonSubstringLen(priorIssue.Snippet, finding.Code) >= priorSnippetOverlapN {
+			return priorIssue, true
 		}
 	}
 	return PriorIssue{}, false

@@ -47,12 +47,12 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		role := strings.TrimSuffix(e.Name(), ".json")
-		path := filepath.Join(dir, e.Name())
+		role := strings.TrimSuffix(entry.Name(), ".json")
+		path := filepath.Join(dir, entry.Name())
 
 		rf, err := loadFile(path)
 		if err != nil {
@@ -90,58 +90,58 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 }
 
 func loadFile(path string) (*RoleFile, error) {
-	f, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	b, err := io.ReadAll(f)
+	defer file.Close()
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}
 	var rf RoleFile
-	if err := json.Unmarshal(b, &rf); err != nil {
+	if err := json.Unmarshal(data, &rf); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &rf, nil
 }
 
-func validateFinding(role string, f *Finding) error {
-	if f.ID == "" {
+func validateFinding(role string, finding *Finding) error {
+	if finding.ID == "" {
 		return fmt.Errorf("specialist %s: finding missing id", role)
 	}
-	if f.File == "" {
-		return fmt.Errorf("specialist %s finding %s: empty file", role, f.ID)
+	if finding.File == "" {
+		return fmt.Errorf("specialist %s finding %s: empty file", role, finding.ID)
 	}
-	if f.Line <= 0 {
-		return fmt.Errorf("specialist %s finding %s: non-positive line %d", role, f.ID, f.Line)
+	if finding.Line <= 0 {
+		return fmt.Errorf("specialist %s finding %s: non-positive line %d", role, finding.ID, finding.Line)
 	}
-	if f.StartLine != nil && (*f.StartLine <= 0 || *f.StartLine > f.Line) {
-		return fmt.Errorf("specialist %s finding %s: invalid startLine %d (line=%d)", role, f.ID, *f.StartLine, f.Line)
+	if finding.StartLine != nil && (*finding.StartLine <= 0 || *finding.StartLine > finding.Line) {
+		return fmt.Errorf("specialist %s finding %s: invalid startLine %d (line=%d)", role, finding.ID, *finding.StartLine, finding.Line)
 	}
-	if f.Confidence < 0 || f.Confidence > 100 {
-		return fmt.Errorf("specialist %s finding %s: confidence %d out of range", role, f.ID, f.Confidence)
+	if finding.Confidence < 0 || finding.Confidence > 100 {
+		return fmt.Errorf("specialist %s finding %s: confidence %d out of range", role, finding.ID, finding.Confidence)
 	}
-	switch f.Severity {
+	switch finding.Severity {
 	case SeverityCritical, SeverityMedium, SeverityMinor:
 	default:
-		return fmt.Errorf("specialist %s finding %s: unknown severity %q", role, f.ID, f.Severity)
+		return fmt.Errorf("specialist %s finding %s: unknown severity %q", role, finding.ID, finding.Severity)
 	}
 	// Content-field non-emptiness mirrors the rubric's required-fields list
 	// (references/code-review-rubrics.md). Empty values here render as visible
 	// blank placeholders in the review body, so reject them at load time and
 	// surface the role+id via LoadResult.InvalidFindings (skill step 4).
-	if strings.TrimSpace(f.Rationale) == "" {
-		return fmt.Errorf("specialist %s finding %s: empty rationale", role, f.ID)
+	if strings.TrimSpace(finding.Rationale) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty rationale", role, finding.ID)
 	}
-	if strings.TrimSpace(f.Explanation) == "" {
-		return fmt.Errorf("specialist %s finding %s: empty explanation", role, f.ID)
+	if strings.TrimSpace(finding.Explanation) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty explanation", role, finding.ID)
 	}
-	if strings.TrimSpace(f.Code) == "" {
-		return fmt.Errorf("specialist %s finding %s: empty code", role, f.ID)
+	if strings.TrimSpace(finding.Code) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty code", role, finding.ID)
 	}
-	if strings.TrimSpace(f.Language) == "" {
-		return fmt.Errorf("specialist %s finding %s: empty language", role, f.ID)
+	if strings.TrimSpace(finding.Language) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty language", role, finding.ID)
 	}
 	return nil
 }

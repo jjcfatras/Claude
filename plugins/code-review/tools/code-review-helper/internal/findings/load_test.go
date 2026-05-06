@@ -10,11 +10,11 @@ import (
 
 func writeJSON(t *testing.T, dir, role string, payload any) {
 	t.Helper()
-	b, err := json.Marshal(payload)
+	data, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal %s: %v", role, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, role+".json"), b, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, role+".json"), data, 0o644); err != nil {
 		t.Fatalf("write %s: %v", role, err)
 	}
 }
@@ -212,7 +212,7 @@ func TestLoadDir_RejectsEmptyContentFields(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			f := Finding{
+			finding := Finding{
 				ID:          "f-1",
 				Category:    "security",
 				File:        "src/a.ts",
@@ -224,11 +224,11 @@ func TestLoadDir_RejectsEmptyContentFields(t *testing.T) {
 				Code:        "z",
 				Language:    "ts",
 			}
-			tc.mutate(&f)
+			tc.mutate(&finding)
 			writeJSON(t, dir, "security", RoleFile{
 				Specialist: "security",
 				ScanStatus: ScanComplete,
-				Findings:   []Finding{f},
+				Findings:   []Finding{finding},
 			})
 			res, err := LoadDir(dir, nil)
 			if err != nil {
@@ -288,14 +288,14 @@ func TestLoadDir_RoundTripRubricExample(t *testing.T) {
 	if len(rf.Findings) != 1 {
 		t.Fatalf("want 1 finding, got %d", len(rf.Findings))
 	}
-	f := rf.Findings[0]
-	if f.Confidence != 75 || f.Severity != SeverityCritical {
-		t.Fatalf("confidence/severity drift: %d %s", f.Confidence, f.Severity)
+	finding := rf.Findings[0]
+	if finding.Confidence != 75 || finding.Severity != SeverityCritical {
+		t.Fatalf("confidence/severity drift: %d %s", finding.Confidence, finding.Severity)
 	}
-	if f.StartLine != nil {
+	if finding.StartLine != nil {
 		t.Fatalf("StartLine should decode to nil for JSON null")
 	}
-	if len(f.Verifications) != 1 || f.Verifications[0].Verdict != VerdictConfirmed {
-		t.Fatalf("verifications drift: %+v", f.Verifications)
+	if len(finding.Verifications) != 1 || finding.Verifications[0].Verdict != VerdictConfirmed {
+		t.Fatalf("verifications drift: %+v", finding.Verifications)
 	}
 }

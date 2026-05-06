@@ -9,7 +9,7 @@ import (
 
 func sample(opts ...func(*findings.Finding)) findings.Finding {
 	fix := "const ok = isAuthorized(req);"
-	f := findings.Finding{
+	finding := findings.Finding{
 		ID:           "f-1",
 		Specialist:   "security",
 		Category:     "security",
@@ -23,10 +23,10 @@ func sample(opts ...func(*findings.Finding)) findings.Finding {
 		SuggestedFix: &fix,
 		Language:     "ts",
 	}
-	for _, o := range opts {
-		o(&f)
+	for _, applyOpt := range opts {
+		applyOpt(&finding)
 	}
-	return f
+	return finding
 }
 
 func TestIssue_FullFormat(t *testing.T) {
@@ -39,9 +39,9 @@ func TestIssue_FullFormat(t *testing.T) {
 		"**Suggested fix:**",
 		"```ts\nconst ok = isAuthorized(req);\n```",
 	}
-	for _, w := range want {
-		if !strings.Contains(out, w) {
-			t.Errorf("missing %q\n--- output ---\n%s", w, out)
+	for _, wantPart := range want {
+		if !strings.Contains(out, wantPart) {
+			t.Errorf("missing %q\n--- output ---\n%s", wantPart, out)
 		}
 	}
 	if strings.Contains(out, "**src/auth/handler.ts:") {
@@ -57,8 +57,8 @@ func TestIssue_WithPathPrefix(t *testing.T) {
 }
 
 func TestIssue_NoSuggestedFix(t *testing.T) {
-	f := sample(func(f *findings.Finding) { f.SuggestedFix = nil })
-	out := Issue(f, IssueOptions{})
+	finding := sample(func(finding *findings.Finding) { finding.SuggestedFix = nil })
+	out := Issue(finding, IssueOptions{})
 	if strings.Contains(out, "Suggested fix") {
 		t.Errorf("nil suggested_fix should suppress the section")
 	}
@@ -68,8 +68,8 @@ func TestIssue_EmptyCodeOmitsBlock(t *testing.T) {
 	// Defense-in-depth: validator already rejects empty code, but if a
 	// regression bypassed it, the renderer must not emit the visible empty
 	// fenced block observed in PR #1345.
-	f := sample(func(f *findings.Finding) { f.Code = "" })
-	out := Issue(f, IssueOptions{})
+	finding := sample(func(finding *findings.Finding) { finding.Code = "" })
+	out := Issue(finding, IssueOptions{})
 	if strings.Contains(out, "**Code:**") {
 		t.Errorf("empty Code should suppress the Code section, got:\n%s", out)
 	}
@@ -79,8 +79,8 @@ func TestIssue_EmptyCodeOmitsBlock(t *testing.T) {
 }
 
 func TestIssue_EmptyExplanationPlaceholder(t *testing.T) {
-	f := sample(func(f *findings.Finding) { f.Explanation = "" })
-	out := Issue(f, IssueOptions{})
+	finding := sample(func(finding *findings.Finding) { finding.Explanation = "" })
+	out := Issue(finding, IssueOptions{})
 	if !strings.Contains(out, "_(no explanation provided)_") {
 		t.Errorf("empty Explanation should produce the placeholder, got:\n%s", out)
 	}
@@ -90,22 +90,22 @@ func TestIssue_EmptyExplanationPlaceholder(t *testing.T) {
 }
 
 func TestIssue_EmptyRationaleAndExplanationFallback(t *testing.T) {
-	f := sample(func(f *findings.Finding) {
-		f.Rationale = ""
-		f.Explanation = ""
+	finding := sample(func(finding *findings.Finding) {
+		finding.Rationale = ""
+		finding.Explanation = ""
 	})
-	out := Issue(f, IssueOptions{})
+	out := Issue(finding, IssueOptions{})
 	if !strings.Contains(out, "(Confidence: 85/100) - (no description)") {
 		t.Errorf("brief should fall back to (no description), got:\n%s", out)
 	}
 }
 
 func TestIssue_RationaleFallbackToFirstSentenceOfExplanation(t *testing.T) {
-	f := sample(func(f *findings.Finding) {
-		f.Rationale = ""
-		f.Explanation = "First sentence here. Second sentence ignored."
+	finding := sample(func(finding *findings.Finding) {
+		finding.Rationale = ""
+		finding.Explanation = "First sentence here. Second sentence ignored."
 	})
-	out := Issue(f, IssueOptions{})
+	out := Issue(finding, IssueOptions{})
 	if !strings.Contains(out, "(Confidence: 85/100) - First sentence here") {
 		t.Errorf("brief should fall back to firstSentence(explanation), got:\n%s", out)
 	}
@@ -117,14 +117,14 @@ func TestIssue_DoesNotRenderCrossRefs(t *testing.T) {
 	// comments, summary section, fallback markdown) — the PR author should see
 	// only information about the finding itself. Regression for
 	// https://github.com/FS-Main/fairsquare/pull/1345#discussion_r3197489250.
-	f := sample(func(f *findings.Finding) {
-		f.CrossRefs = []findings.CrossRef{
+	finding := sample(func(finding *findings.Finding) {
+		finding.CrossRefs = []findings.CrossRef{
 			{Specialist: "quality", Confidence: 70, File: "src/auth/handler.ts", Line: 44},
 			{Specialist: "errors", Confidence: 65, File: "src/auth/other.ts", Line: 12},
 		}
 	})
 	for _, opt := range []IssueOptions{{}, {IncludePath: true}} {
-		out := Issue(f, opt)
+		out := Issue(finding, opt)
 		if strings.Contains(out, "independently raised") {
 			t.Errorf("opt=%+v: rendered output must not mention 'independently raised', got:\n%s", opt, out)
 		}
@@ -174,10 +174,10 @@ func TestSummary_HasInlineAndSummaryOnly(t *testing.T) {
 		Owner: "o", Repo: "r", HeadSHA: "deadbeef",
 		InlineEligible: []findings.Finding{sample()},
 		SummaryOnly: []findings.Finding{
-			sample(func(f *findings.Finding) {
-				f.ID = "f-2"
-				f.File = "out/of/diff.ts"
-				f.Line = 999
+			sample(func(finding *findings.Finding) {
+				finding.ID = "f-2"
+				finding.File = "out/of/diff.ts"
+				finding.Line = 999
 			}),
 		},
 	})
@@ -193,7 +193,7 @@ func TestSummary_OnlySummaryOnly(t *testing.T) {
 	out := Summary(SummaryInput{
 		Owner: "o", Repo: "r", HeadSHA: "deadbeef",
 		SummaryOnly: []findings.Finding{
-			sample(func(f *findings.Finding) { f.File = "out.ts"; f.Line = 1 }),
+			sample(func(finding *findings.Finding) { finding.File = "out.ts"; finding.Line = 1 }),
 		},
 	})
 	if !strings.Contains(out, "Found 1 issue(s)") {
@@ -206,11 +206,11 @@ func TestSummary_OnlySummaryOnly(t *testing.T) {
 
 func TestFileLink_MultiLine(t *testing.T) {
 	start := 40
-	f := sample(func(f *findings.Finding) {
-		f.StartLine = &start
-		f.Line = 45
+	finding := sample(func(finding *findings.Finding) {
+		finding.StartLine = &start
+		finding.Line = 45
 	})
-	out := fileLink(SummaryInput{Owner: "o", Repo: "r", HeadSHA: "sha"}, f)
+	out := fileLink(SummaryInput{Owner: "o", Repo: "r", HeadSHA: "sha"}, finding)
 	if !strings.Contains(out, "[handler.ts:40-45]") {
 		t.Errorf("multi-line link missing range: %s", out)
 	}

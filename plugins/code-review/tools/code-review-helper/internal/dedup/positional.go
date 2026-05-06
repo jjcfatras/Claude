@@ -25,8 +25,8 @@ func Positional(in []findings.Finding) []findings.Finding {
 	}
 
 	byFile := make(map[string][]findings.Finding)
-	for _, f := range in {
-		byFile[f.File] = append(byFile[f.File], f)
+	for _, finding := range in {
+		byFile[finding.File] = append(byFile[finding.File], finding)
 	}
 
 	var out []findings.Finding
@@ -37,12 +37,12 @@ func Positional(in []findings.Finding) []findings.Finding {
 		})
 
 		var clusters [][]findings.Finding
-		for _, f := range group {
+		for _, finding := range group {
 			placed := false
-			for ci := range clusters {
-				for _, member := range clusters[ci] {
-					if abs(member.Line-f.Line) <= 3 {
-						clusters[ci] = append(clusters[ci], f)
+			for clusterIdx := range clusters {
+				for _, member := range clusters[clusterIdx] {
+					if abs(member.Line-finding.Line) <= 3 {
+						clusters[clusterIdx] = append(clusters[clusterIdx], finding)
 						placed = true
 						break
 					}
@@ -52,7 +52,7 @@ func Positional(in []findings.Finding) []findings.Finding {
 				}
 			}
 			if !placed {
-				clusters = append(clusters, []findings.Finding{f})
+				clusters = append(clusters, []findings.Finding{finding})
 			}
 		}
 
@@ -111,9 +111,9 @@ func domainMatch(specialist, category string) bool {
 	return specialist == category
 }
 
-func abs(x int) int {
-	if x < 0 {
-		return -x
+func abs(value int) int {
+	if value < 0 {
+		return -value
 	}
-	return x
+	return value
 }

@@ -23,10 +23,10 @@ func TestPass(t *testing.T) {
 		{100, findings.SeverityMinor, true},
 		{0, findings.SeverityCritical, false},
 	}
-	for _, c := range cases {
-		got := Pass(c.conf, c.sev)
-		if got != c.want {
-			t.Errorf("Pass(%d, %s) = %v, want %v", c.conf, c.sev, got, c.want)
+	for _, tc := range cases {
+		got := Pass(tc.conf, tc.sev)
+		if got != tc.want {
+			t.Errorf("Pass(%d, %s) = %v, want %v", tc.conf, tc.sev, got, tc.want)
 		}
 	}
 }

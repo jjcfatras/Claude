@@ -25,52 +25,52 @@ type IssueOptions struct {
 // future regression that bypasses the validator degrades to readable output
 // instead of the visible empty-placeholder bug observed in
 // https://github.com/FS-Main/fairsquare/pull/1345#pullrequestreview-4232328571.
-func Issue(f findings.Finding, opt IssueOptions) string {
+func Issue(finding findings.Finding, opt IssueOptions) string {
 	var b strings.Builder
 
 	if opt.IncludePath {
-		fmt.Fprintf(&b, "**%s:%d**\n\n", f.File, f.Line)
+		fmt.Fprintf(&b, "**%s:%d**\n\n", finding.File, finding.Line)
 	}
 
-	brief := briefDescription(f)
+	brief := briefDescription(finding)
 	fmt.Fprintf(&b, "%s **%s** (Confidence: %d/100) - %s\n\n",
-		f.Severity.Emoji(), f.Severity, f.Confidence, brief)
+		finding.Severity.Emoji(), finding.Severity, finding.Confidence, brief)
 
-	if strings.TrimSpace(f.Explanation) == "" {
+	if strings.TrimSpace(finding.Explanation) == "" {
 		fmt.Fprint(&b, "**Explanation:** _(no explanation provided)_\n\n")
 	} else {
-		fmt.Fprintf(&b, "**Explanation:** %s\n\n", f.Explanation)
+		fmt.Fprintf(&b, "**Explanation:** %s\n\n", finding.Explanation)
 	}
 
-	if strings.TrimSpace(f.Code) != "" {
+	if strings.TrimSpace(finding.Code) != "" {
 		fmt.Fprint(&b, "**Code:**\n\n")
-		fmt.Fprintf(&b, "```%s\n%s\n```\n", f.Language, strings.TrimRight(f.Code, "\n"))
+		fmt.Fprintf(&b, "```%s\n%s\n```\n", finding.Language, strings.TrimRight(finding.Code, "\n"))
 	}
 
-	if f.SuggestedFix != nil && *f.SuggestedFix != "" {
+	if finding.SuggestedFix != nil && *finding.SuggestedFix != "" {
 		fmt.Fprint(&b, "\n**Suggested fix:**\n\n")
-		fmt.Fprintf(&b, "```%s\n%s\n```\n", f.Language, strings.TrimRight(*f.SuggestedFix, "\n"))
+		fmt.Fprintf(&b, "```%s\n%s\n```\n", finding.Language, strings.TrimRight(*finding.SuggestedFix, "\n"))
 	}
 
 	return b.String()
 }
 
-func briefDescription(f findings.Finding) string {
-	if r := strings.TrimSpace(f.Rationale); r != "" {
-		return r
+func briefDescription(finding findings.Finding) string {
+	if rationale := strings.TrimSpace(finding.Rationale); rationale != "" {
+		return rationale
 	}
-	if s := firstSentence(f.Explanation); s != "" {
-		return s
+	if sentence := firstSentence(finding.Explanation); sentence != "" {
+		return sentence
 	}
 	return "(no description)"
 }
 
-func firstSentence(s string) string {
-	s = strings.TrimSpace(s)
-	for i, r := range s {
+func firstSentence(text string) string {
+	text = strings.TrimSpace(text)
+	for i, r := range text {
 		if r == '.' || r == '\n' {
-			return strings.TrimSpace(s[:i])
+			return strings.TrimSpace(text[:i])
 		}
 	}
-	return s
+	return text
 }

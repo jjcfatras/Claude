@@ -32,51 +32,51 @@ type Result struct {
 // out-of-range, apply snapping to line; startLine is dropped.
 func Classify(in []findings.Finding, parsed *diff.Parsed) Result {
 	var res Result
-	for _, f := range in {
+	for _, finding := range in {
 		// Multi-line: check startLine first.
-		if f.StartLine != nil {
-			startInRange := parsed.InRange(f.File, *f.StartLine)
-			lineInRange := parsed.InRange(f.File, f.Line)
+		if finding.StartLine != nil {
+			startInRange := parsed.InRange(finding.File, *finding.StartLine)
+			lineInRange := parsed.InRange(finding.File, finding.Line)
 			switch {
 			case startInRange && lineInRange:
-				res.InlineEligible = append(res.InlineEligible, f)
+				res.InlineEligible = append(res.InlineEligible, finding)
 				continue
 			case lineInRange && !startInRange:
-				f.StartLine = nil
-				res.InlineEligible = append(res.InlineEligible, f)
+				finding.StartLine = nil
+				res.InlineEligible = append(res.InlineEligible, finding)
 				continue
 			default:
 				// Line itself is out of range — fall through to single-line snapping
 				// against `line` and drop the startLine.
-				f.StartLine = nil
+				finding.StartLine = nil
 			}
 		}
 
-		if parsed.InRange(f.File, f.Line) {
-			res.InlineEligible = append(res.InlineEligible, f)
+		if parsed.InRange(finding.File, finding.Line) {
+			res.InlineEligible = append(res.InlineEligible, finding)
 			continue
 		}
 
-		nearest, ok := parsed.NearestValid(f.File, f.Line)
+		nearest, ok := parsed.NearestValid(finding.File, finding.Line)
 		if !ok {
-			res.SummaryOnly = append(res.SummaryOnly, f)
+			res.SummaryOnly = append(res.SummaryOnly, finding)
 			continue
 		}
-		if abs(nearest-f.Line) > snapWindow {
-			res.SummaryOnly = append(res.SummaryOnly, f)
+		if abs(nearest-finding.Line) > snapWindow {
+			res.SummaryOnly = append(res.SummaryOnly, finding)
 			continue
 		}
-		original := f.Line
-		f.Line = nearest
-		f.Explanation = fmt.Sprintf(snapNoteFmt, original) + f.Explanation
-		res.InlineEligible = append(res.InlineEligible, f)
+		original := finding.Line
+		finding.Line = nearest
+		finding.Explanation = fmt.Sprintf(snapNoteFmt, original) + finding.Explanation
+		res.InlineEligible = append(res.InlineEligible, finding)
 	}
 	return res
 }
 
-func abs(x int) int {
-	if x < 0 {
-		return -x
+func abs(value int) int {
+	if value < 0 {
+		return -value
 	}
-	return x
+	return value
 }

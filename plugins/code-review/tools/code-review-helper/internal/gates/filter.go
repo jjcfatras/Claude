@@ -9,9 +9,9 @@ import "github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
 
 func Filter(in []findings.Finding) []findings.Finding {
 	out := make([]findings.Finding, 0, len(in))
-	for _, f := range in {
-		if Pass(f.Confidence, f.Severity) {
-			out = append(out, f)
+	for _, finding := range in {
+		if Pass(finding.Confidence, finding.Severity) {
+			out = append(out, finding)
 		}
 	}
 	return out
