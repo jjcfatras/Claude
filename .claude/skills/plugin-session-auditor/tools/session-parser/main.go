@@ -286,6 +286,39 @@ func extractSlashCommands(text string) []string {
 	}
 }
 
+// resolvePluginsRoot returns the directory whose `plugins/` subtree the
+// auditor should treat as its scope. Sessions audited by this tool are
+// usually recorded from a *different* working directory (the user's project)
+// than the one where the plugins live (this repo). Resolution order:
+//
+//  1. $CLAUDE_PROJECT_DIR if set and contains a `plugins/` subdir — the
+//     harness sets this to the repo where the auditor was invoked.
+//  2. Walk up from the parser's own cwd looking for the first ancestor with
+//     a `plugins/` subdir. Works because the skill always runs the parser
+//     via `(cd "${CLAUDE_PROJECT_DIR}/.claude/skills/..." && go run . ...)`.
+//  3. Fall back to the session's recorded cwd (the legacy behaviour).
+func resolvePluginsRoot(sessionCWD string) string {
+	if env := os.Getenv("CLAUDE_PROJECT_DIR"); env != "" {
+		if _, err := os.Stat(filepath.Join(env, "plugins")); err == nil {
+			return env
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		dir := cwd
+		for {
+			if _, err := os.Stat(filepath.Join(dir, "plugins")); err == nil {
+				return dir
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return sessionCWD
+}
+
 func discoverPluginScope(repoRoot string) map[string]PluginScope {
 	out := map[string]PluginScope{}
 	pluginsDir := filepath.Join(repoRoot, "plugins")
@@ -318,10 +351,28 @@ func discoverPluginScope(repoRoot string) map[string]PluginScope {
 	return out
 }
 
+// normalizeSlashName splits a slash-command event into (namespace, stem)
+// for plugin disambiguation. Events arrive in mixed prefixed/namespaced/bare
+// forms (e.g. "/code-review:code-review", "code-review", "/foo"); namespace
+// is "" when the event is not plugin-prefixed.
+func normalizeSlashName(name string) (string, string) {
+	name = strings.TrimPrefix(name, "/")
+	if i := strings.Index(name, ":"); i >= 0 {
+		return name[:i], name[i+1:]
+	}
+	return "", name
+}
+
 func detectPluginsInSession(events *Events, scope map[string]PluginScope) []string {
-	slash := map[string]bool{}
+	// For each slash-command event, capture both the namespace (empty if
+	// unprefixed) and the bare stem so a namespaced "/code-review:code-review"
+	// matches scope.Commands entry "code-review", and a namespace-only
+	// reference still pins the right plugin.
+	type slashEvt struct{ namespace, stem string }
+	slashEvts := make([]slashEvt, 0, len(events.SlashCommands))
 	for _, s := range events.SlashCommands {
-		slash[s.Name] = true
+		ns, stem := normalizeSlashName(s.Name)
+		slashEvts = append(slashEvts, slashEvt{ns, stem})
 	}
 	agentNames := map[string]bool{}
 	for _, a := range events.AgentSpawns {
@@ -332,17 +383,35 @@ func detectPluginsInSession(events *Events, scope map[string]PluginScope) []stri
 			agentNames[a.AgentName] = true
 		}
 	}
-	used := map[string]bool{}
+	// Build stem→plugins and agent→plugins indexes once so the event walk
+	// is linear in events instead of events × plugins. Multiple plugins can
+	// in principle share a command stem; a namespaced event pins one plugin
+	// directly via the scope key.
+	stemIndex := map[string][]string{}
+	agentIndex := map[string][]string{}
 	for plugin, ps := range scope {
 		for _, c := range ps.Commands {
-			if slash[c] {
-				used[plugin] = true
-			}
+			stemIndex[c] = append(stemIndex[c], plugin)
 		}
 		for _, a := range ps.Agents {
-			if agentNames[a] {
-				used[plugin] = true
+			agentIndex[a] = append(agentIndex[a], plugin)
+		}
+	}
+	used := map[string]bool{}
+	for _, ev := range slashEvts {
+		if ev.namespace != "" {
+			if _, ok := scope[ev.namespace]; ok {
+				used[ev.namespace] = true
 			}
+			continue
+		}
+		for _, p := range stemIndex[ev.stem] {
+			used[p] = true
+		}
+	}
+	for a := range agentNames {
+		for _, p := range agentIndex[a] {
+			used[p] = true
 		}
 	}
 	out := make([]string, 0, len(used))
@@ -998,7 +1067,7 @@ func parseSession(path string) (*Session, error) {
 		}
 	}
 
-	scope := discoverPluginScope(sess.CWD)
+	scope := discoverPluginScope(resolvePluginsRoot(sess.CWD))
 	sess.PluginsUsed = detectPluginsInSession(events, scope)
 	sess.PluginScopeKnown = scope
 	return sess, nil

@@ -47,11 +47,23 @@ Every specialist follows this lifecycle. The lead's coordination depends on the 
 7. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The presence of this file is the lead's signal that you've finished scanning. Treat it as immutable once written — incoming peer DMs after this point are for helping peers verify _their_ findings, not for revising yours.
    - If you reached this step naturally (scan complete, all DMs settled): set `scan_status: "complete"`.
    - If you reached this step because the self-budget in step 6 fired: set `scan_status: "timed_out"` and include whatever findings you accumulated. Do not omit partial findings — incomplete signal is more useful than no signal.
-8. **Stay idle. Do _not_ mark your task complete on your own.** You remain available to answer incoming `VERIFICATION_REQUEST` DMs from peers who are still scanning. The harness wakes you for incoming messages — you don't need to poll. The self-budget in step 6 bounds your scan phase only; idle-listening for peer DMs has no time cap.
-9. **On `finalize_now` DM from the lead**: this signals every peer has finished scanning, so no more cross-verifications can arrive. Mark your task `completed` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "completed"})`). If `finalize_now` arrived before you reached step 7 (rare with self-budgeting; would mean either your `date +%s` calls didn't fire often enough, or the lead's wall-clock fired exceptionally early), write `findings/<role>.json` first with `scan_status: "timed_out"` and whatever findings you have, then mark complete.
-10. **On `shutdown_request` DM**: approve and terminate per the standard team protocol.
+8. **DM `team-lead` with `scan_complete: <role>`.** Send `SendMessage({to: "team-lead", message: "scan_complete: <role>"})` immediately after the Write in step 7 lands. This is the lead's wake signal — without it, the lead idles its 300 s safety-monitor budget every run waiting for someone to hold up the contract (real failure observed in transcript `74931090`: ~109 s of pure post-Write idle on a run where every specialist had already written findings). The DM is small, sent once per specialist, and is the only thing that lets the lead exit the safety-monitor early on the happy path.
+9. **Stay idle. Do _not_ mark your task complete on your own.** You remain available to answer incoming `VERIFICATION_REQUEST` DMs from peers who are still scanning. The harness wakes you for incoming messages — you don't need to poll. The self-budget in step 6 bounds your scan phase only; idle-listening for peer DMs has no time cap. Marking your task `completed` here disengages you from the mailbox, which is why step 10 below gates that operation behind `finalize_now` (real failure observed in transcripts `74931090` where two specialists self-completed early and then ignored `shutdown_request` DMs, forcing the full 3-attempt teardown ladder).
+10. **On `finalize_now` DM from the lead**: this signals every peer has finished scanning, so no more cross-verifications can arrive. Mark your task `completed` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "completed"})`). If `finalize_now` arrived before you reached step 7 (rare with self-budgeting; would mean either your `date +%s` calls didn't fire often enough, or the lead's wall-clock fired exceptionally early), write `findings/<role>.json` first with `scan_status: "timed_out"` and whatever findings you have, then mark complete.
+11. **On `shutdown_request` DM**: approve and terminate per the standard team protocol.
 
-Why this shape: a peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible (step 9), not the individual specialist. "Task in*progress" means "available for DMs"; "task completed" means "no more DMs are coming." The scan-phase self-budget (step 6) is independent: it bounds the time spent \_producing* findings, not the time spent answering peer DMs from others.
+Why this shape: a peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible (step 10), not the individual specialist. "Task in*progress" means "available for DMs"; "task completed" means "no more DMs are coming." The scan-phase self-budget (step 6) is independent: it bounds the time spent \_producing* findings, not the time spent answering peer DMs from others.
+
+### Post-scan idle contract
+
+Restating step 8–10 in the form most likely to bind under load:
+
+- **After Write**: send the `scan_complete: <role>` DM to `team-lead` (step 8). Do nothing else.
+- **Do not** call `TaskUpdate({status: "completed"})` here. Step 10's `finalize_now` DM is the only authorisation for that.
+- **Do not** send any other proactive `SendMessage` — only reply to incoming `VERIFICATION_REQUEST` and `shutdown_request` DMs.
+- The harness wakes you on incoming DMs. You don't poll, you don't `Bash sleep`, you don't busy-loop.
+
+Specialists that violate the contract (most often by pre-emptively `TaskUpdate=completed` right after Write) disengage from their mailbox; subsequent `shutdown_request` DMs go unread, and the lead's teardown ladder degrades into a 75 s wall-clock waste. The contract is short on purpose: Write → DM `scan_complete` → idle → on `finalize_now`, `TaskUpdate=completed` → on `shutdown_request`, terminate.
 
 ## Findings file schema
 
@@ -65,7 +77,7 @@ Every specialist writes its findings to `$REVIEW_TMPDIR/findings/<specialist>.js
 
 **Do NOT**:
 
-- Invent top-level keys like `reviewer`, `pr`, `scan_complete`, `non_findings`, `summary`. They are silently ignored at parse time but signal you are not following the schema.
+- Invent top-level keys like `reviewer`, `pr`, `non_findings`, `summary`, or put a `scan_complete` key inside the JSON body. They are silently ignored at parse time but signal you are not following the schema. (The `scan_complete: <role>` signal is sent as a `SendMessage` DM to `team-lead` per workflow step 8 — it is not a JSON field.)
 - Invent per-finding fields like `recommendation`, `risk`, `title`, `location`, `worst_case_complexity`, `budget_breakdown`. Put that material in `explanation`. Extra fields are ignored, but the surface area drift indicates you may have skipped the required fields.
 - Use lowercase severities (`"critical"`, `"medium"`). The helper rejects unknown severities, dropping the finding.
 - Omit `line` (the helper treats Go zero-value `0` as invalid; the finding is dropped).
@@ -121,6 +133,20 @@ Field rules:
 - `suggested_fix` — the corrected code itself, not prose. The renderer wraps the value in a fenced block tagged with `language`, so write only code (or a minimal patch excerpt with surrounding context if it wouldn't read standalone) — no backticks, headings, or prose prefixes like "Fix:". Put reasoning in `explanation`. Use `null` only when no code-level change applies.
 - `verifications` — empty array if you didn't DM anyone. One entry per peer asked.
 - `scan_status` — `"complete"` if you wrote this file normally at workflow step 7 after a clean scan; `"timed_out"` if either the scan-phase self-budget in workflow step 6 fired with the scan still incomplete, or the lead's `finalize_now` interrupted you before you reached step 7 (rare with self-budgeting).
+
+### JSON string escaping (read this if you embed code or quotes)
+
+The Write tool serialises whatever string you pass to it; the helper then loads each `findings/<role>.json` with `encoding/json`. Either layer rejects malformed escapes, dropping the file into `unreadable_roles` (real failure observed in transcript `74931090`: `errors-reviewer` produced an `Invalid escape at line 29, column 958` on a finding that quoted inline code).
+
+Fields most likely to contain problematic characters: `explanation`, `rationale`, `code`, `suggested_fix`. Rules:
+
+- **Backticks are literal in JSON strings.** Do **not** escape them as `` \` `` (that's a Markdown rule, not a JSON rule). Write them verbatim: `"explanation": "Use the `await` keyword..."` is fine; `"explanation": "Use the \`await\` keyword..."` is malformed.
+- The only escapes JSON requires inside a string are: `\"` (double-quote), `\\` (backslash), `\/` (optional, for forward slash), `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX` (for control chars and non-BMP escapes).
+- **Newlines in `code` / `suggested_fix`**: write `\n` (a two-character escape inside the JSON string), not a literal newline in the source. The Write tool handles this correctly when you pass a string with embedded `\n` sequences.
+- **Prefer the `code` / `suggested_fix` fields over inlining code in `explanation`.** Code fences in `explanation` (` ``` `) work fine but are easy to mis-escape on accident. The renderer always wraps `code` and `suggested_fix` in a fenced block tagged with `language` — that's what those fields are for.
+- **Don't embed actual quotes around verbatim source quotes inside `explanation`.** If you need a verbatim quote of CLAUDE.md or another file, set `code` (with `language` matching the source) and reference the file:line in `explanation` prose — that avoids both nested-quote escaping and Markdown-vs-JSON-quoting confusion.
+
+If you suspect your output may have a malformed escape, the cheapest sanity check is to run your finding through `JSON.stringify({...})` in your head — if the string would need extra backslashes to round-trip, you have a bug.
 
 ## Cross-verification protocol
 
@@ -206,7 +232,7 @@ You don't need to literally count seconds. Heuristics:
 
 - Send DMs early and continue scanning.
 - After your scan is complete, wait one more idle cycle to collect late responses.
-- When you reach step 7 of the workflow (writing findings), any still-pending outgoing DMs become `peer_timeout`. Don't hold up findings for a slow peer — your incoming-DM availability afterward (step 8) is unrelated to your outgoing verifications.
+- When you reach step 7 of the workflow (writing findings), any still-pending outgoing DMs become `peer_timeout`. Don't hold up findings for a slow peer — your incoming-DM availability afterward (step 9) is unrelated to your outgoing verifications.
 
 ### One round only
 

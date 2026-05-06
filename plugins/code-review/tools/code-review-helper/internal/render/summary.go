@@ -46,15 +46,14 @@ func summaryNoIssues(specialists []string) string {
 func summaryWithInline(in SummaryInput) string {
 	var b strings.Builder
 	b.WriteString("### Code review\n\n")
-	b.WriteString("| # | Severity | Confidence | File | Description |\n")
-	b.WriteString("| - | -------- | ---------- | ---- | ----------- |\n")
+	b.WriteString("| # | Severity | Confidence | File |\n")
+	b.WriteString("| - | -------- | ---------- | ---- |\n")
 	for i, f := range in.InlineEligible {
-		fmt.Fprintf(&b, "| %d | %s %s | %d | %s | %s |\n",
+		fmt.Fprintf(&b, "| %d | %s %s | %d | %s |\n",
 			i+1,
 			f.Severity.Emoji(), f.Severity,
 			f.Confidence,
 			fileLink(in, f),
-			tableEscape(briefDescription(f)),
 		)
 	}
 	b.WriteString("\nSee inline comments for full details, code examples, and suggested fixes.\n")
@@ -93,11 +92,4 @@ func fileLink(in SummaryInput, f findings.Finding) string {
 	}
 	return fmt.Sprintf("[%s:%d](https://github.com/%s/%s/blob/%s/%s#L%d)",
 		base, f.Line, in.Owner, in.Repo, in.HeadSHA, f.File, f.Line)
-}
-
-// tableEscape neutralizes characters that break a markdown table cell.
-func tableEscape(s string) string {
-	s = strings.ReplaceAll(s, "|", `\|`)
-	s = strings.ReplaceAll(s, "\n", " ")
-	return s
 }

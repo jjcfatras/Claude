@@ -133,7 +133,7 @@ func TestSummary_HasInline(t *testing.T) {
 		},
 	})
 	wantParts := []string{
-		"| # | Severity | Confidence | File | Description |",
+		"| # | Severity | Confidence | File |",
 		"[handler.ts:42](https://github.com/anthropics/claude/blob/abc123def/src/auth/handler.ts#L42)",
 		"See inline comments for full details",
 	}
@@ -191,14 +191,5 @@ func TestFileLink_MultiLine(t *testing.T) {
 	}
 	if !strings.Contains(out, "#L40-L45") {
 		t.Errorf("multi-line link missing fragment: %s", out)
-	}
-}
-
-func TestTableEscape(t *testing.T) {
-	if got := tableEscape("a|b"); got != `a\|b` {
-		t.Errorf("got %q", got)
-	}
-	if got := tableEscape("a\nb"); got != "a b" {
-		t.Errorf("got %q", got)
 	}
 }

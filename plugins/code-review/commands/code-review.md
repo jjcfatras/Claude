@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Bash(code-review-helper:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, TaskStop, SendMessage, mcp__*, Skill
+allowed-tools: Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh api:*), Bash(jq:*), Bash(mktemp:*), Bash(mkdir:*), Bash(base64:*), Bash(rm:*), Bash(date:*), Bash(sleep:*), Bash(find:*), Bash(sed:*), Bash(cat:*), Bash(ls:*), Bash(code-review-helper:*), Read, Write, Grep, Glob, Monitor, Agent, TeamCreate, TeamDelete, TaskCreate, TaskList, TaskGet, TaskUpdate, TaskStop, SendMessage, mcp__*, Skill
 description: Code review a pull request via a multi-specialist agent team. Spawns one custom subagent per applicable category (security, types, react, infra, errors, perf, quality, claude-md), coordinates them via a shared task list and peer DMs for cross-domain verification, and posts inline review comments. Cleans up its temp workspace (under /tmp) after posting.
 argument-hint: [pr-number]
 disable-model-invocation: false
@@ -9,7 +9,7 @@ effort: xhigh
 
 Provide a code review for the given pull request using a multi-specialist agent team.
 
-**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-6. Update after each step.
+**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-6. Update after each step. **Emit all six `TaskCreate` calls in a single assistant message** so the harness creates them concurrently — emitting them on six separate turns serializes ~25 s of streaming + classifier overhead before any prep work begins (same anti-pattern called out for `Agent` at the start of step 2d and `SendMessage` later on).
 
 **`/tmp` writability fallback.** Some project allowlists permit `mktemp -d /tmp/...` but block subsequent `Write` and `rm` against `/tmp/` paths. Verify writability before proceeding: use the Write tool to create `$REVIEW_TMPDIR/.writable` (any short content). If the Write is denied, fall back: run `mkdir -p $HOME/.claude/tmp` then `mktemp -d $HOME/.claude/tmp/pr-review-XXXXXX`, point `$REVIEW_TMPDIR` at the new path, and retry the writability sentinel. Do not retry against `/tmp` once it has denied a write — the denial is structural (allowlist scope), not transient.
 
@@ -18,7 +18,7 @@ Provide a code review for the given pull request using a multi-specialist agent 
 - **`Agent is not available inside subagents`** (or any "not available inside subagents" / "subagent" message): the skill is being invoked from a subagent context that structurally cannot spawn its own team. **No allowlist edit will fix this.** Stop and tell the user:
   > The code-review skill cannot run inside an Agent invocation — the team-coordination primitives don't propagate into subagents. Run the skill from the main interactive session instead.
 - **`<tool> exists but is not enabled in this context`** / "tool not allowed" / explicit permission denial: the runtime exposes the tool but the project allowlist denies it. Stop and tell the user:
-  > The code-review skill needs the team-coordination tools to be allowlisted. Add `Agent`, `TeamCreate`, `TeamDelete`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, `SendMessage` to `permissions.allow` in `.claude/settings.json` and retry.
+  > The code-review skill needs the team-coordination tools to be allowlisted. Add `Agent`, `TeamCreate`, `TeamDelete`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, `TaskStop`, `SendMessage`, `Monitor` to `permissions.allow` in `.claude/settings.json` and retry.
 
 Either way, **do not silently fall back to a single-agent review.** The skill's confidence calibration, dedup gates, and finding format all assume independent specialist scans + peer DMs; a degraded run produces low-fidelity findings without surfacing the limitation. Cleanup `$REVIEW_TMPDIR` before exiting (per step 6's prefix safety check).
 
@@ -81,13 +81,13 @@ The helper handles binary files, renames, deletions, and `+0,0` deletion-only hu
 
 If `code-review-helper` is missing (the plugin's `bin/` shim or its prebuilt platform binary is unavailable), abort with: "code-review-helper not on PATH. Reinstall the plugin via `/plugin install code-review@jjcfatras-tools`, or rebuild from source: `cd ${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper && make release`." Don't auto-build.
 
-### 1b. Walk CLAUDE.md (lead-inline Read)
+### 1b. Walk CLAUDE.md (lead-inline Glob + Read)
 
-From `$REVIEW_TMPDIR/changed-files.json`, derive the set of unique parent directories of changed files and walk each up to repo root. List candidate `CLAUDE.md` paths (root + every walked-up dir, deduplicated). Use the Read tool on each candidate path. Read returns a not-found error for missing files — that's fine, treat it as "no CLAUDE.md at this level" and continue. **Do not pre-test existence with `[ -f "$p" ]` or any `for p in ...; do ... && echo` Bash loop** — that pattern returns exit 1 when the last test fails (see transcript `58a0cb3a` line 121) and pollutes the run with spurious `is_error: true` results. Build `$REVIEW_TMPDIR/claude-md-files.json` (Write tool) as `{ "<path>": "<contents>", … }` with verbatim contents. Write `{}` if no CLAUDE.md files were found.
+From `$REVIEW_TMPDIR/changed-files.json`, derive the set of unique parent directories of changed files and walk each up to repo root. That parent-set is the candidate set: only `CLAUDE.md` files that are ancestors of a changed file matter. To find which candidates exist on disk, call `Glob` **once** with `pattern: "**/CLAUDE.md"` and `path` set to the repo root — it returns every `CLAUDE.md` under the repo in a single tool call. Intersect the Glob result with the candidate parent-set, then `Read` each survivor. **Do not** issue one `Read` per candidate path and treat not-found as the no-file signal — that pattern produces N-1 spurious `is_error: true` results per run, inflates the session's tool_failure_rate, and burns latency on every miss. **Do not** pre-test existence with `[ -f "$p" ]` or any `for p in ...; do ... && echo` Bash loop either — that pattern returns exit 1 when the last test fails (see transcript `58a0cb3a` line 121) and pollutes the run with `is_error: true` results from the shell side. Glob is the right tool here because it returns the existence set directly without per-miss errors. Build `$REVIEW_TMPDIR/claude-md-files.json` (Write tool) as `{ "<path>": "<contents>", … }` with verbatim contents. Write `{}` if Glob returned no matches or none of the matches intersected the candidate parent-set.
 
 ### 1c. PR Summary prep agent (Sonnet 4.6, single Agent call, foreground)
 
-Spawn one `Agent` call with `model: "sonnet"`, `mode: "auto"` (Sonnet 4.6 is the minimum the auto-mode classifier supports — without it, simple shell forms like redirection prompt for permission and stall the agent). Prompt:
+Spawn one `Agent` call with `subagent_type: "code-review-pr-summary"`, `model: "sonnet"`, `mode: "auto"` (Sonnet 4.6 is the minimum the auto-mode classifier supports — without it, simple shell forms like redirection prompt for permission and stall the agent). The `code-review-pr-summary` subagent ships with this plugin and declares `tools: Read` only — keep the spawn prompt narrow and don't add other tool surfaces inline. Prompt:
 
 ```
 You are the PR Summary prep agent for PR #NUMBER in OWNER/REPO.
@@ -146,6 +146,21 @@ The other shared artifacts are already on disk from step 1:
 
 Also create the directory `$REVIEW_TMPDIR/findings/` (specialists will write files into it). Use `Bash` with `mkdir -p`.
 
+**Migration history snapshot (gated).** When `HAS_INFRASTRUCTURE` is true _and_ the changed files include any path matching `*/migrations/*` (or any path under a directory named `migrations`), build a small history index so specialists don't each rediscover the project's migration conventions independently. Without it, on a typical migration PR each of `quality`, `errors`, `typescript`, `claude-md`, and `infra` will independently `Read` 3–5 historical migration files just to learn the local idempotency / ordering convention — real cost observed in transcript `74931090` (12–18 duplicate Reads on a single migration PR).
+
+For each unique parent directory of a changed migration file, run `ls -t <dir>` (Bash) and capture the **5 most recent files** (excluding the touched file itself). Then use the Write tool to create `$REVIEW_TMPDIR/migration-history.json`. Schema:
+
+```json
+{
+  "migrations/prospect": [
+    { "path": "migrations/prospect/2026-04-03.ts", "first_line": "..." },
+    { "path": "migrations/prospect/2026-03-26.ts", "first_line": "..." }
+  ]
+}
+```
+
+Capture the first non-blank line of each historical file as `first_line` (use `Read` with `limit: 1` for very small files, or `Bash` `head -n 1`) — usually a `// migration: <name>` or comment header; that's enough to give specialists a quick "is this idempotency-pattern the same one used recently?" signal without each one issuing its own `Read`. Skip if the heuristic surfaces zero historical files (new migration directory). Inject the resulting JSON into the bundle as a new `## Migration history` section (see template below); omit the section entirely on non-infra PRs.
+
 **Build the spawn-context bundle.** Read `${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md` once with the Read tool, then use the Write tool to create `$REVIEW_TMPDIR/spawn-context.md` with the structure below. Each specialist Reads this single file at startup instead of receiving an inlined copy in its spawn prompt — that's what keeps the lead's spawn message small (every additional inlined token would multiply across roster size on the lead's serial output stream).
 
 ```
@@ -172,6 +187,9 @@ Also create the directory `$REVIEW_TMPDIR/findings/` (specialists will write fil
 ## CLAUDE.md content (paths + contents from step 1b; may be empty `{}`)
 <verbatim contents of claude-md-files.json>
 
+## Migration history (only if HAS_INFRASTRUCTURE and a migration file is touched; omit otherwise)
+<verbatim contents of migration-history.json>
+
 ## Rubric
 <verbatim contents of ${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md>
 ```
@@ -182,6 +200,7 @@ Concatenate verbatim — don't paraphrase, don't reformat the JSON, don't strip 
 
 1. `TeamCreate({team_name: "code-review-<PR_NUMBER>", description: "Multi-specialist review for PR <NUMBER>"})`.
 2. For each member in the roster, `TaskCreate({subject: "Review for <role>", description: "Specialist task — write findings to $REVIEW_TMPDIR/findings/<role>.json then mark complete.", activeForm: "Reviewing <role>"})`. Capture each returned task ID; you'll pass it to the spawn prompt as `ASSIGNMENT_TASK_ID`.
+3. **Persist the role → task-ID mapping to disk.** Use the Write tool to create `$REVIEW_TMPDIR/assignments.json` as a JSON object mapping each role to the assignment-task ID returned in step 2. Schema: `{"security": "7", "quality": "8", ...}`. The teardown ladder in step 2g reads this file to escalate via `TaskStop` deterministically — without it, the lead must guess task IDs from turn-text recall (a recurring failure mode; see step 2g.5).
 
 ### 2d. Spawn all applicable specialists in one message
 
@@ -239,6 +258,8 @@ Notification-flow + safety-timer rationale: see `${CLAUDE_PLUGIN_ROOT}/reference
 
 The findings files in `$REVIEW_TMPDIR/findings/` are the input to step 3's helper invocation. There is nothing to read or merge here — the helper enumerates the directory itself, tolerates `scan_status: "timed_out"`, and reports missing roster roles via `consolidated.json`'s `missing_roles` field. The only thing this step needs is to confirm (via a Glob check) that _some_ `<role>.json` files actually landed; if the directory is empty, abort the review and surface that to the user rather than feeding an empty workspace to the helper.
 
+**Do not pre-validate or hand-repair specialist findings files.** If you suspect a `findings/<role>.json` is malformed (e.g., you ran a sanity `jq .` on it and got a parse error), **do not** repair it with `sed`/`Edit`/heredoc rewrites. The helper's `internal/findings/load.go` already routes parse-failures to `consolidated.json`'s `unreadable_roles` field at step 3 — that is the supported recovery path. Hand-repairing the file (i) silently swallows the schema violation that produced the bad escape, (ii) loses the signal that a specialist's prompt needs a fix, and (iii) risks introducing a _worse_ malformation if the `sed` pattern is wrong. Real failure observed in transcript `74931090` where the lead `sed`-repaired a double-escaped backtick in `errors.json` instead of letting `unreadable_roles` surface it. If the user wants the malformed specialist's output recovered, they can re-run `/code-review` on that PR or DM the specialist directly — both are cheaper than a hand-repair that masks a recurring schema bug.
+
 ### 2g. Tear down the team
 
 `TeamDelete` refuses while teammates are alive, so shut them down first. Best-effort with a hard wall-clock cap — findings are already on disk; one uncooperative specialist must not block step 3. Three attempts with widening Monitor windows (15 s → 30 s → 30 s, ~75 s worst case). Happy-path latency is unchanged: `TeamDelete` succeeds on attempt 1.
@@ -251,7 +272,18 @@ Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash
 4. **On "still active member(s)" error (attempt 1 failed)**:
    a. The slow-but-live recovery path that used to require a manual re-Read + re-merge is now implicit: any findings file a holdout writes between attempt 1 and attempt 3 will be picked up automatically when step 3's helper runs (the helper enumerates `$REVIEW_TMPDIR/findings/` once, fresh). No explicit merge step is needed here.
    b. Send one more `shutdown_request` to each named holdout, arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 2"})`, end the turn, then retry `TeamDelete()` on the wake.
-5. **On second failure (attempt 2 failed) — escalate via `TaskStop`.** Cooperative shutdown has demonstrably failed; the holdout is producing output on each `shutdown_request` wake (a real failure mode observed in transcript `b466fe08` where `quality-reviewer` violated rubric step 10 and kept the slot active across three `TeamDelete` calls). For each holdout: call `TaskList` and read the **`id`** field of the holdout's assignment task — it's a short numeric string like `"2"` (one of the six assignment tasks you created in step 2c). Pass that to `TaskStop({task_id: "<numeric-id>"})`. **Do not pass the agent id.** Spawn results, mailbox notifications, and shutdown_request acks all surface a string of the form `<role>-reviewer@<team-name>` (e.g. `quality-reviewer@code-review-1337`); that is the agent id, **not a task id** — `TaskStop` rejects it with `No task found` (real failure observed in transcript `9c2b43de`). Then arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 3"})`, end the turn, then retry `TeamDelete()` on the wake (attempt 3). `TaskStop` is the deterministic recovery primitive — no further DM round-trip is required.
+5. **On second failure (attempt 2 failed) — escalate via `TaskStop`.** Cooperative shutdown has demonstrably failed; the holdout is producing output on each `shutdown_request` wake (a real failure mode observed in transcript `b466fe08` where `quality-reviewer` violated rubric step 11 and kept the slot active across three `TeamDelete` calls). The escalation is a deterministic two-substep sequence — **do not collapse them into one turn**, because (i) plan-task IDs (1–6 from your step-1 todo) and assignment-task IDs (created in step 2c) live in the same numeric namespace and the model will reach for the wrong one from turn-text recall (real failure observed in transcripts `9c2b43de` and `74931090`), and (ii) specialists self-complete their assignment task on `finalize_now` (rubric step 10), so any task ID captured in step 2c may already have been deleted by the time teardown runs.
+
+   **Substep 5a — re-fetch task state.** In a single message: (i) Read `$REVIEW_TMPDIR/assignments.json` to recover the role → task-ID mapping written in step 2c.3, **and** (ii) call `TaskList()` (no arguments) to get the _current_ live assignment-task IDs. End the turn after the `TaskList` call. The wake delivers `TaskList`'s response.
+
+   **Substep 5b — apply `TaskStop` per holdout.** For each named holdout, look up its task ID in the `assignments.json` map you read in 5a. Then check whether that ID still appears in the `TaskList` response:
+   - **If the holdout's task ID is in `TaskList`'s output**: pass that exact numeric string (e.g. `"7"`) to `TaskStop({task_id: "<numeric-id>"})`. **Do not pass the agent id** — spawn results, mailbox notifications, and `shutdown_request` acks all surface a string of the form `<role>-reviewer@<team-name>` (e.g. `quality-reviewer@code-review-1337`); that is the agent id, _not_ a task id. **Do not pass plan-task IDs** (the 1–6 todos you created at the top of the skill) — they live in the same namespace as assignment IDs and `TaskStop`-ing one is a no-op against the agent slot.
+   - **If the holdout's task ID is _not_ in `TaskList`'s output**: the specialist already self-completed (rubric step 10). The agent slot is hung but the task is gone — `TaskStop` will reject with `No task found`. **Skip `TaskStop` for this holdout** and rely on the third `TeamDelete` to close out the slot (the holdout's mailbox typically drains on its own within ~30 s).
+
+   Worked example. Suppose `assignments.json` is `{"security": "7", "claude-md": "12"}` and `TaskList` returns `{"tasks": [{"id": "7", "subject": "Review for security", ...}]}` (no entry for `"12"`). For a `claude-md-reviewer` holdout, skip `TaskStop` (its task is gone). For a `security-reviewer` holdout, call `TaskStop({task_id: "7"})`.
+
+   Then arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 3"})`, end the turn, then retry `TeamDelete()` on the wake (attempt 3).
+
 6. **On third failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
 
 Degraded-state explanation: see `${CLAUDE_PLUGIN_ROOT}/references/code-review-design-notes.md`.
