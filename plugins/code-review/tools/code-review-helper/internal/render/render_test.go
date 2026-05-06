@@ -111,6 +111,31 @@ func TestIssue_RationaleFallbackToFirstSentenceOfExplanation(t *testing.T) {
 	}
 }
 
+func TestIssue_DoesNotRenderCrossRefs(t *testing.T) {
+	// CrossRefs are dedup scaffolding for the lead's audit trail in
+	// consolidated.json. They must NOT leak into rendered findings (inline
+	// comments, summary section, fallback markdown) — the PR author should see
+	// only information about the finding itself. Regression for
+	// https://github.com/FS-Main/fairsquare/pull/1345#discussion_r3197489250.
+	f := sample(func(f *findings.Finding) {
+		f.CrossRefs = []findings.CrossRef{
+			{Specialist: "quality", Confidence: 70, File: "src/auth/handler.ts", Line: 44},
+			{Specialist: "errors", Confidence: 65, File: "src/auth/other.ts", Line: 12},
+		}
+	})
+	for _, opt := range []IssueOptions{{}, {IncludePath: true}} {
+		out := Issue(f, opt)
+		if strings.Contains(out, "independently raised") {
+			t.Errorf("opt=%+v: rendered output must not mention 'independently raised', got:\n%s", opt, out)
+		}
+		for _, peer := range []string{"quality", "errors", "src/auth/other.ts"} {
+			if strings.Contains(out, peer) {
+				t.Errorf("opt=%+v: rendered output leaked CrossRef peer %q, got:\n%s", opt, peer, out)
+			}
+		}
+	}
+}
+
 func TestSummary_NoIssues(t *testing.T) {
 	out := Summary(SummaryInput{
 		Specialists: []string{"security", "quality", "errors", "perf"},

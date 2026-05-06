@@ -42,11 +42,6 @@ func Issue(f findings.Finding, opt IssueOptions) string {
 		fmt.Fprintf(&b, "**Explanation:** %s\n\n", f.Explanation)
 	}
 
-	for _, r := range f.CrossRefs {
-		fmt.Fprintf(&b, "_This finding was also independently raised by `%s` (confidence %d) at `%s:%d`._\n\n",
-			r.Specialist, r.Confidence, r.File, r.Line)
-	}
-
 	if strings.TrimSpace(f.Code) != "" {
 		fmt.Fprint(&b, "**Code:**\n\n")
 		fmt.Fprintf(&b, "```%s\n%s\n```\n", f.Language, strings.TrimRight(f.Code, "\n"))

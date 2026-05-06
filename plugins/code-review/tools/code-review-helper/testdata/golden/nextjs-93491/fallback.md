@@ -24,8 +24,6 @@ canonicalizeURLPart now runs on every catchall and dynamic segment for every nav
 
 _Note: This issue was flagged in a prior review but the code has since changed._
 
-_This finding was also independently raised by `security` (confidence 78) at `packages/next/src/client/route-params.ts:120`._
-
 **Code:**
 
 ```typescript
@@ -37,8 +35,6 @@ return canonicalizeURLPart(pathnameParts[partIndex])
 🟡 **Medium** (Confidence: 65/100) - checked toggle without controlled-onChange parity loses NormalizedPathname brand
 
 **Explanation:** The function signature of canonicalizeURLPart returns a plain string which loses the NormalizedPathname brand applied earlier in the file. Downstream callers that consume the result must re-cast or risk a silent type-narrowing escape — the same concern surfaces in this LinkAccordion's controlled state where href is passed through without re-narrowing.
-
-_This finding was also independently raised by `typescript` (confidence 65) at `packages/next/src/client/route-params.ts:55`._
 
 **Code:**
 

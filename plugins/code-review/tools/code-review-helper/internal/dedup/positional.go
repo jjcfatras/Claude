@@ -90,11 +90,14 @@ func Positional(in []findings.Finding) []findings.Finding {
 	return out
 }
 
-// makeCrossRef snapshots the fields of `other` that the rendered cross-ref note
-// needs. Storing this as a struct (rather than mutating Explanation in place)
-// keeps the original specialist explanation pristine — semantic Rule 1's file-
-// path check would otherwise trip on a peer file path that an earlier dedup
-// pass injected.
+// makeCrossRef snapshots the fields of a folded peer finding into the kept
+// finding's CrossRefs list. Storing this as a struct (rather than mutating
+// Explanation in place) keeps the original specialist explanation pristine —
+// semantic Rule 1's file-path check would otherwise trip on a peer file path
+// that an earlier dedup pass injected. The CrossRefs list is no longer rendered
+// into user-facing output (PR comments / fallback / summary); it remains an
+// audit trail in `consolidated.json` so the lead can see which peer findings
+// were folded by dedup.
 func makeCrossRef(other findings.Finding) findings.CrossRef {
 	return findings.CrossRef{
 		Specialist: other.Specialist,

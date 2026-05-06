@@ -8,8 +8,6 @@ Inline comment posting failed. All issues listed below.
 
 **Explanation:** The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.
 
-_This finding was also independently raised by `perf` (confidence 55) at `pkg/scheduler/framework/runtime/batch.go:175`._
-
 **Code:**
 
 ```go
@@ -24,8 +22,6 @@ if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {
 🟡 **Medium** (Confidence: 80/100) - feature-gate value captured at construction time without re-check
 
 **Explanation:** newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.
-
-_This finding was also independently raised by `errors` (confidence 75) at `pkg/scheduler/framework/runtime/framework.go:358`._
 
 **Code:**
 

@@ -34,8 +34,6 @@ The pnpm.overrides block doesn't surface when an override fails to apply. If a t
 
 **Explanation:** The full overrides block grew from 7 to 10 entries this PR. Without inline rationale comments it will be hard for future contributors to know which overrides exist for security versus compatibility.
 
-_This finding was also independently raised by `quality` (confidence 65) at `package.json:170`._
-
 **Code:**
 
 ```json
