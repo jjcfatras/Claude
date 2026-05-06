@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path'); [ -z \"$f\" ] || [ \"$f\" = \"null\" ] || case \"$f\" in *.go) gofmt -w \"$f\" ;; *) pnpm exec prettier --write \"$f\" ;; esac"
+            "command": "f=$(jq -r '.tool_input.file_path'); [ -z \"$f\" ] || [ \"$f\" = \"null\" ] || case \"$f\" in *.go) gofmt -w \"$f\" ;; *) pnpm exec prettier --write --ignore-unknown \"$f\" ;; esac"
           },
           {
             "type": "command",
