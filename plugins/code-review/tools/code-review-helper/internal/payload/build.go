@@ -22,9 +22,17 @@ type Comment struct {
 
 type Review struct {
 	CommitID string    `json:"commit_id"`
-	Event    string    `json:"event"`
+	Event    string    `json:"event,omitempty"`
 	Body     string    `json:"body"`
 	Comments []Comment `json:"comments"`
+}
+
+// BodyOnly is the shape posted to `/pulls/{n}/reviews/{id}/events` to submit a
+// pending review. The endpoint accepts only `event` + `body`; we leave `event`
+// out of the on-disk file so the lead can supply it via `gh api -f event=...`
+// without hand-editing JSON.
+type BodyOnly struct {
+	Body string `json:"body"`
 }
 
 type BuildInput struct {
@@ -41,9 +49,23 @@ type BuildInput struct {
 // are rendered by `render.Issue` with `IncludePath:false` (GitHub attaches the
 // path itself).
 func Build(in BuildInput) Review {
+	return buildReview(in, "COMMENT")
+}
+
+// BuildPending constructs the same payload as Build but with no `event` field,
+// so the GitHub Reviews API creates a pending review instead of submitting it.
+// Used for the two-step fallback when the batched create-and-submit POST 422s
+// with the generic "An internal error occurred" message — submitting via
+// `/pulls/{n}/reviews/{id}/events` after a successful pending create reliably
+// works around that flake.
+func BuildPending(in BuildInput) Review {
+	return buildReview(in, "")
+}
+
+func buildReview(in BuildInput, event string) Review {
 	rev := Review{
 		CommitID: in.HeadSHA,
-		Event:    "COMMENT",
+		Event:    event,
 		Body: render.Summary(render.SummaryInput{
 			Owner:          in.Owner,
 			Repo:           in.Repo,

@@ -18,6 +18,13 @@ type IssueOptions struct {
 }
 
 // Issue renders one finding in ISSUE_FORMAT.
+//
+// Defense-in-depth note: the loader's `validateFinding` already rejects
+// findings with empty `rationale`/`explanation`/`code`/`language`, so in
+// practice the empty-field branches below are unreachable. They exist so any
+// future regression that bypasses the validator degrades to readable output
+// instead of the visible empty-placeholder bug observed in
+// https://github.com/FS-Main/fairsquare/pull/1345#pullrequestreview-4232328571.
 func Issue(f findings.Finding, opt IssueOptions) string {
 	var b strings.Builder
 
@@ -29,15 +36,21 @@ func Issue(f findings.Finding, opt IssueOptions) string {
 	fmt.Fprintf(&b, "%s **%s** (Confidence: %d/100) - %s\n\n",
 		f.Severity.Emoji(), f.Severity, f.Confidence, brief)
 
-	fmt.Fprintf(&b, "**Explanation:** %s\n\n", f.Explanation)
+	if strings.TrimSpace(f.Explanation) == "" {
+		fmt.Fprint(&b, "**Explanation:** _(no explanation provided)_\n\n")
+	} else {
+		fmt.Fprintf(&b, "**Explanation:** %s\n\n", f.Explanation)
+	}
 
 	for _, r := range f.CrossRefs {
 		fmt.Fprintf(&b, "_This finding was also independently raised by `%s` (confidence %d) at `%s:%d`._\n\n",
 			r.Specialist, r.Confidence, r.File, r.Line)
 	}
 
-	fmt.Fprint(&b, "**Code:**\n\n")
-	fmt.Fprintf(&b, "```%s\n%s\n```\n", f.Language, strings.TrimRight(f.Code, "\n"))
+	if strings.TrimSpace(f.Code) != "" {
+		fmt.Fprint(&b, "**Code:**\n\n")
+		fmt.Fprintf(&b, "```%s\n%s\n```\n", f.Language, strings.TrimRight(f.Code, "\n"))
+	}
 
 	if f.SuggestedFix != nil && *f.SuggestedFix != "" {
 		fmt.Fprint(&b, "\n**Suggested fix:**\n\n")
@@ -48,10 +61,13 @@ func Issue(f findings.Finding, opt IssueOptions) string {
 }
 
 func briefDescription(f findings.Finding) string {
-	if f.Rationale != "" {
-		return strings.TrimSpace(f.Rationale)
+	if r := strings.TrimSpace(f.Rationale); r != "" {
+		return r
 	}
-	return firstSentence(f.Explanation)
+	if s := firstSentence(f.Explanation); s != "" {
+		return s
+	}
+	return "(no description)"
 }
 
 func firstSentence(s string) string {

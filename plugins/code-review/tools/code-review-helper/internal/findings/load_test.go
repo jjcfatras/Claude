@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -167,6 +168,86 @@ func TestLoadDir_MixedValidAndInvalid(t *testing.T) {
 	}
 	if len(res.InvalidFindings) != 1 || res.InvalidFindings[0].Role != "perf" {
 		t.Fatalf("expected one invalid perf finding, got %+v", res.InvalidFindings)
+	}
+}
+
+func TestLoadDir_RejectsEmptyContentFields(t *testing.T) {
+	// Repro of the failure mode in
+	// https://github.com/FS-Main/fairsquare/pull/1345#pullrequestreview-4232328571
+	// where a specialist emitted findings with empty rationale/explanation/code
+	// and the renderer printed visible empty placeholders. Validator now
+	// rejects each of the four required content fields when blank or
+	// whitespace-only.
+	cases := []struct {
+		name   string
+		mutate func(*Finding)
+		want   string
+	}{
+		{
+			name:   "empty_rationale",
+			mutate: func(f *Finding) { f.Rationale = "" },
+			want:   "empty rationale",
+		},
+		{
+			name:   "whitespace_rationale",
+			mutate: func(f *Finding) { f.Rationale = "  \n  " },
+			want:   "empty rationale",
+		},
+		{
+			name:   "empty_explanation",
+			mutate: func(f *Finding) { f.Explanation = "" },
+			want:   "empty explanation",
+		},
+		{
+			name:   "empty_code",
+			mutate: func(f *Finding) { f.Code = "" },
+			want:   "empty code",
+		},
+		{
+			name:   "empty_language",
+			mutate: func(f *Finding) { f.Language = "" },
+			want:   "empty language",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			f := Finding{
+				ID:          "f-1",
+				Category:    "security",
+				File:        "src/a.ts",
+				Line:        10,
+				Confidence:  80,
+				Severity:    SeverityCritical,
+				Rationale:   "x",
+				Explanation: "y",
+				Code:        "z",
+				Language:    "ts",
+			}
+			tc.mutate(&f)
+			writeJSON(t, dir, "security", RoleFile{
+				Specialist: "security",
+				ScanStatus: ScanComplete,
+				Findings:   []Finding{f},
+			})
+			res, err := LoadDir(dir, nil)
+			if err != nil {
+				t.Fatalf("LoadDir: %v", err)
+			}
+			if len(res.Findings) != 0 {
+				t.Fatalf("malformed finding leaked: %+v", res.Findings)
+			}
+			if len(res.InvalidFindings) != 1 {
+				t.Fatalf("want 1 invalid finding, got %d", len(res.InvalidFindings))
+			}
+			inv := res.InvalidFindings[0]
+			if inv.Role != "security" || inv.ID != "f-1" {
+				t.Fatalf("unexpected invalid record: %+v", inv)
+			}
+			if !strings.Contains(inv.Reason, tc.want) {
+				t.Fatalf("reason %q does not contain %q", inv.Reason, tc.want)
+			}
+		})
 	}
 }
 

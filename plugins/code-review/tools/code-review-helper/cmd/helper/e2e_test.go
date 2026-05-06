@@ -53,6 +53,8 @@ func TestE2E_FinalizePipeline(t *testing.T) {
 				"--expected-roles", fx.roles,
 				"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
 				"--out-payload", filepath.Join(outDir, "payload.json"),
+				"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
+				"--out-body", filepath.Join(outDir, "payload-body.json"),
 				"--out-fallback", filepath.Join(outDir, "fallback.md"),
 			}
 			if err := runFinalize(argv); err != nil {
@@ -60,7 +62,7 @@ func TestE2E_FinalizePipeline(t *testing.T) {
 			}
 
 			goldenDir := filepath.Join(tdRoot, "golden", fx.id)
-			for _, name := range []string{"consolidated.json", "payload.json", "fallback.md"} {
+			for _, name := range []string{"consolidated.json", "payload.json", "payload-pending.json", "payload-body.json", "fallback.md"} {
 				gotPath := filepath.Join(outDir, name)
 				wantPath := filepath.Join(goldenDir, name)
 				got, err := os.ReadFile(gotPath)

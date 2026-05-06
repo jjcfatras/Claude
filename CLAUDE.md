@@ -19,7 +19,13 @@ Go helper (only needed when releasing the `code-review` plugin):
 - `cd plugins/code-review/tools/code-review-helper && make release` — cross-compile prebuilts for darwin/linux × amd64/arm64 into `plugins/code-review/bin/`
 - `make test` — run Go tests for the helper
 
-Note: `.claude/settings.json` registers a `PostToolUse` hook that auto-formats every file touched by Edit/Write — `gofmt -w` for `.go`, `prettier --write` for everything else. Don't run formatters manually.
+Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
+
+- **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `prettier --write` for everything else. Don't run formatters manually.
+- **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
+- **Command frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md` must start with `---` and include a `description:` field.
+- **`go vet` on helper edits** (`PostToolUse`): edits to `plugins/code-review/tools/code-review-helper/**/*.go` run `go vet ./...`; fix any reported issues.
+- **Prebuilt binaries are write-locked** (`PreToolUse`): direct edits to `plugins/code-review/bin/*` are blocked. Rebuild via `cd plugins/code-review/tools/code-review-helper && make release`.
 
 ## Project Structure
 
@@ -53,3 +59,19 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `disable-model-invocation` — `true` = user-only trigger (optional)
 
 Reference docs and shared rubrics live under `plugins/<name>/references/`. Use `${CLAUDE_PLUGIN_ROOT}` inside command files to resolve plugin-relative paths at runtime.
+
+## Plugin Versioning
+
+When a change touches anything under `plugins/<name>/` (commands, agents, references, helper sources, prebuilt binaries, the plugin manifest itself), bump the `version` field in `plugins/<name>/.claude-plugin/plugin.json` per [Semantic Versioning 2.0](https://semver.org/) — `MAJOR.MINOR.PATCH`:
+
+- **MAJOR** — backwards-incompatible change. Examples: removing or renaming a slash command, removing a command flag/argument, changing a command's required arguments, removing or renaming an agent, breaking a published reference path that other tools consume.
+- **MINOR** — backwards-compatible new functionality. Examples: adding a new slash command, adding a new agent or specialist domain, adding a new optional flag/argument to an existing command, adding a new reference doc.
+- **PATCH** — backwards-compatible fix or internal-only change. Examples: bug fix in a command/agent, prompt or wording tweaks, refactoring the Go helper without changing its CLI surface, rebuilding `bin/*` prebuilts from unchanged sources, dependency-only updates, formatting/typo fixes.
+
+Bump rules:
+
+- Bump only the affected plugin(s). A change scoped to `plugins/code-review/` does not touch `plugins/cherry-pick/.claude-plugin/plugin.json`.
+- A single change picks one tier — the highest tier triggered by any part of the diff. (A breaking command rename plus a bug fix is MAJOR, not MAJOR + PATCH.)
+- Bumping a higher tier resets lower tiers to `0` (1.4.7 → MINOR → 1.5.0, not 1.5.7).
+- Pure non-plugin changes (root `CLAUDE.md`, `.claude/settings.json`, `.claude-plugin/marketplace.json`, repo-level docs, `code-review-workspace/`) do not require any plugin version bump.
+- Include the manifest version bump in the same commit as the plugin change.

@@ -64,6 +64,53 @@ func TestIssue_NoSuggestedFix(t *testing.T) {
 	}
 }
 
+func TestIssue_EmptyCodeOmitsBlock(t *testing.T) {
+	// Defense-in-depth: validator already rejects empty code, but if a
+	// regression bypassed it, the renderer must not emit the visible empty
+	// fenced block observed in PR #1345.
+	f := sample(func(f *findings.Finding) { f.Code = "" })
+	out := Issue(f, IssueOptions{})
+	if strings.Contains(out, "**Code:**") {
+		t.Errorf("empty Code should suppress the Code section, got:\n%s", out)
+	}
+	if strings.Contains(out, "```ts\n\n```") {
+		t.Errorf("empty Code should not emit an empty fenced block, got:\n%s", out)
+	}
+}
+
+func TestIssue_EmptyExplanationPlaceholder(t *testing.T) {
+	f := sample(func(f *findings.Finding) { f.Explanation = "" })
+	out := Issue(f, IssueOptions{})
+	if !strings.Contains(out, "_(no explanation provided)_") {
+		t.Errorf("empty Explanation should produce the placeholder, got:\n%s", out)
+	}
+	if strings.Contains(out, "**Explanation:** \n\n") {
+		t.Errorf("empty Explanation should not render as a bare label, got:\n%s", out)
+	}
+}
+
+func TestIssue_EmptyRationaleAndExplanationFallback(t *testing.T) {
+	f := sample(func(f *findings.Finding) {
+		f.Rationale = ""
+		f.Explanation = ""
+	})
+	out := Issue(f, IssueOptions{})
+	if !strings.Contains(out, "(Confidence: 85/100) - (no description)") {
+		t.Errorf("brief should fall back to (no description), got:\n%s", out)
+	}
+}
+
+func TestIssue_RationaleFallbackToFirstSentenceOfExplanation(t *testing.T) {
+	f := sample(func(f *findings.Finding) {
+		f.Rationale = ""
+		f.Explanation = "First sentence here. Second sentence ignored."
+	})
+	out := Issue(f, IssueOptions{})
+	if !strings.Contains(out, "(Confidence: 85/100) - First sentence here") {
+		t.Errorf("brief should fall back to firstSentence(explanation), got:\n%s", out)
+	}
+}
+
 func TestSummary_NoIssues(t *testing.T) {
 	out := Summary(SummaryInput{
 		Specialists: []string{"security", "quality", "errors", "perf"},

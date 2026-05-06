@@ -1,0 +1,18 @@
+{
+  "commit_id": "0000000000000000000000000000000000000000",
+  "body": "### Code review\n\n| # | Severity | Confidence | File | Description |\n| - | -------- | ---------- | ---- | ----------- |\n| 1 | 🟡 Medium | 60 | [batch.go:174](https://github.com/test-owner/test-repo/blob/0000000000000000000000000000000000000000/pkg/scheduler/framework/runtime/batch.go#L174) | nested condition in batchStateCompatible adds branching that is hard to follow |\n| 2 | 🟡 Medium | 80 | [framework.go:358](https://github.com/test-owner/test-repo/blob/0000000000000000000000000000000000000000/pkg/scheduler/framework/runtime/framework.go#L358) | feature-gate value captured at construction time without re-check |\n\nSee inline comments for full details, code examples, and suggested fixes.\n\n#### Additional issues (could not attach inline)\n\n**pkg/scheduler/framework/runtime/batch.go:200**\n\n🟡 **Medium** (Confidence: 70/100) - out-of-diff defect referenced from the diff context\n\n**Explanation:** The function batchStateCompatible (line 200, not in this diff) has no test that exercises the new GenericWorkload code path with a NIL lastCycle. Coverage gap should be filled in this PR.\n\n**Code:**\n\n```go\nfunc (b *OpportunisticBatch) batchStateCompatible(ctx context.Context, pod *v1.Pod) {\n```\n\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\n\u003csub\u003eIf this code review was useful, please react with 👍. Otherwise, react with 👎.\u003c/sub\u003e",
+  "comments": [
+    {
+      "path": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 174,
+      "side": "RIGHT",
+      "body": "🟡 **Medium** (Confidence: 60/100) - nested condition in batchStateCompatible adds branching that is hard to follow\n\n**Explanation:** The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.\n\n_This finding was also independently raised by `perf` (confidence 55) at `pkg/scheduler/framework/runtime/batch.go:175`._\n\n**Code:**\n\n```go\nif !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {\n    b.logUnusableState(logger, cycleCount, metrics.BatchFlushPodSkipped)\n    return false\n}\n```\n"
+    },
+    {
+      "path": "pkg/scheduler/framework/runtime/framework.go",
+      "line": 358,
+      "side": "RIGHT",
+      "body": "🟡 **Medium** (Confidence: 80/100) - feature-gate value captured at construction time without re-check\n\n**Explanation:** newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.\n\n_This finding was also independently raised by `errors` (confidence 75) at `pkg/scheduler/framework/runtime/framework.go:358`._\n\n**Code:**\n\n```go\nf.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))\n```\n"
+    }
+  ]
+}

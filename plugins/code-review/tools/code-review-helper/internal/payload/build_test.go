@@ -131,3 +131,50 @@ func TestFallback_PlaceholderWhenNoErrorYet(t *testing.T) {
 		t.Errorf("expected placeholder when apiErr empty (skill substitutes at post-failure)")
 	}
 }
+
+func TestBuildPending_OmitsEvent(t *testing.T) {
+	in := BuildInput{
+		HeadSHA: "sha", Owner: "o", Repo: "r",
+		InlineEligible: []findings.Finding{sampleFinding()},
+		Specialists:    []string{"security"},
+	}
+	rev := BuildPending(in)
+	if rev.Event != "" {
+		t.Errorf("BuildPending must leave Event empty, got %q", rev.Event)
+	}
+	// The rest of the payload must match Build except for Event — same commit_id,
+	// same body, same comments. The two-step fallback relies on this equivalence
+	// (the lead doesn't reconstruct anything between attempts).
+	full := Build(in)
+	if rev.CommitID != full.CommitID {
+		t.Errorf("CommitID drift between Build and BuildPending: %q vs %q", rev.CommitID, full.CommitID)
+	}
+	if rev.Body != full.Body {
+		t.Errorf("Body drift between Build and BuildPending")
+	}
+	if len(rev.Comments) != len(full.Comments) {
+		t.Errorf("Comments length drift: %d vs %d", len(rev.Comments), len(full.Comments))
+	}
+
+	b, err := MarshalJSON(rev)
+	if err != nil {
+		t.Fatalf("marshal pending: %v", err)
+	}
+	if strings.Contains(string(b), `"event"`) {
+		t.Errorf("pending payload must not include the \"event\" key, got:\n%s", b)
+	}
+}
+
+func TestBodyOnly_MarshalShape(t *testing.T) {
+	b, err := json.MarshalIndent(BodyOnly{Body: "## Hello\n"}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(b)
+	if !strings.Contains(got, `"body"`) {
+		t.Errorf("BodyOnly must emit a body key, got:\n%s", got)
+	}
+	if strings.Contains(got, `"event"`) || strings.Contains(got, `"comments"`) || strings.Contains(got, `"commit_id"`) {
+		t.Errorf("BodyOnly must emit ONLY the body key, got:\n%s", got)
+	}
+}

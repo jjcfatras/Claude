@@ -43,7 +43,7 @@ Earlier revisions of this skill ran three prep agents in parallel. In practice t
 
 Capture identifiers and prep the diff. In a single message, run in parallel:
 
-- `gh pr view NUMBER --json headRefOid,headRepository -q '{sha: .headRefOid, owner: .headRepository.owner.login, repo: .headRepository.name}'` — capture the full HEAD SHA, OWNER, REPO. (Resolve the OWNER/REPO of the **head** repo because forks differ; you'll still post against the base via the PR's `OWNER/REPO/pulls/NUMBER` route below.)
+- `gh pr view NUMBER --json headRefOid,headRepository -q '{sha: .headRefOid, owner: .headRepository.owner.login, repo: .headRepository.name}'` — capture the full HEAD SHA, OWNER, REPO. (Resolve the OWNER/REPO of the **head** repo because forks differ; you'll still post against the base via the PR's `OWNER/REPO/pulls/NUMBER` route below.) Do not invent additional `gh pr view --json <field>` calls — `baseRepository` is **not** a valid field, the head fields above are sufficient, and forks post to the base repo via the PR's own URL.
 - `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` — save the diff once. Specialists Read this from disk; don't refetch.
 - Fetch and filter prior Claude Code reviews:
   - `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // "") | contains("Generated with [Claude Code]"))] | sort_by(.submitted_at) | last'` — pick the most recent matching review (if any). Capture its `id`, `submitted_at`, `commit_id`.
@@ -83,7 +83,7 @@ If `code-review-helper` is missing (the plugin's `bin/` shim or its prebuilt pla
 
 ### 1b. Walk CLAUDE.md (lead-inline Read)
 
-From `$REVIEW_TMPDIR/changed-files.json`, derive the set of unique parent directories of changed files and walk each up to repo root. List candidate `CLAUDE.md` paths (root + every walked-up dir, deduplicated). Use the Read tool on each that exists. Build `$REVIEW_TMPDIR/claude-md-files.json` (Write tool) as `{ "<path>": "<contents>", … }` with verbatim contents. Write `{}` if no CLAUDE.md files were found.
+From `$REVIEW_TMPDIR/changed-files.json`, derive the set of unique parent directories of changed files and walk each up to repo root. List candidate `CLAUDE.md` paths (root + every walked-up dir, deduplicated). Use the Read tool on each candidate path. Read returns a not-found error for missing files — that's fine, treat it as "no CLAUDE.md at this level" and continue. **Do not pre-test existence with `[ -f "$p" ]` or any `for p in ...; do ... && echo` Bash loop** — that pattern returns exit 1 when the last test fails (see transcript `58a0cb3a` line 121) and pollutes the run with spurious `is_error: true` results. Build `$REVIEW_TMPDIR/claude-md-files.json` (Write tool) as `{ "<path>": "<contents>", … }` with verbatim contents. Write `{}` if no CLAUDE.md files were found.
 
 ### 1c. PR Summary prep agent (Sonnet 4.6, single Agent call, foreground)
 
@@ -187,6 +187,8 @@ Concatenate verbatim — don't paraphrase, don't reformat the JSON, don't strip 
 
 Launch every member of the roster as a teammate via the `Agent` tool. Send all calls in **a single message** so they run concurrently. For each member:
 
+**Anti-pattern (do not do this).** Emitting one `Agent` call, ending the turn, then emitting the next on the next turn — observed in transcript `58a0cb3a` lines 204→221 (six specialists serialized over 14 s instead of one batch). If you find yourself about to emit a single `Agent` call when there are more in this batch, **stop** and re-batch all of them, plus the safety `Monitor` from 2e, into the same assistant message. The harness runs each tool_use concurrently when they share a message; sequential messages cost ~2 s per call and compound across the roster.
+
 ```
 Agent({
   team_name: "code-review-<PR_NUMBER>",
@@ -209,7 +211,7 @@ ASSIGNMENT_TASK_ID: <task id captured in 2c>
 
 Your first action is to Read $REVIEW_TMPDIR/spawn-context.md once before doing anything else. It contains every per-PR value (HEAD_SHA, REVIEW_TMPDIR, diff path, summary, changed files, roster, prior issues, CLAUDE.md content) and the rubric. Do not Read the rubric file or any of the JSON artifacts (roster, prior-issues, claude-md-files, changed-files) separately — they are inside the bundle.
 
-After reading the bundle, follow your agent system prompt's workflow and the rubric's "Specialist workflow" section.
+After reading the bundle, follow your agent system prompt's workflow and the rubric's "Specialist workflow" section. When emitting `line` for a finding, Read the source file at HEAD to confirm the line number — never compute it from hunk-header arithmetic.
 ```
 
 The spawn prompt stays small on purpose — every additional inlined token multiplies across roster size and adds serial streaming time on the lead.
@@ -226,7 +228,7 @@ In **the same message** as the parallel `Agent` calls in 2d, also arm **one** sa
 After the spawn-and-timer message, **end your turn**. The next time the harness invokes you, it will be because either (a) a teammate sent a DM or (b) the safety monitor emitted its `scan_complete_timer_fired` line. On every such wakeup turn:
 
 1. Use the Glob tool (`pattern: "findings/*.json", path: "$REVIEW_TMPDIR"`) to enumerate which `<role>.json` files have landed. (Per shell-safety rule #9, do not use `Bash ls` to poll a peer-shared directory; the Glob tool is the one-shot directory-listing primitive when you need it. The wake itself is the DM, not the listing.)
-2. If every roster role has a corresponding `<role>.json`, send `finalize_now` to every roster member in one SendMessage block (`SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`) and proceed to 2f.
+2. If every roster role has a corresponding `<role>.json`, send `finalize_now` to every roster member in **one SendMessage block** — emit all N `SendMessage` tool_uses in the same assistant message, never one per turn. (Anti-pattern from transcript `58a0cb3a` lines 243→260: six broadcasts serialized over 4 s. Same rule as 2d's spawn batch.) `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`. Then proceed to 2f.
 3. Otherwise, look at what woke you. If it was a teammate DM (or any wake before the safety monitor emitted), end the turn — another DM (or the monitor) will wake you again.
 4. **Once the safety monitor has fired and any role is still missing**, send one wake-up DM to each missing role in a single message: `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`. Arm one more `Monitor({command: "sleep 60; echo scan_complete_grace_fired", timeout_ms: 65000, persistent: false, description: "code-review scan-complete grace window"})` as a grace window and end the turn. Single shot — don't keep issuing wake-ups.
 5. **On the grace-window wake**, if a role is still missing, treat it as unreachable: track the role name in an `unreachable_roles` list (in your turn text), broadcast `finalize_now` to every roster member, and proceed to 2f. Do **not** write a stub findings file — step 2f's missing-file branch handles consolidation correctly, and a stub races with a slow-but-live agent that may still write its real findings during teardown.
@@ -243,7 +245,7 @@ The findings files in `$REVIEW_TMPDIR/findings/` are the input to step 3's helpe
 
 Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash sleep N` — so the harness owns the wake and the user isn't prompted on each iteration.
 
-1. Send a shutdown request to every teammate in a single message: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`.
+1. Send a shutdown request to every teammate **in a single message** — emit all N `SendMessage` tool_uses in the same assistant message: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`. Same anti-pattern as 2d/2e: if you find yourself emitting one `SendMessage` and ending the turn, stop and re-batch the rest with it.
 2. Arm `Monitor({command: "sleep 15; echo teardown_wait_done", timeout_ms: 20000, persistent: false, description: "code-review teardown wait 1"})` and end the turn; the emit-line wakes you.
 3. Call `TeamDelete()`. On success, proceed to step 3 of the skill.
 4. **On "still active member(s)" error (attempt 1 failed)**:
@@ -268,9 +270,11 @@ code-review-helper finalize \
   --head-sha <full HEAD SHA> \
   --owner <OWNER> --repo <REPO> --pr-number <NUMBER> \
   --expected-roles <comma-separated roster role names> \
-  --out-consolidated $REVIEW_TMPDIR/consolidated.json \
-  --out-payload     $REVIEW_TMPDIR/payload.json \
-  --out-fallback    $REVIEW_TMPDIR/fallback.md
+  --out-consolidated     $REVIEW_TMPDIR/consolidated.json \
+  --out-payload          $REVIEW_TMPDIR/payload.json \
+  --out-pending-payload  $REVIEW_TMPDIR/payload-pending.json \
+  --out-body             $REVIEW_TMPDIR/payload-body.json \
+  --out-fallback         $REVIEW_TMPDIR/fallback.md
 ```
 
 The helper:
@@ -278,7 +282,7 @@ The helper:
 - Loads every `findings/<role>.json` (tolerating `scan_status: "timed_out"` and missing files; the role names supplied via `--expected-roles` are checked so the consolidated output reports which roster roles never delivered).
 - Runs both dedup passes, prior-review dedup, the confidence/severity gate, and inline-eligibility snapping.
 - Writes `consolidated.json` (`{inline_eligible, summary_only, dropped_prior_review, specialists_used, timed_out_roles, missing_roles, unreadable_roles, invalid_findings, last_review_date}`) — read this at step 4.
-- Writes `payload.json` already shaped for `gh api ... reviews --input` and `fallback.md` for `gh pr comment -F` if posting fails.
+- Writes `payload.json` already shaped for `gh api ... reviews --input` (the batched create-and-submit form), `payload-pending.json` (same shape minus the `event` field, for the two-step fallback in step 5b), `payload-body.json` (just `{"body":"…"}` for the submit step of the two-step), and `fallback.md` for `gh pr comment -F` if posting fails.
 
 Read `consolidated.json` after the call. If `inline_eligible` and `summary_only` are both empty, stop and present the empty result in step 4.
 
@@ -292,19 +296,52 @@ Ask permission to post. If the user declines, skip step 5 (still run step 6 clea
 
 Use the GitHub Reviews API via `gh api` (single API call, single notification, inline comments on relevant diff lines).
 
-### 5a. Validate the payload
+### 5a. Validate the payloads
 
-The helper already produced `$REVIEW_TMPDIR/payload.json` (GitHub Reviews API shape, ready for `--input`) and `$REVIEW_TMPDIR/fallback.md` (markdown body for `gh pr comment -F` if posting fails). Sanity check: `jq . $REVIEW_TMPDIR/payload.json`. If `jq` rejects it, the helper has a bug — surface the parse error and stop; don't try to repair the JSON by hand.
+The helper already produced four files in `$REVIEW_TMPDIR/`:
+
+- `payload.json` — batched create-and-submit (`event: "COMMENT"`); ready for `gh api ... reviews --input`. Used in 5b step 1.
+- `payload-pending.json` — same shape, **no `event` field**. Used in 5b step 2 (creates a pending review).
+- `payload-body.json` — `{"body": "…"}`. Used in 5b step 2 to submit the pending review via `--input` without re-quoting JSON in shell.
+- `fallback.md` — markdown body for `gh pr comment -F` (last-resort tier).
+
+Sanity check: `jq . $REVIEW_TMPDIR/payload.json $REVIEW_TMPDIR/payload-pending.json $REVIEW_TMPDIR/payload-body.json`. If `jq` rejects any of them, the helper has a bug — surface the parse error and stop; don't try to repair the JSON by hand.
 
 ISSUE_FORMAT, the three review-summary variants, summary-table column rules, GitHub blob-link format, and severity emojis (🔴 Critical, 🟡 Medium, 📝 Minor) are all owned by `${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper/internal/render/`. If the format needs to change, edit the renderers and their golden tests — do not edit the JSON the helper produced.
 
-### 5b. Post
+### 5b. Post (three-tier ladder)
 
-`gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input $REVIEW_TMPDIR/payload.json`
+The GitHub Reviews API intermittently returns `HTTP 422 "An internal error occurred, please try again."` on the batched create-and-submit endpoint, even when the payload is structurally valid (transcript `58a0cb3a`, lines 395/408/454: three identical retries of the same payload, all 422). Retrying the same call doesn't help — the workaround is to switch to the two-step pending+submit flow that GitHub's UI uses internally.
 
-(Substitute actual OWNER, REPO, and NUMBER values.)
+**Tier 1 — happy path (single call):**
 
-**Fallback**: If the API call fails, Read `$REVIEW_TMPDIR/fallback.md` and use the Edit tool to replace the literal placeholder `{API_ERROR}` with the actual error message, then post with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. (`fallback.md` already lists every issue with its `**path:line**` prefix; only the error message needs to be patched in.)
+```
+gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input $REVIEW_TMPDIR/payload.json
+```
+
+(Substitute actual OWNER, REPO, NUMBER values.) On HTTP 200, the review is posted with inline comments — done, proceed to step 6.
+
+**Tier 2 — on HTTP 422 only, fall through to two-step pending+submit.** Treat any other failure (4xx ≠ 422, 5xx, network) as terminal and skip to tier 3. **Do not retry** the tier-1 call with the same payload (the same payload will 422 again). Tier 2 is a different code path; either it works on the first try or it doesn't:
+
+1. Create the pending review:
+   ```
+   REVIEW_ID=$(gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST \
+       --input $REVIEW_TMPDIR/payload-pending.json --jq .id)
+   ```
+   If this also 422s, skip to tier 3.
+2. Submit the pending review:
+   ```
+   gh api repos/OWNER/REPO/pulls/NUMBER/reviews/$REVIEW_ID/events --method POST \
+       --input $REVIEW_TMPDIR/payload-body.json -f event=COMMENT
+   ```
+   On HTTP 200, the review is posted with inline comments — done, proceed to step 6.
+3. If the submit fails, the pending review is dangling on the PR. Surface the dangling review ID to the user with this one-line note (verbatim, substituting actual values):
+
+   > A pending review (id `$REVIEW_ID`) is left on the PR. Delete it with `gh api repos/OWNER/REPO/pulls/NUMBER/reviews/$REVIEW_ID --method DELETE`.
+
+   Then proceed to tier 3.
+
+**Tier 3 — issue-comment fallback.** Read `$REVIEW_TMPDIR/fallback.md` and use the Edit tool to replace the literal placeholder `{API_ERROR}` with the actual error message from whichever tier failed last (include both 422 errors if tier 2 also failed), then post with `gh pr comment NUMBER -F $REVIEW_TMPDIR/fallback.md`. (`fallback.md` already lists every issue with its `**path:line**` prefix; only the error message needs to be patched in.)
 
 ## 6. Cleanup
 

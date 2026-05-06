@@ -127,13 +127,16 @@ func runFinalize(argv []string) error {
 	prNumber := fs.Int("pr-number", 0, "pull request number")
 	outConsolidated := fs.String("out-consolidated", "", "output path for consolidated.json")
 	outPayload := fs.String("out-payload", "", "output path for payload.json")
+	outPendingPayload := fs.String("out-pending-payload", "", "output path for payload-pending.json (no `event` field, used for two-step fallback)")
+	outBody := fs.String("out-body", "", "output path for payload-body.json (just `{\"body\": ...}`, used for the submit step of the two-step fallback)")
 	outFallback := fs.String("out-fallback", "", "output path for fallback.md")
 	expected := fs.String("expected-roles", "", "comma-separated list of expected specialist roles (optional)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
 	if *diffPath == "" || *findingsDir == "" || *priorPath == "" || *headSHA == "" ||
-		*owner == "" || *repo == "" || *outConsolidated == "" || *outPayload == "" || *outFallback == "" {
+		*owner == "" || *repo == "" || *outConsolidated == "" || *outPayload == "" ||
+		*outPendingPayload == "" || *outBody == "" || *outFallback == "" {
 		return fmt.Errorf("finalize: missing required flag (run with -h)")
 	}
 	_ = prNumber // currently logged-only; reserved for future use
@@ -192,14 +195,16 @@ func runFinalize(argv []string) error {
 		return err
 	}
 
-	rev := payload.Build(payload.BuildInput{
+	buildIn := payload.BuildInput{
 		HeadSHA:        *headSHA,
 		Owner:          *owner,
 		Repo:           *repo,
 		InlineEligible: classified.InlineEligible,
 		SummaryOnly:    classified.SummaryOnly,
 		Specialists:    loaded.Specialists,
-	})
+	}
+
+	rev := payload.Build(buildIn)
 	payloadJSON, err := payload.MarshalJSON(rev)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
@@ -208,14 +213,24 @@ func runFinalize(argv []string) error {
 		return fmt.Errorf("write payload: %w", err)
 	}
 
-	fallback := payload.Fallback(payload.BuildInput{
-		HeadSHA:        *headSHA,
-		Owner:          *owner,
-		Repo:           *repo,
-		InlineEligible: classified.InlineEligible,
-		SummaryOnly:    classified.SummaryOnly,
-		Specialists:    loaded.Specialists,
-	}, "")
+	pending := payload.BuildPending(buildIn)
+	pendingJSON, err := payload.MarshalJSON(pending)
+	if err != nil {
+		return fmt.Errorf("marshal pending payload: %w", err)
+	}
+	if err := os.WriteFile(*outPendingPayload, pendingJSON, 0o644); err != nil {
+		return fmt.Errorf("write pending payload: %w", err)
+	}
+
+	bodyJSON, err := json.MarshalIndent(payload.BodyOnly{Body: rev.Body}, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal body: %w", err)
+	}
+	if err := os.WriteFile(*outBody, bodyJSON, 0o644); err != nil {
+		return fmt.Errorf("write body: %w", err)
+	}
+
+	fallback := payload.Fallback(buildIn, "")
 	if err := os.WriteFile(*outFallback, []byte(fallback), 0o644); err != nil {
 		return fmt.Errorf("write fallback: %w", err)
 	}

@@ -127,6 +127,22 @@ func validateFinding(role string, f *Finding) error {
 	default:
 		return fmt.Errorf("specialist %s finding %s: unknown severity %q", role, f.ID, f.Severity)
 	}
+	// Content-field non-emptiness mirrors the rubric's required-fields list
+	// (references/code-review-rubrics.md). Empty values here render as visible
+	// blank placeholders in the review body, so reject them at load time and
+	// surface the role+id via LoadResult.InvalidFindings (skill step 4).
+	if strings.TrimSpace(f.Rationale) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty rationale", role, f.ID)
+	}
+	if strings.TrimSpace(f.Explanation) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty explanation", role, f.ID)
+	}
+	if strings.TrimSpace(f.Code) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty code", role, f.ID)
+	}
+	if strings.TrimSpace(f.Language) == "" {
+		return fmt.Errorf("specialist %s finding %s: empty language", role, f.ID)
+	}
 	return nil
 }
 
