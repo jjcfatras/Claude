@@ -107,6 +107,8 @@ Inputs:
 Output: write your findings to $RUN_DIR/findings/<category>.md.
 ```
 
+When spawning each specialist via the `Agent` tool, read the YAML frontmatter at the top of its instruction file once and pass the `model:` value through to the `Agent` tool call's `model` parameter (current settings: `permissions-analyzer`, `errors-analyzer`, `tool-failures-analyzer` → `sonnet`; `orchestration-analyzer` → `opus`). If a file lacks a `model:` field, omit the parameter so the spawn inherits from the lead. The inline-fallback path (when `Agent` is unavailable) ignores frontmatter — the lead runs the specialist's instructions in its own model.
+
 ### Step 5 — Consolidate into proposals
 
 Once all four specialists return, read the four findings files and write `$RUN_DIR/proposals.md` with this structure:
