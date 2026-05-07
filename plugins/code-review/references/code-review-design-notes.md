@@ -19,13 +19,19 @@ Specialists never mark their own task `completed`. They write `findings/<role>.j
 
 A peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible, not the individual specialist. "Task in*progress" means "available for DMs"; "task completed" means "no more DMs are coming." The scan-phase self-budget is independent: it bounds the time spent \_producing* findings, not the time spent answering peer DMs from others.
 
-## Polling cadence rationale
+## DM-driven scan completion (no polling)
 
-The lead's poll cadence intentionally trails the specialist self-budget by ~30 s on each end. The lead spawns specialists, then waits a long first window (90 s) so the specialists' initial Read of the diff plus an early scanning pass can finish before the first findings check; the trailing 30 s recheck windows after that catch slow scans without prematurely declaring a specialist stuck.
+This skill no longer polls. Earlier revisions had the lead arm a 90 + 30 + 30 + 30 sequence of `Bash sleep N` waits and `ls findings/` checks; that design was retired in favor of DM-driven wakeups. The current shape:
 
-Wall-clock budget: 90 + 30 + 30 + 30 + (0 or 15 if wake-up needed) + 15 = 195 to 210 s pre-task-check. Still comfortably under the 300 s prompt-cache TTL for the lead's own context even when the wake-up path fires.
+1. Lead spawns specialists + arms one safety `Monitor({command: "sleep 300; echo scan_complete_timer_fired"})` in the same `<<single-message>>` block, then ends its turn.
+2. Each specialist DMs `team-lead` with `scan_complete: <role>` immediately after writing `findings/<role>.json` (rubric step 8). The DM is the lead's wake signal.
+3. On every wake-turn the lead Glob-checks `findings/*.json` and either broadcasts `finalize_now` (all roles landed) or ends the turn (more DMs incoming).
+4. The 300 s safety `Monitor` is a backstop for the rare case where a specialist crashes before any DM. On the happy path it never fires; the lead `TaskStop`s it after broadcasting `finalize_now`.
+5. If the safety Monitor fires with roles still missing, the lead arms one 60 s grace `Monitor` after wake-up DMs, then proceeds with whatever landed.
 
-The 90 s first sleep gives every specialist time for context ingestion, an initial diff read, a first scanning pass, and a round of cross-verification DMs. Most specialists land within this window.
+Why DM-driven instead of polled: the harness already wakes the lead on inbound DMs at zero cost; a fixed-cadence sleep both wastes wall-clock on the happy path (every specialist done well before the next poll) and burns cache (sleeps past the 300 s prompt-cache TTL force a cache miss on the next turn). The DM design also collapses the lead's per-run wall-clock from ~210 s pre-task-check (under the old polling design) to whatever the slowest specialist takes — the lead never sleeps unless the safety timer fires.
+
+Wall-clock impact: on a clean run, lead's post-spawn idle is just the specialists' max scan duration (typically 60–180 s). Specialists' 180 s self-budget (rubric step 6) is the only time bound that matters; the safety Monitor is dead code on every healthy run.
 
 ## Self-budget rationale (specialist-side)
 

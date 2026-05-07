@@ -27,7 +27,7 @@ _Note: This issue was flagged in a prior review but the code has since changed._
 **Code:**
 
 ```typescript
-return canonicalizeURLPart(pathnameParts[partIndex]);
+return canonicalizeURLPart(pathnameParts[partIndex])
 ```
 
 **test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx:18**
@@ -39,11 +39,7 @@ return canonicalizeURLPart(pathnameParts[partIndex]);
 **Code:**
 
 ```tsx
-<input
-  type="checkbox"
-  checked={isVisible}
-  onChange={() => setIsVisible(!isVisible)}
-/>
+<input type="checkbox" checked={isVisible} onChange={() => setIsVisible(!isVisible)} />
 ```
 
 **packages/next/src/client/route-params.ts:200**
@@ -57,6 +53,7 @@ return canonicalizeURLPart(pathnameParts[partIndex]);
 ```typescript
 // arbitrary code at line 200
 ```
+
 
 _Note: Inline comments failed ({API_ERROR})._
 

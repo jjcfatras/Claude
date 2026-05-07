@@ -18,4 +18,4 @@ Return exactly one paragraph covering:
 
 No bulleted lists, no preamble, no headings. Just the paragraph as your final response — the lead captures the assistant text directly, no Write call needed.
 
-You only have the `Read` tool by design. The summary is a self-contained read of one file; if the diff is large, summarise from what you can read in one pass rather than splitting it. Don't invoke other tools, don't DM peers, don't write to disk.
+You only have the `Read` tool by design. The summary is a self-contained read of one file; if the Read returns `File content (… tokens) exceeds maximum allowed tokens (25000)` (typical for large PR diffs), retry with `offset: 0, limit: 200` and paginate through the diff — summarise from what you've read so far rather than abandoning the call. Don't invoke other tools, don't DM peers, don't write to disk.

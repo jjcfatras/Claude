@@ -1,0 +1,13 @@
+# Go-helper E2E goldens — byte-compared by Go tests against json.MarshalIndent
+# and the markdown renderer; prettier mutates JSON/MD whitespace and breaks parity.
+plugins/code-review/tools/code-review-helper/testdata/golden/
+
+# Input fixtures driving those goldens — keep raw so tests mirror what real
+# specialist outputs look like on disk.
+plugins/code-review/tools/code-review-helper/testdata/findings/
+plugins/code-review/tools/code-review-helper/testdata/prior-issues/
+plugins/code-review/tools/code-review-helper/testdata/diffs/
+
+# pnpm/node tooling artifacts
+node_modules/
+pnpm-lock.yaml

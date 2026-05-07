@@ -65,7 +65,12 @@
     }
   ],
   "dropped_prior_review": [],
-  "specialists_used": ["errors", "perf", "quality", "security"],
+  "specialists_used": [
+    "errors",
+    "perf",
+    "quality",
+    "security"
+  ],
   "timed_out_roles": [],
   "missing_roles": [],
   "unreadable_roles": [],

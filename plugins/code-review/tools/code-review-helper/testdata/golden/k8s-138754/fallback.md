@@ -41,6 +41,7 @@ f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(featur
 func (b *OpportunisticBatch) batchStateCompatible(ctx context.Context, pod *v1.Pod) {
 ```
 
+
 _Note: Inline comments failed ({API_ERROR})._
 
 🤖 Generated with [Claude Code](https://claude.ai/code)

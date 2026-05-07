@@ -25,6 +25,16 @@ Install only the plugins you want — each is independent.
 - Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
 - Installs eight `code-review-*` review specialists into the team that runs the review.
 
+### Requirements
+
+`/code-review` orchestrates multiple specialist subagents via Claude Code's agent-team APIs (`TeamCreate`, `SendMessage`, concurrent `Agent` spawns). Those tools are gated behind an experimental flag — without it, the command's preflight aborts with an allowlist error. Enable agent teams in your shell before running `/code-review`:
+
+```sh
+export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+```
+
+The other plugins (`cherry-pick`, `test-driven-fix`, `respond-to-review`) do not need this flag.
+
 ### Building the helper from source
 
 ```sh
