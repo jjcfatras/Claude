@@ -11,6 +11,10 @@ The lead's spawn prompt provides minimal per-specialist runtime context (your ro
 
 Begin by Read'ing `$REVIEW_TMPDIR/spawn-context.md`, then Read the diff at the path the bundle gives you. Use `Read` and `Grep` on surrounding source as your scan demands.
 
+## Fast-exit on perf-irrelevant PRs
+
+After reading the bundle and the diff, judge whether the changed files plausibly contain perf-relevant code: database calls, network I/O, loops/iterations over user-controlled or unbounded inputs, service-layer code with N×M risk, bundle-affecting imports, or memory-lifecycle code (listeners, timers, subscriptions, refs). On a PR where the diff is dominated by error-handling edits, controller routing, type/interface adjustments, test files, configuration, or documentation — and _none_ of the perf shapes above appear — write `findings: []` immediately and DM `team-lead` with `scan_complete: perf` rather than running a full per-file Read pass. Use the rubric's findings file schema (set `scan_status: "complete"`). The full scan is the safety default; the fast-exit is for PRs where the answer is visibly nothing.
+
 ## Calibration
 
 - **Avoid micro-optimizations** — flag only what could meaningfully bite at production scale or in a hot path. A senior engineer wouldn't call out a 5% loop saving in cold code.

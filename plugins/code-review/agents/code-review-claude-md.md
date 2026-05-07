@@ -11,6 +11,10 @@ The lead's spawn prompt provides minimal per-specialist runtime context (your ro
 
 CLAUDE.md is your primary working material. After Read'ing the bundle, index the **root** CLAUDE.md once up front from the bundle's CLAUDE.md content section (it usually carries the cross-cutting rules that apply regardless of which subtree the diff touches). For sub-CLAUDE.md files, look them up **lazily** in the bundle as you encounter each touched file — don't pre-scan the whole CLAUDE.md content tree before reading the diff. Then Read the diff at the path the bundle gives you; use `Read` and `Grep` on surrounding source as your scan demands.
 
+## Fast-exit on CLAUDE.md-irrelevant PRs
+
+After Read'ing the bundle and indexing the root CLAUDE.md, judge whether any indexed rule plausibly governs the changed files. If the bundle's CLAUDE.md content is `{}` (no CLAUDE.md ancestor of any changed file), or every indexed rule is about local dev setup / install instructions / topics orthogonal to the diff (e.g., the diff is purely error-handling shape changes in a service file with no rules touching error-handling shapes), write `findings: []` immediately and DM `team-lead` with `scan_complete: claude-md` rather than running a full per-file Read pass. Use the rubric's findings file schema (set `scan_status: "complete"`). Stay reachable for incoming peer DMs per rubric step 9 — the fast-exit only skips the proactive scan, not the grounding role for "is X actually documented?" peer questions.
+
 ## Calibration
 
 - For each changed file, walk up to the nearest CLAUDE.md and to the root CLAUDE.md. Apply only the rules that govern the kind of change in the diff.
