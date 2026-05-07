@@ -11,19 +11,19 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 ## Plugins
 
-| Plugin              | Slash command                                 | What it does                                                                                                                                          |
-| ------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cherry-pick`       | `/cherry-pick <branch> [sha or sha1..sha2]`   | Cherry-picks one or more commits from a source branch into the current branch and resolves conflicts intelligently.                                   |
-| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`              | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                    |
-| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]` | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                    |
-| `code-review`       | `/code-review [pr-number]`                    | Multi-specialist PR review (security, types, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments. |
+| Plugin              | Slash command                                             | What it does                                                                                                                                               |
+| ------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cherry-pick`       | `/cherry-pick <source-branch> [commit-sha or sha1..sha2]` | Cherry-picks one or more commits from a source branch into the current branch and resolves conflicts intelligently.                                        |
+| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                          | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                         |
+| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`             | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                         |
+| `code-review`       | `/code-review [pr-number]`                                | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments. |
 
 Install only the plugins you want — each is independent.
 
 ## `code-review` — extras
 
 - Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
-- Installs eight `code-review-*` sub-agents into the team that runs the review.
+- Installs eight `code-review-*` review specialists into the team that runs the review.
 
 ### Building the helper from source
 
@@ -44,7 +44,3 @@ plugins/<name>/                    # one directory per plugin
   commands/<name>.md
   agents/, references/, bin/, tools/  # only where the plugin needs them
 ```
-
-## License
-
-MIT.
