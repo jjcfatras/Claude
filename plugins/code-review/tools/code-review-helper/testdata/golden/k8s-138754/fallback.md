@@ -6,7 +6,7 @@ Inline comment posting failed. All issues listed below.
 
 🟡 **Medium** (Confidence: 60/100) - nested condition in batchStateCompatible adds branching that is hard to follow
 
-**Explanation:** The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.
+**Issue & impact:** The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.
 
 **Code:**
 
@@ -21,7 +21,7 @@ if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {
 
 🟡 **Medium** (Confidence: 80/100) - feature-gate value captured at construction time without re-check
 
-**Explanation:** newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.
+**Issue & impact:** newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.
 
 **Code:**
 
@@ -33,7 +33,7 @@ f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(featur
 
 🟡 **Medium** (Confidence: 70/100) - out-of-diff defect referenced from the diff context
 
-**Explanation:** The function batchStateCompatible (line 200, not in this diff) has no test that exercises the new GenericWorkload code path with a NIL lastCycle. Coverage gap should be filled in this PR.
+**Issue & impact:** The function batchStateCompatible (line 200, not in this diff) has no test that exercises the new GenericWorkload code path with a NIL lastCycle. Coverage gap should be filled in this PR.
 
 **Code:**
 

@@ -37,9 +37,9 @@ func Issue(finding findings.Finding, opt IssueOptions) string {
 		finding.Severity.Emoji(), finding.Severity, finding.Confidence, brief)
 
 	if strings.TrimSpace(finding.Explanation) == "" {
-		fmt.Fprint(&b, "**Explanation:** _(no explanation provided)_\n\n")
+		fmt.Fprint(&b, "**Issue & impact:** _(no explanation provided)_\n\n")
 	} else {
-		fmt.Fprintf(&b, "**Explanation:** %s\n\n", finding.Explanation)
+		fmt.Fprintf(&b, "**Issue & impact:** %s\n\n", finding.Explanation)
 	}
 
 	if strings.TrimSpace(finding.Code) != "" {

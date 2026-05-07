@@ -82,6 +82,7 @@ Every specialist writes its findings to `$REVIEW_TMPDIR/findings/<specialist>.js
 - Use lowercase severities (`"critical"`, `"medium"`). The helper rejects unknown severities, dropping the finding.
 - Omit `line` (the helper treats Go zero-value `0` as invalid; the finding is dropped).
 - Use multi-digit prefixed IDs like `PERF-001`. Use the rubric-style `f-1`, `f-2`, … (or `<role>-1` if you prefer); the dedup pipeline only requires uniqueness within your file.
+- Pad `explanation` past three sentences. The reader already sees `severity`, `rationale`, `code`, and `suggested_fix` — `explanation` is for what's wrong + impact, not a recap. See the `explanation` field rule below.
 
 Schema:
 
@@ -99,7 +100,7 @@ Schema:
       "confidence": 75,
       "severity": "Critical",
       "rationale": "One-sentence justification for confidence and severity.",
-      "explanation": "Detailed explanation of why this is an issue and its impact. If CLAUDE.md-triggered, quote the relevant section.",
+      "explanation": "Middleware skips the req.user.role check before next(). Any authenticated user can hit admin endpoints.",
       "code": "const user = req.body.user as User;\nreturn db.users.update(user);",
       "suggested_fix": "const parsed = UserSchema.safeParse(req.body.user);\nif (!parsed.success) return res.status(400).json(parsed.error);\nreturn db.users.update(parsed.data);",
       "language": "ts",
@@ -129,6 +130,7 @@ Field rules:
 
   Must correspond to `+`-prefix or modified lines in the diff (the inline-eligibility check at finalize time enforces this; lines in unchanged regions get demoted to summary-only and lose their inline anchor).
 
+- `explanation` — **≤3 short sentences** covering (1) what is wrong on the flagged line and (2) what can happen if it is ignored. Don't restate the severity rating — `rationale` already does that. Don't describe the fix in prose — that's `suggested_fix`. For CLAUDE.md citations, the verbatim quote counts as one of the three sentences. The renderer labels this section "Issue & impact:" — the field's contents should read as exactly that.
 - `language` — for fenced code blocks at posting time (`ts`, `tsx`, `py`, `sql`, `tf`, `yaml`, etc.).
 - `suggested_fix` — the corrected code itself, not prose. The renderer wraps the value in a fenced block tagged with `language`, so write only code (or a minimal patch excerpt with surrounding context if it wouldn't read standalone) — no backticks, headings, or prose prefixes like "Fix:". Put reasoning in `explanation`. Use `null` only when no code-level change applies.
 - `verifications` — empty array if you didn't DM anyone. One entry per peer asked.

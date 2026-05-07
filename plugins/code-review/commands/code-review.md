@@ -9,7 +9,23 @@ effort: xhigh
 
 Provide a code review for the given pull request using a multi-specialist agent team.
 
-**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-6. Update after each step. **Emit all six `TaskCreate` calls in a single assistant message** so the harness creates them concurrently — emitting them on six separate turns serializes ~25 s of streaming + classifier overhead before any prep work begins (same anti-pattern called out for `Agent` at the start of step 2d and `SendMessage` later on).
+**Setup:** Run `mktemp -d /tmp/pr-review-XXXXXX` to create a unique temp directory and store the path as `$REVIEW_TMPDIR`. All temp files in this review must be written under `$REVIEW_TMPDIR/`. Create a todo list for steps 1-6.
+
+**Batching contract.** Throughout this command, any block marked `<<single-message>>` must be emitted as **one assistant message containing all of the listed tool_uses in parallel** — not one per turn. The harness runs concurrent tool_uses in a single message simultaneously; emitting them serially across N turns adds N × ~1–2 s of streaming + classifier overhead before any work begins. Anti-pattern observed in transcripts where a 6-call batch took 7 s instead of 1 s. The same rule applies to step 1's plan TaskCreates, step 1a's parallel `gh`, step 2c's specialist TaskCreates, step 2d's Agent fan-out + step 2e's safety Monitor, step 2e's `finalize_now` broadcast, and step 2g's `shutdown_request` broadcast.
+
+Emit the six plan TaskCreates as `<<single-message>>`:
+
+```
+<<single-message>>
+TaskCreate({subject: "Step 1: Prep PR diff + summary", description: "Fetch PR metadata, diff, prior reviews, CLAUDE.md, summary paragraph", activeForm: "Prepping PR data"})
+TaskCreate({subject: "Step 2: Build team + run specialists", description: "Roster, spawn-context bundle, TeamCreate, spawn agents, await scan_complete DMs, teardown", activeForm: "Running multi-specialist scan"})
+TaskCreate({subject: "Step 3: Filter + assemble payload", description: "Run code-review-helper finalize for dedup + gating + payload", activeForm: "Filtering findings"})
+TaskCreate({subject: "Step 4: Present + confirm", description: "Show user inline + summary findings, request post permission", activeForm: "Presenting findings"})
+TaskCreate({subject: "Step 5: Post review", description: "Three-tier ladder: batched create-and-submit → pending+submit → fallback comment", activeForm: "Posting review"})
+TaskCreate({subject: "Step 6: Cleanup", description: "rm -rf $REVIEW_TMPDIR after prefix safety check", activeForm: "Cleaning up workspace"})
+```
+
+Update each task after the corresponding step completes.
 
 **`/tmp` writability fallback.** Some project allowlists permit `mktemp -d /tmp/...` but block subsequent `Write` and `rm` against `/tmp/` paths. Verify writability before proceeding: use the Write tool to create `$REVIEW_TMPDIR/.writable` (any short content). If the Write is denied, fall back: run `mkdir -p $HOME/.claude/tmp` then `mktemp -d $HOME/.claude/tmp/pr-review-XXXXXX`, point `$REVIEW_TMPDIR` at the new path, and retry the writability sentinel. Do not retry against `/tmp` once it has denied a write — the denial is structural (allowlist scope), not transient.
 
@@ -41,12 +57,22 @@ Earlier revisions of this skill ran three prep agents in parallel. In practice t
 
 ### 1a. Lead-inline gh + helper (parallel Bash + Write)
 
-Capture identifiers and prep the diff. In a single message, run in parallel:
+Capture identifiers and prep the diff. Emit the four `Bash` calls below as one assistant message (`<<single-message>>` shape — see step 1 batching note); they're independent and the harness runs them concurrently.
 
-- `gh pr view NUMBER --json headRefOid,headRepository -q '{sha: .headRefOid, owner: .headRepository.owner.login, repo: .headRepository.name}'` — capture the full HEAD SHA, OWNER, REPO. (Resolve the OWNER/REPO of the **head** repo because forks differ; you'll still post against the base via the PR's `OWNER/REPO/pulls/NUMBER` route below.) Do not invent additional `gh pr view --json <field>` calls — `baseRepository` is **not** a valid field, the head fields above are sufficient, and forks post to the base repo via the PR's own URL.
+```
+<<single-message>>
+Bash({command: "gh pr view NUMBER --json headRefOid,headRepository -q '{sha: .headRefOid, owner: .headRepository.owner.login, repo: .headRepository.name}'"})
+Bash({command: "gh pr view NUMBER --json url,number,title,headRefName -q '{number, title, headRefName, url}'"})
+Bash({command: "gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff"})
+Bash({command: "gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // \"\") | contains(\"Generated with [Claude Code]\"))] | sort_by(.submitted_at) | last'"})
+```
+
+Substitute `NUMBER`, `OWNER`, `REPO` from the user's argument and the head-repo lookup output before emitting. Notes per call:
+
+- `gh pr view NUMBER --json headRefOid,headRepository …` — capture the full HEAD SHA, OWNER, REPO of the **head** repo (forks differ; you still post against the base via the PR's own URL below).
+- `gh pr view NUMBER --json url,number,title,headRefName …` — capture the post-target URL and head branch name. **This is the only other `gh pr view --json` call you need.** Do not invent more — `baseRepository` is **not** a valid field, and forks post to the base repo via the PR's own URL (returned by `--json url`).
 - `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` — save the diff once. Specialists Read this from disk; don't refetch.
-- Fetch and filter prior Claude Code reviews:
-  - `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // "") | contains("Generated with [Claude Code]"))] | sort_by(.submitted_at) | last'` — pick the most recent matching review (if any). Capture its `id`, `submitted_at`, `commit_id`.
+- `gh api --paginate … reviews | jq '[…contains("Generated with [Claude Code]")] | sort_by(.submitted_at) | last'` — pick the most recent prior Claude Code review (if any). Capture its `id`, `submitted_at`, `commit_id`. Then:
   - If found: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments` and extract `path`, `line`, `start_line`, snippet (text between the first pair of triple-backtick fences in `body`), and first-line description (first line of `body` after stripping the snippet).
   - Use the Write tool to write `$REVIEW_TMPDIR/prior-issues.json`. Schema:
 
@@ -199,24 +225,29 @@ Concatenate verbatim — don't paraphrase, don't reformat the JSON, don't strip 
 ### 2c. Create the team and assignment tasks
 
 1. `TeamCreate({team_name: "code-review-<PR_NUMBER>", description: "Multi-specialist review for PR <NUMBER>"})`.
-2. For each member in the roster, `TaskCreate({subject: "Review for <role>", description: "Specialist task — write findings to $REVIEW_TMPDIR/findings/<role>.json then mark complete.", activeForm: "Reviewing <role>"})`. Capture each returned task ID; you'll pass it to the spawn prompt as `ASSIGNMENT_TASK_ID`.
+2. Emit one `TaskCreate` per roster member in a single `<<single-message>>` block (see top-of-file batching contract):
+
+   ```
+   <<single-message>>
+   TaskCreate({subject: "Review for <role-1>", description: "Specialist task — write findings to $REVIEW_TMPDIR/findings/<role-1>.json then mark complete.", activeForm: "Reviewing <role-1>"})
+   TaskCreate({subject: "Review for <role-2>", description: "Specialist task — write findings to $REVIEW_TMPDIR/findings/<role-2>.json then mark complete.", activeForm: "Reviewing <role-2>"})
+   ...one TaskCreate per role in the roster...
+   ```
+
+   Capture each returned task ID; you'll pass it to the spawn prompt as `ASSIGNMENT_TASK_ID`.
+
 3. **Persist the role → task-ID mapping to disk.** Use the Write tool to create `$REVIEW_TMPDIR/assignments.json` as a JSON object mapping each role to the assignment-task ID returned in step 2. Schema: `{"security": "7", "quality": "8", ...}`. The teardown ladder in step 2g reads this file to escalate via `TaskStop` deterministically — without it, the lead must guess task IDs from turn-text recall (a recurring failure mode; see step 2g.5).
 
 ### 2d. Spawn all applicable specialists in one message
 
-Launch every member of the roster as a teammate via the `Agent` tool. Send all calls in **a single message** so they run concurrently. For each member:
-
-**Anti-pattern (do not do this).** Emitting one `Agent` call, ending the turn, then emitting the next on the next turn — observed in transcript `58a0cb3a` lines 204→221 (six specialists serialized over 14 s instead of one batch). If you find yourself about to emit a single `Agent` call when there are more in this batch, **stop** and re-batch all of them, plus the safety `Monitor` from 2e, into the same assistant message. The harness runs each tool_use concurrently when they share a message; sequential messages cost ~2 s per call and compound across the roster.
+Launch every member of the roster as a teammate via the `Agent` tool. The whole batch — every `Agent` call **and** the step-2e safety `Monitor` — must be one `<<single-message>>` block (see top-of-file batching contract). Anti-pattern observed in transcript `58a0cb3a` lines 204→221 (six specialists serialized over 14 s instead of one batch); same shape recurred in transcript `e1f2b2e5` where seven Agent calls + the Monitor were emitted across eight separate turns over ~19 s. If you find yourself about to emit a single `Agent` call when there are more in this batch, **stop** and re-batch all of them plus the Monitor.
 
 ```
-Agent({
-  team_name: "code-review-<PR_NUMBER>",
-  name: "<role>-reviewer",
-  subagent_type: "code-review-<role>",
-  mode: "auto",
-  description: "Code review specialist — <role>",
-  prompt: <SPAWN_PROMPT>
-})
+<<single-message>>
+Agent({team_name: "code-review-<PR_NUMBER>", name: "<role-1>-reviewer", subagent_type: "code-review-<role-1>", mode: "auto", description: "Code review specialist — <role-1>", prompt: <SPAWN_PROMPT for role-1>})
+Agent({team_name: "code-review-<PR_NUMBER>", name: "<role-2>-reviewer", subagent_type: "code-review-<role-2>", mode: "auto", description: "Code review specialist — <role-2>", prompt: <SPAWN_PROMPT for role-2>})
+...one Agent call per roster member...
+Monitor({command: "sleep 300; echo scan_complete_timer_fired", timeout_ms: 305000, persistent: false, description: "code-review scan-complete safety timer"})
 ```
 
 `mode: "auto"` is required so each specialist runs under the auto-mode classifier (auto-approves safe shell patterns without prompting; required for long unattended scans).
@@ -241,13 +272,22 @@ When `Agent` is called with `team_name`, it returns immediately (the response in
 
 Specialists DM `team-lead` with `scan_complete: <role>` once they've written `findings/<role>.json` (rubric workflow step 8). The findings file is the source of truth; the DM is the wake signal. There is no polling cadence — the lead ends its turn after spawning and each DM resumes it for one short turn.
 
-In **the same message** as the parallel `Agent` calls in 2d, also arm **one** safety wake via `Monitor`:
-`Monitor({command: "sleep 300; echo scan_complete_timer_fired", timeout_ms: 305000, persistent: false, description: "code-review scan-complete safety timer"})`. This is the single backstop in the rare case where a specialist crashes before sending any DM (its 180 s self-budget should preclude this, but the monitor keeps the skill from hanging if a specialist is structurally broken). On the happy path, every roster role DMs well before the monitor emits and you broadcast finalize without ever consulting it. (Per `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` rule #8, `Monitor` is the wake-on-event primitive — never `Bash sleep N` to pace the lead's turn.)
+The safety wake `Monitor({command: "sleep 300; echo scan_complete_timer_fired", timeout_ms: 305000, persistent: false, description: "code-review scan-complete safety timer"})` is part of the step-2d `<<single-message>>` block — co-emitted with every `Agent` call. Do not emit it on its own turn after the spawns. It is the single backstop in the rare case where a specialist crashes before sending any DM (its 180 s self-budget should preclude this, but the monitor keeps the skill from hanging if a specialist is structurally broken). On the happy path, every roster role DMs well before the monitor emits and you broadcast finalize without ever consulting it. (Per `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` rule #8, `Monitor` is the wake-on-event primitive — never `Bash sleep N` to pace the lead's turn.)
 
 After the spawn-and-timer message, **end your turn**. The next time the harness invokes you, it will be because either (a) a teammate sent a DM or (b) the safety monitor emitted its `scan_complete_timer_fired` line. On every such wakeup turn:
 
-1. Use the Glob tool (`pattern: "findings/*.json", path: "$REVIEW_TMPDIR"`) to enumerate which `<role>.json` files have landed. (Per shell-safety rule #9, do not use `Bash ls` to poll a peer-shared directory; the Glob tool is the one-shot directory-listing primitive when you need it. The wake itself is the DM, not the listing.)
-2. If every roster role has a corresponding `<role>.json`, send `finalize_now` to every roster member in **one SendMessage block** — emit all N `SendMessage` tool_uses in the same assistant message, never one per turn. (Anti-pattern from transcript `58a0cb3a` lines 243→260: six broadcasts serialized over 4 s. Same rule as 2d's spawn batch.) `SendMessage({to: "<role>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})`. Then proceed to 2f.
+1. **Your only directory-listing call here is** `Glob({pattern: "findings/*.json", path: "$REVIEW_TMPDIR"})` to enumerate which `<role>.json` files have landed. **Do not invoke `Bash ls`, `Bash find`, or any other shell directory-walk on `$REVIEW_TMPDIR/findings/`** — the wake is the DM, not the listing, and `Bash` polling is wasteful (each call streams an exec turn for ~50 bytes of output) and racey against the DM-driven design. Anti-pattern observed in transcript `e1f2b2e5` where the lead ran `ls /tmp/pr-review-.../findings/` three times across three wake turns instead of one Glob per wake. (Per shell-safety rule #9, Glob is the one-shot directory-listing primitive.)
+2. If every roster role has a corresponding `<role>.json`, send `finalize_now` to every roster member in one `<<single-message>>` block (see top-of-file batching contract):
+
+   ```
+   <<single-message>>
+   SendMessage({to: "<role-1>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})
+   SendMessage({to: "<role-2>-reviewer", message: "finalize_now: all peers have finished scanning; mark your task complete"})
+   ...one SendMessage per roster member...
+   ```
+
+   Then proceed to 2f. Anti-patterns observed in transcripts `58a0cb3a` (six broadcasts serialized over 4 s) and `e1f2b2e5` (seven over 4.4 s).
+
 3. Otherwise, look at what woke you. If it was a teammate DM (or any wake before the safety monitor emitted), end the turn — another DM (or the monitor) will wake you again.
 4. **Once the safety monitor has fired and any role is still missing**, send one wake-up DM to each missing role in a single message: `SendMessage({to: "<role>-reviewer", message: "lead-wakeup: your self-budget should have fired by now. Write whatever findings you have with scan_status: 'timed_out' and stay idle for finalize_now."})`. Arm one more `Monitor({command: "sleep 60; echo scan_complete_grace_fired", timeout_ms: 65000, persistent: false, description: "code-review scan-complete grace window"})` as a grace window and end the turn. Single shot — don't keep issuing wake-ups.
 5. **On the grace-window wake**, if a role is still missing, treat it as unreachable: track the role name in an `unreachable_roles` list (in your turn text), broadcast `finalize_now` to every roster member, and proceed to 2f. Do **not** write a stub findings file — step 2f's missing-file branch handles consolidation correctly, and a stub races with a slow-but-live agent that may still write its real findings during teardown.
@@ -266,7 +306,17 @@ The findings files in `$REVIEW_TMPDIR/findings/` are the input to step 3's helpe
 
 Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash sleep N` — so the harness owns the wake and the user isn't prompted on each iteration.
 
-1. Send a shutdown request to every teammate **in a single message** — emit all N `SendMessage` tool_uses in the same assistant message: `SendMessage({to: "<role>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})`. Same anti-pattern as 2d/2e: if you find yourself emitting one `SendMessage` and ending the turn, stop and re-batch the rest with it.
+1. Send a shutdown request to every teammate as one `<<single-message>>` block (see top-of-file batching contract):
+
+   ```
+   <<single-message>>
+   SendMessage({to: "<role-1>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})
+   SendMessage({to: "<role-2>-reviewer", message: {"type": "shutdown_request", "reason": "review complete, team teardown"}})
+   ...one SendMessage per roster member...
+   ```
+
+   Same anti-pattern as 2d/2e (transcript `e1f2b2e5` serialized seven shutdowns over ~4.8 s). If you find yourself emitting one `SendMessage` and ending the turn, stop and re-batch the rest with it.
+
 2. Arm `Monitor({command: "sleep 15; echo teardown_wait_done", timeout_ms: 20000, persistent: false, description: "code-review teardown wait 1"})` and end the turn; the emit-line wakes you.
 3. Call `TeamDelete()`. On success, proceed to step 3 of the skill.
 4. **On "still active member(s)" error (attempt 1 failed)**:

@@ -33,7 +33,7 @@ func TestIssue_FullFormat(t *testing.T) {
 	out := Issue(sample(), IssueOptions{})
 	want := []string{
 		"🔴 **Critical** (Confidence: 85/100) - auth bypass on the happy path",
-		"**Explanation:** The middleware does not check",
+		"**Issue & impact:** The middleware does not check",
 		"**Code:**",
 		"```ts\nif (req.user) return next();\n```",
 		"**Suggested fix:**",
@@ -84,7 +84,7 @@ func TestIssue_EmptyExplanationPlaceholder(t *testing.T) {
 	if !strings.Contains(out, "_(no explanation provided)_") {
 		t.Errorf("empty Explanation should produce the placeholder, got:\n%s", out)
 	}
-	if strings.Contains(out, "**Explanation:** \n\n") {
+	if strings.Contains(out, "**Issue & impact:** \n\n") {
 		t.Errorf("empty Explanation should not render as a bare label, got:\n%s", out)
 	}
 }
