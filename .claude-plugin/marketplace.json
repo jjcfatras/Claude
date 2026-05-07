@@ -1,6 +1,7 @@
 {
   "name": "jjcfatras-tools",
   "owner": { "name": "jjcfatras" },
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
   "plugins": [
     {
       "name": "cherry-pick",
