@@ -9,6 +9,9 @@ plugins/code-review/tools/code-review-helper/bin/
 CLAUDE.local.md
 .claude/settings.local.json
 
+# Husky managed dir
+.husky/_
+
 # Skill-creator workspaces
 code-review-workspace/
 

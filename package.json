@@ -7,13 +7,16 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "prettier --write .",
-    "format:go": "gofmt -w plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser && go -C plugins/code-review/tools/code-review-helper mod edit -fmt && go -C .claude/skills/plugin-session-auditor/tools/session-parser mod edit -fmt"
+    "format:go": "gofmt -w plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser && go -C plugins/code-review/tools/code-review-helper mod edit -fmt && go -C .claude/skills/plugin-session-auditor/tools/session-parser mod edit -fmt",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be",
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.2",
     "prettier": "3.8.1",
     "prettier-plugin-sh": "0.18.1"
   }
