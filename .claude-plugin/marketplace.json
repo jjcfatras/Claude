@@ -11,6 +11,13 @@
       "category": "git"
     },
     {
+      "name": "merge",
+      "source": "./plugins/merge",
+      "description": "Merge a source branch into the current branch with conflict resolution",
+      "version": "1.0.0",
+      "category": "git"
+    },
+    {
       "name": "test-driven-fix",
       "source": "./plugins/test-driven-fix",
       "description": "Autonomously fix failing tests by iterating patch → test → revert-on-regression, with a 10-iteration cap",
