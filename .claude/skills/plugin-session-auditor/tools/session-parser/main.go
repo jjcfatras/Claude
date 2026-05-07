@@ -210,11 +210,11 @@ var permissionRejectMarkers = []string{
 	"permission denied",
 }
 
-func truncate(s string, limit int) string {
-	if len(s) <= limit {
-		return s
+func truncate(text string, limit int) string {
+	if len(text) <= limit {
+		return text
 	}
-	return s[:limit] + fmt.Sprintf("... [+%d chars]", len(s)-limit)
+	return text[:limit] + fmt.Sprintf("... [+%d chars]", len(text)-limit)
 }
 
 func previewJSON(raw json.RawMessage, limit int) string {
@@ -222,9 +222,9 @@ func previewJSON(raw json.RawMessage, limit int) string {
 		return ""
 	}
 	// Try string first; otherwise compact JSON.
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return truncate(s, limit)
+	var decoded string
+	if err := json.Unmarshal(raw, &decoded); err == nil {
+		return truncate(decoded, limit)
 	}
 	return truncate(string(raw), limit)
 }
@@ -233,9 +233,9 @@ func contentToString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
+	var decoded string
+	if err := json.Unmarshal(raw, &decoded); err == nil {
+		return decoded
 	}
 	return string(raw)
 }
@@ -258,8 +258,8 @@ func hookErrorCount(raw json.RawMessage) int {
 
 func isPermissionDenial(text string) bool {
 	low := strings.ToLower(text)
-	for _, m := range permissionRejectMarkers {
-		if strings.Contains(low, m) {
+	for _, marker := range permissionRejectMarkers {
+		if strings.Contains(low, marker) {
 			return true
 		}
 	}
@@ -273,16 +273,16 @@ func extractSlashCommands(text string) []string {
 	const close = "</command-name>"
 	var out []string
 	for {
-		i := strings.Index(text, open)
-		if i < 0 {
+		openIdx := strings.Index(text, open)
+		if openIdx < 0 {
 			return out
 		}
-		j := strings.Index(text[i+len(open):], close)
-		if j < 0 {
+		closeIdx := strings.Index(text[openIdx+len(open):], close)
+		if closeIdx < 0 {
 			return out
 		}
-		out = append(out, text[i+len(open):i+len(open)+j])
-		text = text[i+len(open)+j+len(close):]
+		out = append(out, text[openIdx+len(open):openIdx+len(open)+closeIdx])
+		text = text[openIdx+len(open)+closeIdx+len(close):]
 	}
 }
 
@@ -326,11 +326,11 @@ func discoverPluginScope(repoRoot string) map[string]PluginScope {
 	if err != nil {
 		return out
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
-		name := e.Name()
+		name := entry.Name()
 		ps := PluginScope{Commands: []string{}, Agents: []string{}}
 		for _, sub := range []struct {
 			dir string
@@ -340,8 +340,8 @@ func discoverPluginScope(repoRoot string) map[string]PluginScope {
 			{filepath.Join(pluginsDir, name, "agents"), &ps.Agents},
 		} {
 			matches, _ := filepath.Glob(filepath.Join(sub.dir, "*.md"))
-			for _, m := range matches {
-				stem := strings.TrimSuffix(filepath.Base(m), ".md")
+			for _, match := range matches {
+				stem := strings.TrimSuffix(filepath.Base(match), ".md")
 				*sub.dst = append(*sub.dst, stem)
 			}
 			sort.Strings(*sub.dst)
@@ -357,8 +357,8 @@ func discoverPluginScope(repoRoot string) map[string]PluginScope {
 // is "" when the event is not plugin-prefixed.
 func normalizeSlashName(name string) (string, string) {
 	name = strings.TrimPrefix(name, "/")
-	if i := strings.Index(name, ":"); i >= 0 {
-		return name[:i], name[i+1:]
+	if colonIdx := strings.Index(name, ":"); colonIdx >= 0 {
+		return name[:colonIdx], name[colonIdx+1:]
 	}
 	return "", name
 }
@@ -370,17 +370,17 @@ func detectPluginsInSession(events *Events, scope map[string]PluginScope) []stri
 	// reference still pins the right plugin.
 	type slashEvt struct{ namespace, stem string }
 	slashEvts := make([]slashEvt, 0, len(events.SlashCommands))
-	for _, s := range events.SlashCommands {
-		ns, stem := normalizeSlashName(s.Name)
+	for _, slash := range events.SlashCommands {
+		ns, stem := normalizeSlashName(slash.Name)
 		slashEvts = append(slashEvts, slashEvt{ns, stem})
 	}
 	agentNames := map[string]bool{}
-	for _, a := range events.AgentSpawns {
-		if a.AgentSubtype != "" {
-			agentNames[a.AgentSubtype] = true
+	for _, spawn := range events.AgentSpawns {
+		if spawn.AgentSubtype != "" {
+			agentNames[spawn.AgentSubtype] = true
 		}
-		if a.AgentName != "" {
-			agentNames[a.AgentName] = true
+		if spawn.AgentName != "" {
+			agentNames[spawn.AgentName] = true
 		}
 	}
 	// Build stem→plugins and agent→plugins indexes once so the event walk
@@ -390,11 +390,11 @@ func detectPluginsInSession(events *Events, scope map[string]PluginScope) []stri
 	stemIndex := map[string][]string{}
 	agentIndex := map[string][]string{}
 	for plugin, ps := range scope {
-		for _, c := range ps.Commands {
-			stemIndex[c] = append(stemIndex[c], plugin)
+		for _, cmd := range ps.Commands {
+			stemIndex[cmd] = append(stemIndex[cmd], plugin)
 		}
-		for _, a := range ps.Agents {
-			agentIndex[a] = append(agentIndex[a], plugin)
+		for _, agentName := range ps.Agents {
+			agentIndex[agentName] = append(agentIndex[agentName], plugin)
 		}
 	}
 	used := map[string]bool{}
@@ -405,18 +405,18 @@ func detectPluginsInSession(events *Events, scope map[string]PluginScope) []stri
 			}
 			continue
 		}
-		for _, p := range stemIndex[ev.stem] {
-			used[p] = true
+		for _, plugin := range stemIndex[ev.stem] {
+			used[plugin] = true
 		}
 	}
-	for a := range agentNames {
-		for _, p := range agentIndex[a] {
-			used[p] = true
+	for agentName := range agentNames {
+		for _, plugin := range agentIndex[agentName] {
+			used[plugin] = true
 		}
 	}
 	out := make([]string, 0, len(used))
-	for p := range used {
-		out = append(out, p)
+	for plugin := range used {
+		out = append(out, plugin)
 	}
 	sort.Strings(out)
 	return out
@@ -428,14 +428,14 @@ func percentile(values []int64, pct float64) int64 {
 	}
 	sorted := append([]int64(nil), values...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
-	k := int(pct / 100.0 * float64(len(sorted)-1))
-	if k < 0 {
-		k = 0
+	idx := int(pct / 100.0 * float64(len(sorted)-1))
+	if idx < 0 {
+		idx = 0
 	}
-	if k >= len(sorted) {
-		k = len(sorted) - 1
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
 	}
-	return sorted[k]
+	return sorted[idx]
 }
 
 // parsedFile is the return shape of parseFile — everything we extract from one
@@ -453,13 +453,13 @@ type parsedFile struct {
 }
 
 func parseFile(path string) (*parsedFile, error) {
-	f, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer file.Close()
 
-	dec := json.NewDecoder(f)
+	dec := json.NewDecoder(file)
 	dec.UseNumber()
 
 	pf := &parsedFile{
@@ -535,9 +535,9 @@ func parseFile(path string) (*parsedFile, error) {
 			if hookErrorCount(entry.HookErrors) > 0 {
 				var prevented *bool
 				if rp, ok := raw["preventedContinuation"]; ok {
-					var b bool
-					if err := json.Unmarshal(rp, &b); err == nil {
-						prevented = &b
+					var value bool
+					if err := json.Unmarshal(rp, &value); err == nil {
+						prevented = &value
 					}
 				}
 				events.HookEvents = append(events.HookEvents, HookEvent{
@@ -562,9 +562,9 @@ func parseFile(path string) (*parsedFile, error) {
 
 		// Some user messages carry plain string content with embedded slash command markers.
 		if len(env.Content) > 0 && env.Content[0] == '"' {
-			s := contentToString(env.Content)
+			text := contentToString(env.Content)
 			if entry.Type == "user" {
-				for _, name := range extractSlashCommands(s) {
+				for _, name := range extractSlashCommands(text) {
 					events.SlashCommands = append(events.SlashCommands, SlashCmd{
 						Timestamp: entry.Timestamp, Name: name, UUID: entry.UUID,
 					})
@@ -671,24 +671,24 @@ func correlateAndStat(pf *parsedFile) (*Events, Stats) {
 	}
 
 	denialCounts := map[string]int{}
-	for _, d := range events.PermissionDenials {
-		denialCounts[d.ToolName]++
+	for _, denial := range events.PermissionDenials {
+		denialCounts[denial.ToolName]++
 	}
 	var runs []DenialRun
 	if len(events.PermissionDenials) > 0 {
 		runTool := events.PermissionDenials[0].ToolName
 		runStart := events.PermissionDenials[0].Timestamp
 		runLen := 1
-		for _, d := range events.PermissionDenials[1:] {
-			if d.ToolName == runTool {
+		for _, denial := range events.PermissionDenials[1:] {
+			if denial.ToolName == runTool {
 				runLen++
 				continue
 			}
 			if runLen >= 2 {
 				runs = append(runs, DenialRun{ToolName: runTool, Start: runStart, Length: runLen})
 			}
-			runTool = d.ToolName
-			runStart = d.Timestamp
+			runTool = denial.ToolName
+			runStart = denial.Timestamp
 			runLen = 1
 		}
 		if runLen >= 2 {
@@ -698,25 +698,25 @@ func correlateAndStat(pf *parsedFile) (*Events, Stats) {
 
 	toolCallCounts := map[string]int{}
 	sidechain := 0
-	for _, c := range events.ToolCalls {
-		if c.Name != "" {
-			toolCallCounts[c.Name]++
+	for _, call := range events.ToolCalls {
+		if call.Name != "" {
+			toolCallCounts[call.Name]++
 		}
-		if c.IsSidechain {
+		if call.IsSidechain {
 			sidechain++
 		}
 	}
 	spawnsBySubtype := map[string]int{}
-	for _, a := range events.AgentSpawns {
-		key := a.AgentSubtype
+	for _, spawn := range events.AgentSpawns {
+		key := spawn.AgentSubtype
 		if key == "" {
 			key = "(default)"
 		}
 		spawnsBySubtype[key]++
 	}
 	slashByName := map[string]int{}
-	for _, s := range events.SlashCommands {
-		slashByName[s.Name]++
+	for _, slash := range events.SlashCommands {
+		slashByName[slash.Name]++
 	}
 
 	stats := Stats{
@@ -739,8 +739,8 @@ func correlateAndStat(pf *parsedFile) (*Events, Stats) {
 	if len(events.ToolCalls) > 0 {
 		stats.ToolFailureRate = float64(len(events.ToolFailures)) / float64(len(events.ToolCalls))
 	}
-	for _, d := range pf.TurnDurations {
-		stats.TurnDurationMsTotal += d
+	for _, duration := range pf.TurnDurations {
+		stats.TurnDurationMsTotal += duration
 	}
 	stats.TurnDurationMsP50 = percentile(pf.TurnDurations, 50)
 	stats.TurnDurationMsP95 = percentile(pf.TurnDurations, 95)
@@ -787,25 +787,25 @@ func indexSidechainsByAgentType(sidechainDir string) map[string][]sidechainEntry
 	idx := map[string][]sidechainEntry{}
 	matches, _ := filepath.Glob(filepath.Join(sidechainDir, "*.meta.json"))
 	for _, mp := range matches {
-		b, err := os.ReadFile(mp)
+		data, err := os.ReadFile(mp)
 		if err != nil {
 			continue
 		}
-		var m struct {
+		var meta struct {
 			AgentType string `json:"agentType"`
 		}
-		if err := json.Unmarshal(b, &m); err != nil || m.AgentType == "" {
+		if err := json.Unmarshal(data, &meta); err != nil || meta.AgentType == "" {
 			continue
 		}
 		jsonlPath := strings.TrimSuffix(mp, ".meta.json") + ".jsonl"
-		idx[m.AgentType] = append(idx[m.AgentType], sidechainEntry{
+		idx[meta.AgentType] = append(idx[meta.AgentType], sidechainEntry{
 			Path:           jsonlPath,
 			FirstTimestamp: firstTimestamp(jsonlPath),
 		})
 	}
-	for k := range idx {
-		sort.Slice(idx[k], func(i, j int) bool {
-			return idx[k][i].FirstTimestamp < idx[k][j].FirstTimestamp
+	for agentType := range idx {
+		sort.Slice(idx[agentType], func(i, j int) bool {
+			return idx[agentType][i].FirstTimestamp < idx[agentType][j].FirstTimestamp
 		})
 	}
 	return idx
@@ -815,20 +815,20 @@ func indexSidechainsByAgentType(sidechainDir string) map[string][]sidechainEntry
 // empty string on error. Used only for sidechain ordering, so we don't fail
 // on parse errors — we just lose ordering precision.
 func firstTimestamp(path string) string {
-	f, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
+	defer file.Close()
+	dec := json.NewDecoder(file)
 	for {
-		var m map[string]json.RawMessage
-		if err := dec.Decode(&m); err != nil {
+		var raw map[string]json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
 			return ""
 		}
 		var ts string
-		if raw, ok := m["timestamp"]; ok {
-			_ = json.Unmarshal(raw, &ts)
+		if rawTs, ok := raw["timestamp"]; ok {
+			_ = json.Unmarshal(rawTs, &ts)
 			if ts != "" {
 				return ts
 			}
@@ -849,23 +849,23 @@ func resolveSidechainFiles(agentID, spawnTs, nextSameTypeTs, sidechainDir string
 	if agentID == "" {
 		return nil
 	}
-	if i := strings.Index(agentID, "@"); i > 0 {
-		name := agentID[:i]
+	if atIdx := strings.Index(agentID, "@"); atIdx > 0 {
+		name := agentID[:atIdx]
 		var out []string
-		for _, e := range byAgentType[name] {
-			if spawnTs != "" && e.FirstTimestamp != "" && e.FirstTimestamp < spawnTs {
+		for _, entry := range byAgentType[name] {
+			if spawnTs != "" && entry.FirstTimestamp != "" && entry.FirstTimestamp < spawnTs {
 				continue
 			}
-			if nextSameTypeTs != "" && e.FirstTimestamp != "" && e.FirstTimestamp >= nextSameTypeTs {
+			if nextSameTypeTs != "" && entry.FirstTimestamp != "" && entry.FirstTimestamp >= nextSameTypeTs {
 				continue
 			}
-			out = append(out, e.Path)
+			out = append(out, entry.Path)
 		}
 		return out
 	}
-	p := filepath.Join(sidechainDir, "agent-"+agentID+".jsonl")
-	if _, err := os.Stat(p); err == nil {
-		return []string{p}
+	path := filepath.Join(sidechainDir, "agent-"+agentID+".jsonl")
+	if _, err := os.Stat(path); err == nil {
+		return []string{path}
 	}
 	return nil
 }
@@ -916,16 +916,16 @@ func usageFromToolResult(text string) (totalTokens int64, toolUses int, duration
 // loadSidechainMeta reads the sibling .meta.json next to a sidechain jsonl, if present.
 func loadSidechainMeta(jsonlPath string) (agentType, description string) {
 	metaPath := strings.TrimSuffix(jsonlPath, ".jsonl") + ".meta.json"
-	b, err := os.ReadFile(metaPath)
+	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return
 	}
-	var m struct {
+	var meta struct {
 		AgentType   string `json:"agentType"`
 		Description string `json:"description"`
 	}
-	if err := json.Unmarshal(b, &m); err == nil {
-		return m.AgentType, m.Description
+	if err := json.Unmarshal(data, &meta); err == nil {
+		return meta.AgentType, meta.Description
 	}
 	return
 }
@@ -972,8 +972,8 @@ func parseSidechain(jsonlPath string, sidechainDir string, byAgentType map[strin
 			continue
 		}
 		spawn.SidechainFile = paths[0]
-		for _, p := range paths {
-			child, err := parseSidechain(p, sidechainDir, byAgentType, visited, includeEvents)
+		for _, path := range paths {
+			child, err := parseSidechain(path, sidechainDir, byAgentType, visited, includeEvents)
 			if err != nil || child == nil {
 				continue
 			}
@@ -1054,8 +1054,8 @@ func parseSession(path string) (*Session, error) {
 				continue
 			}
 			spawn.SidechainFile = paths[0]
-			for _, p := range paths {
-				sc, err := parseSidechain(p, sidechainDir, byAgentType, visited, true)
+			for _, path := range paths {
+				sc, err := parseSidechain(path, sidechainDir, byAgentType, visited, true)
 				if err != nil || sc == nil {
 					continue
 				}
@@ -1075,13 +1075,13 @@ func parseSession(path string) (*Session, error) {
 
 func expandInputs(args []string) ([]string, error) {
 	var out []string
-	for _, a := range args {
-		info, err := os.Stat(a)
+	for _, arg := range args {
+		info, err := os.Stat(arg)
 		if err != nil {
 			return nil, err
 		}
 		if info.IsDir() {
-			matches, err := filepath.Glob(filepath.Join(a, "*.jsonl"))
+			matches, err := filepath.Glob(filepath.Join(arg, "*.jsonl"))
 			if err != nil {
 				return nil, err
 			}
@@ -1089,7 +1089,7 @@ func expandInputs(args []string) ([]string, error) {
 			out = append(out, matches...)
 			continue
 		}
-		out = append(out, a)
+		out = append(out, arg)
 	}
 	return out, nil
 }
@@ -1118,17 +1118,17 @@ func main() {
 	}
 
 	sessions := make([]*Session, 0, len(files))
-	for _, f := range files {
-		s, err := parseSession(f)
+	for _, file := range files {
+		session, err := parseSession(file)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "parse error:", f, err)
+			fmt.Fprintln(os.Stderr, "parse error:", file, err)
 			os.Exit(1)
 		}
 		if *summaryOnly {
-			s.Events = nil
-			s.PluginScopeKnown = nil
+			session.Events = nil
+			session.PluginScopeKnown = nil
 		}
-		sessions = append(sessions, s)
+		sessions = append(sessions, session)
 	}
 
 	var payload any
@@ -1140,13 +1140,13 @@ func main() {
 
 	enc := json.NewEncoder(os.Stdout)
 	if *outPath != "" {
-		f, err := os.Create(*outPath)
+		file, err := os.Create(*outPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "write error:", err)
 			os.Exit(1)
 		}
-		defer f.Close()
-		enc = json.NewEncoder(f)
+		defer file.Close()
+		enc = json.NewEncoder(file)
 	}
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(payload); err != nil {

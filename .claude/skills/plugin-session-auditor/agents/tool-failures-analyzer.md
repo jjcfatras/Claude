@@ -37,6 +37,7 @@ Write to the path the lead gave you. Structure:
 # Tool failure findings
 
 ## Summary
+
 - Total non-permission tool failures: N (rate: X%)
 - Failure-prone tools: <name>: K, <name>: J, ...
 - Plugins implicated: <list>
@@ -44,14 +45,17 @@ Write to the path the lead gave you. Structure:
 ## Findings
 
 ### F1. <short title>
+
 **Pattern:** <what the data shows>
 **Evidence:**
+
 - <tool_use_id @ timestamp>: tool=<name>, input=<preview>, error=<preview>
 - ...
-**Likely cause:** <hypothesis based on the input/error/context>
-**Affected component(s):** <plugin command file | helper source | both>
+  **Likely cause:** <hypothesis based on the input/error/context>
+  **Affected component(s):** <plugin command file | helper source | both>
 
 **Options:**
+
 - **A. Tighten the prompt** — instruct the model to validate the input shape before calling
   - Pros: <e.g., zero code change; addresses the most common cause>
   - Cons: <e.g., adds prompt tokens; relies on the model following instructions>

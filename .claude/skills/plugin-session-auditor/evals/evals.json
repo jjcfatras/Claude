@@ -8,14 +8,38 @@
       "expected_output": "Skill triggers, parser runs, four specialists spawn in parallel, findings written per category, proposals.md drafted with options + pros/cons per finding, asks user before implementing.",
       "files": [],
       "assertions": [
-        { "name": "parser_output_exists", "description": "parsed.json present with session_id, plugins_used, stats, events" },
-        { "name": "all_four_specialist_findings_files_exist", "description": "findings/{permissions,errors,tool-failures,orchestration}.md all present" },
-        { "name": "proposals_doc_exists", "description": "proposals.md present" },
-        { "name": "proposals_have_structured_options", "description": "Every proposal: Problem + Evidence + 2+ Options + Recommendation" },
-        { "name": "every_option_has_pros_and_cons", "description": "Every Option block has both Pros and Cons with at least one bullet each" },
-        { "name": "evidence_cites_specific_artifacts", "description": "Each Evidence cites a tool_use_id, timestamp, or file path" },
-        { "name": "no_plugin_source_modified", "description": "No files under plugins/ were modified during the run" },
-        { "name": "no_version_bump_during_audit", "description": "No plugins/*/.claude-plugin/plugin.json files were modified" }
+        {
+          "name": "parser_output_exists",
+          "description": "parsed.json present with session_id, plugins_used, stats, events"
+        },
+        {
+          "name": "all_four_specialist_findings_files_exist",
+          "description": "findings/{permissions,errors,tool-failures,orchestration}.md all present"
+        },
+        {
+          "name": "proposals_doc_exists",
+          "description": "proposals.md present"
+        },
+        {
+          "name": "proposals_have_structured_options",
+          "description": "Every proposal: Problem + Evidence + 2+ Options + Recommendation"
+        },
+        {
+          "name": "every_option_has_pros_and_cons",
+          "description": "Every Option block has both Pros and Cons with at least one bullet each"
+        },
+        {
+          "name": "evidence_cites_specific_artifacts",
+          "description": "Each Evidence cites a tool_use_id, timestamp, or file path"
+        },
+        {
+          "name": "no_plugin_source_modified",
+          "description": "No files under plugins/ were modified during the run"
+        },
+        {
+          "name": "no_version_bump_during_audit",
+          "description": "No plugins/*/.claude-plugin/plugin.json files were modified"
+        }
       ]
     },
     {
@@ -25,13 +49,34 @@
       "expected_output": "Skill triggers, parser runs, specialists spawn, findings consolidated. May surface fewer findings than the large-session test if the run was clean — that is a valid outcome.",
       "files": [],
       "assertions": [
-        { "name": "parser_output_exists", "description": "parsed.json present" },
-        { "name": "all_four_specialist_findings_files_exist", "description": "findings/{permissions,errors,tool-failures,orchestration}.md all present" },
-        { "name": "proposals_doc_exists", "description": "proposals.md present" },
-        { "name": "proposals_have_structured_options_or_explicit_no_findings", "description": "If there are proposals, each has Problem/Evidence/2+ Options/Recommendation. If clean, doc says so explicitly without fabricating proposals." },
-        { "name": "every_option_has_pros_and_cons", "description": "Every Option block has Pros + Cons (vacuous if no proposals)" },
-        { "name": "no_plugin_source_modified", "description": "No files under plugins/ were modified" },
-        { "name": "no_version_bump_during_audit", "description": "No plugin.json files were modified" }
+        {
+          "name": "parser_output_exists",
+          "description": "parsed.json present"
+        },
+        {
+          "name": "all_four_specialist_findings_files_exist",
+          "description": "findings/{permissions,errors,tool-failures,orchestration}.md all present"
+        },
+        {
+          "name": "proposals_doc_exists",
+          "description": "proposals.md present"
+        },
+        {
+          "name": "proposals_have_structured_options_or_explicit_no_findings",
+          "description": "If there are proposals, each has Problem/Evidence/2+ Options/Recommendation. If clean, doc says so explicitly without fabricating proposals."
+        },
+        {
+          "name": "every_option_has_pros_and_cons",
+          "description": "Every Option block has Pros + Cons (vacuous if no proposals)"
+        },
+        {
+          "name": "no_plugin_source_modified",
+          "description": "No files under plugins/ were modified"
+        },
+        {
+          "name": "no_version_bump_during_audit",
+          "description": "No plugin.json files were modified"
+        }
       ]
     },
     {
@@ -41,11 +86,26 @@
       "expected_output": "Skill detects plugins_used is empty, surfaces this to the user before doing further work, asks them to confirm the file path or scope. Does NOT spawn specialists or write a proposals doc.",
       "files": [],
       "assertions": [
-        { "name": "parser_output_exists_with_empty_plugins_used", "description": "parsed.json exists; plugins_used is empty" },
-        { "name": "no_specialists_spawned", "description": "findings/ absent or empty — skill bailed before spawning specialists" },
-        { "name": "no_proposals_doc_written", "description": "proposals.md absent — no fabricated proposals from non-plugin session" },
-        { "name": "bailout_note_or_explanation_present", "description": "An explanatory note exists in outputs/ OR the agent's reply surfaced the empty result" },
-        { "name": "no_plugin_source_modified", "description": "No plugins/ files modified" }
+        {
+          "name": "parser_output_exists_with_empty_plugins_used",
+          "description": "parsed.json exists; plugins_used is empty"
+        },
+        {
+          "name": "no_specialists_spawned",
+          "description": "findings/ absent or empty — skill bailed before spawning specialists"
+        },
+        {
+          "name": "no_proposals_doc_written",
+          "description": "proposals.md absent — no fabricated proposals from non-plugin session"
+        },
+        {
+          "name": "bailout_note_or_explanation_present",
+          "description": "An explanatory note exists in outputs/ OR the agent's reply surfaced the empty result"
+        },
+        {
+          "name": "no_plugin_source_modified",
+          "description": "No plugins/ files modified"
+        }
       ]
     }
   ]

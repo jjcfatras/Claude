@@ -39,6 +39,7 @@ When multiple jsonl files are passed, the top-level shape is `{"sessions": [<abo
 ```
 
 ### `ToolCall`
+
 ```jsonc
 {
   "uuid": "<message uuid>",
@@ -53,6 +54,7 @@ When multiple jsonl files are passed, the top-level shape is `{"sessions": [<abo
 ```
 
 ### `ToolResult` (embedded in `ToolCall.result`)
+
 ```jsonc
 {
   "timestamp": "...",
@@ -63,7 +65,9 @@ When multiple jsonl files are passed, the top-level shape is `{"sessions": [<abo
 ```
 
 ### `FailureRec`
+
 Same shape for `tool_failures` and `permission_denials`. The parser splits them based on the error text (see `permissionRejectMarkers` in `main.go`).
+
 ```jsonc
 {
   "timestamp": "...",
@@ -76,6 +80,7 @@ Same shape for `tool_failures` and `permission_denials`. The parser splits them 
 ```
 
 ### `AgentSpawn`
+
 ```jsonc
 {
   "timestamp": "...",
@@ -104,6 +109,7 @@ Same shape for `tool_failures` and `permission_denials`. The parser splits them 
 ```
 
 ### `Sidechain`
+
 The parsed contents of a single subagent transcript. Stats follow the same
 shape as the top-level `Stats`, so consumers can analyze a specialist's work
 the same way they analyze the lead. Recursive — a Sidechain's events may
@@ -121,15 +127,17 @@ contain its own `agent_spawns` with their own attached `sidechain` fields.
 ```
 
 ### `SlashCmd`
+
 ```jsonc
 {
   "timestamp": "...",
   "name": "/code-review",
-  "uuid": "..."
+  "uuid": "...",
 }
 ```
 
 ### `HookEvent`
+
 ```jsonc
 {
   "timestamp": "...",
@@ -141,10 +149,11 @@ contain its own `agent_spawns` with their own attached `sidechain` fields.
 ```
 
 ### `APIError`
+
 ```jsonc
 {
   "timestamp": "...",
-  "summary": "<truncated message/error payload>"
+  "summary": "<truncated message/error payload>",
 }
 ```
 

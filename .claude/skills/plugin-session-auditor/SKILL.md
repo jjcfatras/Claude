@@ -1,6 +1,7 @@
 ---
 name: plugin-session-auditor
 description: Audit a Claude Code session transcript (.jsonl) for issues with the plugins in this repository — repetitive permission prompts, errors, failed tool calls, and orchestration inefficiencies. Spawns one specialist subagent per issue category, consolidates findings into a proposals doc with pros/cons per option, and asks before implementing fixes. Use whenever the user provides a `.jsonl` session log path and asks to audit, review, analyze, find issues in, or improve a plugin based on a session — even if they don't say "audit" explicitly. Also triggers on phrases like "look at this transcript", "what went wrong in this session", "the plugins were misbehaving in this run".
+argument-hint: <jsonl-path-or-dir-or-glob>
 ---
 
 # Plugin Session Auditor
@@ -84,6 +85,7 @@ Each specialist gets:
 - A target findings file path: `$RUN_DIR/findings/<category>.md`
 
 The specialists' instructions are in:
+
 - `agents/permissions-analyzer.md`
 - `agents/errors-analyzer.md`
 - `agents/tool-failures-analyzer.md`
@@ -116,11 +118,13 @@ Source: <jsonl path>
 Plugins in scope: <list>
 
 ## Proposal 1: <short title>
+
 **Category:** permissions | errors | tool-failures | orchestration
 **Problem:** <1–3 sentences>
 **Evidence:** <bullets — timestamps, tool_use_ids, file paths>
 
 **Options:**
+
 - **A. <option name>** — <description>
   - Pros: <bullets>
   - Cons: <bullets>
@@ -186,12 +190,12 @@ Do **not** auto-commit. Stop after the edits are in the worktree and tell the us
 
 ## Output paths reference
 
-| Artifact | Path |
-|---|---|
-| Run workspace | `plugin-session-auditor-workspace/<timestamp>/` |
-| Parsed events | `<run>/parsed.json` |
+| Artifact            | Path                                                                 |
+| ------------------- | -------------------------------------------------------------------- |
+| Run workspace       | `plugin-session-auditor-workspace/<timestamp>/`                      |
+| Parsed events       | `<run>/parsed.json`                                                  |
 | Specialist findings | `<run>/findings/{permissions,errors,tool-failures,orchestration}.md` |
-| Proposals | `<run>/proposals.md` |
+| Proposals           | `<run>/proposals.md`                                                 |
 
 ## Files in this skill
 

@@ -37,6 +37,7 @@ Write to the path the lead gave you. Structure:
 # Errors findings
 
 ## Summary
+
 - Hook errors: N (prevented continuations: K)
 - API errors: M
 - Most common hook error pattern: <short>
@@ -44,13 +45,16 @@ Write to the path the lead gave you. Structure:
 ## Findings
 
 ### F1. <short title>
+
 **Pattern:** <what the data shows>
 **Evidence:**
+
 - <timestamp> hook error subtype=<x>, tool_use_id=<id>: <error preview>
 - <timestamp> following assistant turn: <what the model did next>
-**Affected component(s):** <hook name in settings.json | plugin command path | both>
+  **Affected component(s):** <hook name in settings.json | plugin command path | both>
 
 **Options:**
+
 - **A. Fix the hook** — <specific change to .claude/settings.json>
   - Pros: <e.g., addresses the root cause; one-line edit>
   - Cons: <e.g., changes behavior for other commands too — list them>

@@ -38,6 +38,7 @@ Write to the path the lead gave you. Structure:
 # Permissions findings
 
 ## Summary
+
 - Total permission denials: N
 - Distinct tools denied: M
 - Longest denial run: K (tool: <name>)
@@ -45,13 +46,16 @@ Write to the path the lead gave you. Structure:
 ## Findings
 
 ### F1. <short title>
+
 **Pattern:** <what the data shows>
 **Evidence:**
+
 - <tool_use_id @ timestamp>: tool=<name>, input=<preview>
 - ... (cite at least 2; more is fine)
-**Affected plugin(s):** <plugin name(s) or "project allowlist">
+  **Affected plugin(s):** <plugin name(s) or "project allowlist">
 
 **Options:**
+
 - **A. Add specific allowlist entry** — `<exact allowlist string>` to `.claude/settings.json`
   - Pros: targeted; doesn't widen attack surface beyond what the session needed
   - Cons: <e.g., still requires re-prompting if a slightly different invocation appears>

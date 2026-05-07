@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path'); [ -f \"$f\" ] || exit 0; case \"$f\" in *.go) gofmt -w \"$f\" ;; *) (cd \"$CLAUDE_PROJECT_DIR\" && pnpm --silent exec prettier --write --ignore-unknown --log-level warn \"$f\") ;; esac"
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/format.sh\""
           },
           {
             "type": "command",

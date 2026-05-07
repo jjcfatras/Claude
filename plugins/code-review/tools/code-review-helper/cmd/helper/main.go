@@ -280,9 +280,9 @@ func splitCSV(s string) []string {
 
 // coalesce turns nil slices into empty slices so consumers see `[]` in the
 // JSON output rather than `null`. Cosmetic but makes downstream `jq` cleaner.
-func coalesce[T any](s []T) []T {
-	if s == nil {
+func coalesce[T any](slice []T) []T {
+	if slice == nil {
 		return []T{}
 	}
-	return s
+	return slice
 }

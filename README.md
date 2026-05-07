@@ -29,7 +29,7 @@ Install only the plugins you want — each is independent.
 
 ```sh
 cd "${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper"
-make release   # cross-compile all 4 platforms into ../../bin/
+make release # cross-compile all 4 platforms into ../../bin/
 make test
 ```
 

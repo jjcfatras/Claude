@@ -59,6 +59,7 @@ Write to the path the lead gave you. Structure:
 # Orchestration findings
 
 ## Summary
+
 - Slash commands: <list with counts>
 - Agent spawns: N (subtypes: <breakdown>)
 - Main-thread tool calls: M; sidechain: K
@@ -68,14 +69,17 @@ Write to the path the lead gave you. Structure:
 ## Findings
 
 ### F1. <short title>
+
 **Pattern:** <what the data + prompts show>
 **Evidence:**
+
 - <agent spawn IDs and what each ran>
 - <duplicated tool calls — cite tool_use_ids>
 - <prompt excerpt if relevant — cite file path and line range>
-**Affected component(s):** <plugin command and/or agent prompt path>
+  **Affected component(s):** <plugin command and/or agent prompt path>
 
 **Options:**
+
 - **A. <restructuring approach>** — <description>
   - Pros: <bullets — token savings, latency cut, or quality gain>
   - Cons: <bullets — risks, compatibility cost, prompt complexity>
