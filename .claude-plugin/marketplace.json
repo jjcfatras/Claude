@@ -37,6 +37,13 @@
       "description": "Multi-specialist code review of a PR via a sub-agent team",
       "version": "1.0.0",
       "category": "code-review"
+    },
+    {
+      "name": "doc-audit",
+      "source": "./plugins/doc-audit",
+      "description": "Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
+      "version": "0.1.0",
+      "category": "documentation"
     }
   ]
 }

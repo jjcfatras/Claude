@@ -1,0 +1,16 @@
+{
+  "name": "doc-audit",
+  "version": "0.1.0",
+  "description": "Audit project documentation (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase — tech stack, paths, scripts, symbols — and report findings with suggested fixes",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "audit",
+    "drift",
+    "claude-md",
+    "readme",
+    "consistency"
+  ]
+}
