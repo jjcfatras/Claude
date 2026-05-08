@@ -29,9 +29,9 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping four plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping six plugins under `plugins/`:
 
-- `cherry-pick`, `test-driven-fix`, `respond-to-review` — single slash command each
+- `cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit` — single slash command each
 - `code-review` — multi-agent review; ships agents, references, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`)
 
 Per-plugin layout:

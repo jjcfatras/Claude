@@ -11,7 +11,7 @@ Audits Claude Code jsonl session logs for plugin issues, then proposes fixes.
 ## When this triggers
 
 - User passes a path like `~/.claude/projects/.../<uuid>.jsonl` and asks for a review, audit, or analysis.
-- User says one of the plugins (`cherry-pick`, `code-review`, `respond-to-review`, `test-driven-fix`) misbehaved in a recent session.
+- User says one of the plugins (`cherry-pick`, `merge`, `code-review`, `respond-to-review`, `test-driven-fix`, `doc-audit`) misbehaved in a recent session.
 - User wants to find inefficiencies, repeated permission prompts, or orchestration mistakes from a real run.
 
 The user may pass a single jsonl, a directory of them, or a glob — the parser accepts all three.
