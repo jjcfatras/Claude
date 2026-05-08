@@ -22,6 +22,102 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 Install only the plugins you want — each is independent.
 
+## Using the plugins
+
+Each subsection below covers how to invoke the plugin, what to have ready first, and what to expect step by step. The full flow lives in each plugin's command file under `plugins/<name>/commands/`.
+
+### `/cherry-pick`
+
+**Invoke:** `/cherry-pick <source-branch> [commit-sha or sha1..sha2]`
+
+**Prereqs:** Clean working tree (commit or stash first); source branch exists locally or as `origin/<branch>`.
+
+**What happens:**
+
+1. Preflight: validates the working tree is clean and the source branch exists.
+2. Determines commits to apply — uses the SHA / range you passed, or lists the 15 most recent commits on the source branch and asks you to pick.
+3. Shows a summary (target, source, commit list) and asks you to confirm.
+4. Applies commits one at a time in chronological order.
+5. On conflict: reads each conflicted file, resolves it by combining intent from both sides, strips conflict markers, `git add`s, then runs `git cherry-pick --continue`.
+6. Reports a final `git log` summary and lists any conflicts that were resolved.
+
+**Escape hatch:** `git cherry-pick --abort` restores the original state if you want out mid-run.
+
+### `/merge`
+
+**Invoke:** `/merge <source-branch>`
+
+**Prereqs:** Clean working tree; source branch exists locally or as `origin/<branch>`.
+
+**What happens:**
+
+1. Preflight: validates the working tree is clean and the source ref resolves.
+2. Classifies the merge as **already up to date**, **fast-forward**, or **divergent (merge commit)** and shows the incoming commits.
+3. Asks you to confirm.
+4. Runs `git merge <source-ref>` with no flags — git picks fast-forward vs. merge commit based on history.
+5. On conflict: same auto-resolution flow as `/cherry-pick`, finishing with `git merge --continue`.
+6. Reports a final `git log --graph` summary and a `git diff ORIG_HEAD..HEAD --stat`.
+
+**Escape hatch:** `git merge --abort`.
+
+### `/test-driven-fix`
+
+**Invoke:** `/test-driven-fix <spec-path-or-bug-description>` — a path that resolves to an existing file is treated as a spec; anything else is treated as a free-text bug description.
+
+**Prereqs:** A detectable test stack — `package.json`, `pyproject.toml` / `pytest.ini`, `Cargo.toml`, `go.mod`, or a `Makefile` exposing `test` / `lint` / `typecheck`. A dirty working tree is auto-stashed under `tdf-baseline` before the loop starts.
+
+**What happens:**
+
+1. Detects test/lint/typecheck commands from the project metadata.
+2. Runs the baseline and parses failures into a tracked task list.
+3. Iterates up to **10** times: locate the symbol → propose a minimal patch → narrow re-run → full re-run → revert any patch that regresses a previously-green test → repeat. Never prompts mid-loop.
+4. On full green: stages the touched files and creates a `fix(<scope>): …` commit with a body listing the failures that moved red → green.
+5. On exhaustion (10 iterations, still red): leaves best-effort patches in the working tree and **does not commit**. The baseline stash is preserved so you can `git stash show -p stash@{…}` to diff.
+
+### `/respond-to-review`
+
+**Invoke:** `/respond-to-review <pr-number> [comment-id]` — passing a comment ID scopes the run to one inline thread and skips review-body parsing.
+
+**Prereqs:** `gh` CLI authenticated for the repo; the PR exists.
+
+**What happens:**
+
+1. Fetches the PR diff, all inline comments, and all review bodies.
+2. Filters to actionable items only — drops replies, your own comments, anything you've already replied to, and trivial acks like "LGTM".
+3. Parses review bodies into discrete findings (one per bullet / heading / paragraph).
+4. Triages each item as **false positive**, **preexisting code (not introduced by this PR)**, or **valid issue**.
+5. Implements fixes for the valid items and replies confirming the change; replies to the others with an explanation dismissing the finding.
+
+### `/code-review`
+
+**Invoke:** `/code-review [pr-number]` — omit the argument to review the PR for the current branch.
+
+**Prereqs:** `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` must be set before launching Claude Code (see [Requirements](#requirements) below); `/tmp` must be writable for the agent's `Write` tool, or grant `Write` to `$HOME/.claude/tmp/pr-review-*` as a fallback.
+
+**What happens:**
+
+1. Preps the PR diff, prior reviews, project `CLAUDE.md`, and a one-paragraph PR summary into a temp workspace under `/tmp/pr-review-…`.
+2. Picks an applicable subset of specialists — security, typescript, react, infra, errors, perf, quality, claude-md — and spawns one subagent per category in parallel.
+3. Specialists scan their domain and cross-verify with peer DMs; findings are written to a shared task list.
+4. The Go `code-review-helper` finalizes, dedupes, and gates findings, then assembles the review payload.
+5. You're shown the inline + summary findings and asked to approve before anything is posted.
+6. On approval: posts the review with inline comments, then cleans up the temp workspace.
+
+### `/audit-docs`
+
+**Invoke:** `/audit-docs` (no arguments).
+
+**Prereqs:** Run inside a git repo. Outside of one, the command falls back to the current working directory and warns that path-relative claim verification is less reliable.
+
+**What happens:**
+
+1. Locates every doc file matching `CLAUDE.md`, `README.md`, `.claude/commands/*.md`, `.claude/skills/**/*.md`, and `*[Aa]rchitecture*.md` (skipping `node_modules`, `dist`, etc.).
+2. If more than 50 files match, lists them and asks whether to proceed, narrow scope, or skip directories.
+3. Extracts only **concrete claims** from each file — file paths, versions, scripts, symbol names, cross-doc links — not subjective prose.
+4. Verifies each claim against the current codebase.
+5. Reports findings grouped by source file with suggested fixes.
+6. Offers to apply fixes one at a time. **Read-only until you approve a specific fix.**
+
 ## `code-review` — extras
 
 - Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
