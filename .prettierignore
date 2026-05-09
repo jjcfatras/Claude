@@ -8,6 +8,9 @@ plugins/code-review/tools/code-review-helper/testdata/findings/
 plugins/code-review/tools/code-review-helper/testdata/prior-issues/
 plugins/code-review/tools/code-review-helper/testdata/diffs/
 
+# spawn-batch goldens are byte-compared by TestE2E_SpawnBatch.
+plugins/code-review/tools/code-review-helper/testdata/spawn-batch/
+
 # pnpm/node tooling artifacts
 node_modules/
 pnpm-lock.yaml

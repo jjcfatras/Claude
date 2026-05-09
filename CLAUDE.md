@@ -21,7 +21,7 @@ Go helper (only needed when releasing the `code-review` plugin):
 
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
 
-- **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `prettier --write` for everything else. Don't run formatters manually.
+- **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `go mod edit -fmt` for `go.mod`, `prettier --write` for everything else. Don't run formatters manually.
 - **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
 - **Command frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md` must start with `---` and include a `description:` field.
 - **`go vet` on helper edits** (`PostToolUse`): edits to `plugins/code-review/tools/code-review-helper/**/*.go` run `go vet ./...`; fix any reported issues.
@@ -39,7 +39,7 @@ Per-plugin layout:
 ```
 plugins/<name>/
   .claude-plugin/plugin.json   # plugin manifest
-  commands/<name>.md           # slash command(s)
+  commands/<command>.md        # slash command(s); usually `<plugin-name>.md`, but `doc-audit` ships `audit-docs.md`
   agents/, references/, bin/, tools/   # only where needed
 ```
 
@@ -54,7 +54,7 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `description` — what the command does (shown in `/` menu)
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — `haiku` / `sonnet` / `opus` (simple → moderate → multi-agent orchestration)
-- `effort` — `high` for thorough analysis
+- `effort` — `high` (thorough) or `xhigh` (most thorough; used by `code-review`)
 - `argument-hint` — usage hint (optional)
 - `disable-model-invocation` — `true` = user-only trigger (optional)
 

@@ -88,6 +88,72 @@ func TestE2E_FinalizePipeline(t *testing.T) {
 	}
 }
 
+// TestE2E_SpawnBatch covers all four --kind values against a single 5-member
+// roster fixture. Goldens encode the byte-for-byte markdown the lead echoes;
+// any rendering regression shows as a textual diff. The fixture's assignment
+// IDs are deliberately non-sequential (7,8,9,10,11) to defend against
+// accidental role-by-position substitution.
+func TestE2E_SpawnBatch(t *testing.T) {
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("locate repo root: %v", err)
+	}
+	tdDir := filepath.Join(repoRoot, "testdata", "spawn-batch", "sample-roster")
+	rosterPath := filepath.Join(tdDir, "roster.json")
+	assignmentsPath := filepath.Join(tdDir, "assignments.json")
+	goldenDir := filepath.Join(tdDir, "golden")
+
+	kinds := []string{"tasks", "agents", "finalize", "shutdown"}
+	for _, kind := range kinds {
+		t.Run(kind, func(t *testing.T) {
+			outDir := t.TempDir()
+			outPath := filepath.Join(outDir, kind+".md")
+
+			argv := []string{
+				"--kind", kind,
+				"--roster", rosterPath,
+				"--out", outPath,
+			}
+			if kind == "agents" {
+				argv = append(argv,
+					"--assignments-file", assignmentsPath,
+					"--review-tmpdir", "/tmp/pr-review-XXXXXX",
+					"--owner", "test-owner",
+					"--repo", "test-repo",
+					"--pr-number", "1337",
+				)
+			}
+			if err := runSpawnBatch(argv); err != nil {
+				t.Fatalf("runSpawnBatch: %v", err)
+			}
+
+			gotPath := outPath
+			wantPath := filepath.Join(goldenDir, kind+".md")
+			got, err := os.ReadFile(gotPath)
+			if err != nil {
+				t.Fatalf("read produced %s: %v", kind, err)
+			}
+			if *updateGoldens {
+				if err := os.MkdirAll(goldenDir, 0o755); err != nil {
+					t.Fatalf("mkdir golden: %v", err)
+				}
+				if err := os.WriteFile(wantPath, got, 0o644); err != nil {
+					t.Fatalf("update golden %s: %v", kind, err)
+				}
+				return
+			}
+			want, err := os.ReadFile(wantPath)
+			if err != nil {
+				t.Fatalf("read golden %s: %v (run `go test -update` to seed)", kind, err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("%s.md differs from golden — first diverging line:\n%s",
+					kind, firstDivergence(string(want), string(got)))
+			}
+		})
+	}
+}
+
 // firstDivergence shows the first line where want and got differ. Goldens are
 // large enough that a full diff drowns the signal; the first divergence is
 // almost always sufficient to locate the regression.

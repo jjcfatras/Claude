@@ -131,7 +131,7 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`cherry-pick`, `test-driven-fix`, `respond-to-review`) do not need this flag.
+The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`) do not need this flag.
 
 ### Building the helper from source
 
@@ -143,6 +143,24 @@ make test
 
 `make release` is what the author runs before tagging a new plugin version. End users do not need a Go toolchain.
 
+## Repo-internal skills
+
+The repo also ships skills under `.claude/skills/`. These are **not** part of the marketplace and are not installed by `/plugin install` — they activate only when Claude Code is run inside a clone of this repo. They exist for maintainers and contributors working on the plugins themselves.
+
+### `plugin-session-auditor`
+
+**Triggers:** auto-invokes when you hand Claude Code a `.jsonl` session log and ask to audit, review, analyze, or find issues in a plugin run. Phrases like "look at this transcript", "what went wrong in this session", or "the plugins were misbehaving in this run" also trigger it.
+
+**What it does:**
+
+1. Parses the jsonl transcript(s) into structured event JSON via a bundled Go tool (`tools/session-parser/`).
+2. Detects which plugins under `plugins/` were exercised in the session.
+3. Spawns four specialist subagents in parallel — `permissions`, `errors`, `tool-failures`, `orchestration` — each writing findings to a shared `$RUN_DIR/findings/<category>.md`.
+4. Consolidates findings into `proposals.md` with evidence (timestamps + tool_use_ids), 2+ fix options per issue, and a recommendation.
+5. Asks which proposals to implement before touching any `plugins/<name>/` source. On approval, applies fixes and bumps the affected `plugin.json` `version` per the repo's SemVer rules.
+
+**Where it lives:** `.claude/skills/plugin-session-auditor/` (`SKILL.md`, `agents/`, `references/`, `tools/`, `evals/`).
+
 ## Repository layout
 
 ```
@@ -151,4 +169,5 @@ plugins/<name>/                    # one directory per plugin
   .claude-plugin/plugin.json
   commands/<name>.md
   agents/, references/, bin/, tools/  # only where the plugin needs them
+.claude/skills/<name>/             # repo-internal skills (not marketplace plugins)
 ```

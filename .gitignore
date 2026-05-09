@@ -4,6 +4,7 @@ node_modules
 **/.DS_Store
 # Local Go build output (not the plugin's bin/ — those prebuilts are tracked).
 plugins/code-review/tools/code-review-helper/bin/
+.claude/skills/plugin-session-auditor/tools/session-parser/session-parser
 
 # Claude
 CLAUDE.local.md

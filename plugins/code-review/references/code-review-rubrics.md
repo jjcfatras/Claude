@@ -41,27 +41,25 @@ CLAUDE.md-flagged issues: cap confidence at 60 unless the rule is quoted verbati
 Every specialist follows this lifecycle. The lead's coordination depends on the contract — don't deviate.
 
 1. Mark your assignment task `in_progress` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "in_progress"})`).
-2. **Record your scan-start wall-clock**: run `date +%s` and remember the value as `SCAN_START`. You will use this to self-bound the scan phase (step 6).
-3. **Scan the diff** for issues in your domain. Use `Read` for surrounding context (function signatures, imports, call sites) when the diff alone isn't enough. **Also use `Read` to confirm every `line` value before emitting a finding** — see the `line` field rule under "Findings file schema". Hunk-math drift is the single most common reason findings get demoted to summary-only. Don't refetch via `gh pr diff` — the diff path is given in the spawn prompt's `DIFF` section.
-4. **Send outgoing verification DMs** as you find uncertain cross-domain issues (see "Cross-verification protocol"). Continue scanning while replies are in flight.
-5. **Settle outgoing verifications.** Apply replies per the rubric. Anything still unanswered after the timeout becomes `peer_timeout`.
-6. **Self-budget the scan phase.** Recheck `date +%s` after your initial diff Read, then once every ~3rd `Read` or outgoing DM thereafter, **and** immediately after any single tool call that took longer than ~30 s on the wall (slow `Read` of a generated bundle, slow `git show` of a large file, slow `Bash` invocation). On each recheck compute `elapsed = now - SCAN_START`. If `elapsed > 180` (seconds), stop scanning immediately and proceed to step 7 with whatever findings you have. Do not start new tool calls past the budget — finish the one in flight, then write findings. The 180 s budget is a ceiling, not a target — most specialists finish well inside it; the recheck cadence is intentionally coarse so healthy specialists don't burn 5+ `date +%s` calls per scan (real failure observed in transcript `b5a8dd9d`, May 2026: 15 `date +%s` calls across 5 specialists, only 1 came near the budget). The point is to bound legitimately slow scans (large PRs, many cross-package reads) and to bound stuck specialists (a `Read` on a generated bundle, a peer DM that's never coming) without a lead-side wall-clock backstop. Why 180 s: still below the prompt-cache TTL (300 s), comfortably above realistic scan times even on large PRs (initial diff Read + several cross-file Reads + a peer DM round-trip).
-7. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The presence of this file is the lead's signal that you've finished scanning. Treat it as immutable once written — incoming peer DMs after this point are for helping peers verify _their_ findings, not for revising yours. **The lead has already created `$REVIEW_TMPDIR/findings/` (step 2b of the command file) — do not pre-test or `mkdir -p` it before your Write. The directory is guaranteed to exist.**
+2. **Scan the diff** for issues in your domain. Use `Read` for surrounding context (function signatures, imports, call sites) when the diff alone isn't enough. **Also use `Read` to confirm every `line` value before emitting a finding** — see the `line` field rule under "Findings file schema". Hunk-math drift is the single most common reason findings get demoted to summary-only. Don't refetch via `gh pr diff` — the diff path is given in the spawn prompt's `DIFF` section.
+3. **Send outgoing verification DMs** as you find uncertain cross-domain issues (see "Cross-verification protocol"). Continue scanning while replies are in flight.
+4. **Settle outgoing verifications.** Apply replies per the rubric. Anything still unanswered after the timeout becomes `peer_timeout`.
+5. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The presence of this file is the lead's signal that you've finished scanning. Treat it as immutable once written — incoming peer DMs after this point are for helping peers verify _their_ findings, not for revising yours. **The lead has already created `$REVIEW_TMPDIR/findings/` (step 2b of the command file) — do not pre-test or `mkdir -p` it before your Write. The directory is guaranteed to exist.**
    - If you reached this step naturally (scan complete, all DMs settled): set `scan_status: "complete"`.
-   - If you reached this step because the self-budget in step 6 fired: set `scan_status: "timed_out"` and include whatever findings you accumulated. Do not omit partial findings — incomplete signal is more useful than no signal.
-8. **DM `team-lead` with `scan_complete: <role>`.** Send `SendMessage({to: "team-lead", message: "scan_complete: <role>"})` immediately after the Write in step 7 lands. This is the lead's wake signal — without it, the lead idles its 300 s safety-monitor budget every run waiting for someone to hold up the contract (real failure observed in transcript `74931090`: ~109 s of pure post-Write idle on a run where every specialist had already written findings). The DM is small, sent once per specialist, and is the only thing that lets the lead exit the safety-monitor early on the happy path.
-9. **Stay idle. Do _not_ mark your task complete on your own.** You remain available to answer incoming `VERIFICATION_REQUEST` DMs from peers who are still scanning. The harness wakes you for incoming messages — you don't need to poll. The self-budget in step 6 bounds your scan phase only; idle-listening for peer DMs has no time cap. Marking your task `completed` here disengages you from the mailbox, which is why step 10 below gates that operation behind `finalize_now` (real failure observed in transcripts `74931090` where two specialists self-completed early and then ignored `shutdown_request` DMs, forcing the full 3-attempt teardown ladder).
-10. **On `finalize_now` DM from the lead**: this signals every peer has finished scanning, so no more cross-verifications can arrive. Mark your task `completed` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "completed"})`). If `finalize_now` arrived before you reached step 7 (rare with self-budgeting; would mean either your `date +%s` calls didn't fire often enough, or the lead's wall-clock fired exceptionally early), write `findings/<role>.json` first with `scan_status: "timed_out"` and whatever findings you have, then mark complete.
-11. **On `shutdown_request` DM**: approve and terminate per the standard team protocol.
+   - If the lead's `lead-wakeup` DM forced you here (the team's 240 s safety monitor fired before you finished): set `scan_status: "timed_out"` and include whatever findings you accumulated. Do not omit partial findings — incomplete signal is more useful than no signal.
+6. **DM `team-lead` with `scan_complete: <role>`.** Send `SendMessage({to: "team-lead", message: "scan_complete: <role>"})` immediately after the Write in step 5 lands. This is the lead's wake signal — without it, the lead idles its safety-monitor budget every run waiting for someone to hold up the contract (real failure observed in transcript `74931090`: ~109 s of pure post-Write idle on a run where every specialist had already written findings). The DM is small, sent once per specialist, and is the only thing that lets the lead exit the safety-monitor early on the happy path.
+7. **Stay idle. Do _not_ mark your task complete on your own.** You remain available to answer incoming `VERIFICATION_REQUEST` DMs from peers who are still scanning. The harness wakes you for incoming messages — you don't need to poll. Marking your task `completed` here disengages you from the mailbox, which is why step 8 below gates that operation behind `finalize_now` (real failure observed in transcripts `74931090` where two specialists self-completed early and then ignored `shutdown_request` DMs, forcing the full 3-attempt teardown ladder).
+8. **On `finalize_now` DM from the lead**: this signals every peer has finished scanning, so no more cross-verifications can arrive. Mark your task `completed` (`TaskUpdate({taskId: ASSIGNMENT_TASK_ID, status: "completed"})`). If `finalize_now` arrived before you reached step 5 (e.g., the team safety monitor fired and the lead-wakeup DM did not reach you in time), write `findings/<role>.json` first with `scan_status: "timed_out"` and whatever findings you have, then mark complete.
+9. **On `shutdown_request` DM**: approve and terminate per the standard team protocol. `SendMessage` was already loaded at startup — do not re-call `ToolSearch` for it on this DM; the schema is still resolved.
 
-Why this shape: a peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible (step 10), not the individual specialist. "Task in*progress" means "available for DMs"; "task completed" means "no more DMs are coming." The scan-phase self-budget (step 6) is independent: it bounds the time spent \_producing* findings, not the time spent answering peer DMs from others.
+Why this shape: a peer that finishes scanning early might still be the only specialist who can verify a finding the slow peer is about to discover. The lead therefore controls when verification stops being possible (step 8), not the individual specialist. "Task in\*progress" means "available for DMs"; "task completed" means "no more DMs are coming." Scan-time bounding lives on the lead (step 2d's safety `Monitor`, default 240 s) — specialists do not self-budget; per-specialist `date +%s` rechecking was retired (transcripts `b5a8dd9d` / `c9fa54fb`, May 2026: ~15 `date +%s` calls per run, none ever fired the budget — the lead's monitor caught the legitimate timeouts).
 
 ### Post-scan idle contract
 
-Restating step 8–10 in the form most likely to bind under load:
+Restating step 6–8 in the form most likely to bind under load:
 
-- **After Write**: send the `scan_complete: <role>` DM to `team-lead` (step 8). Do nothing else.
-- **Do not** call `TaskUpdate({status: "completed"})` here. Step 10's `finalize_now` DM is the only authorisation for that.
+- **After Write**: send the `scan_complete: <role>` DM to `team-lead` (step 6). Do nothing else.
+- **Do not** call `TaskUpdate({status: "completed"})` here. Step 8's `finalize_now` DM is the only authorisation for that.
 - **Do not** send any other proactive `SendMessage` — only reply to incoming `VERIFICATION_REQUEST` and `shutdown_request` DMs.
 - The harness wakes you on incoming DMs. You don't poll, you don't `Bash sleep`, you don't busy-loop.
 
@@ -79,7 +77,7 @@ Every specialist writes its findings to `$REVIEW_TMPDIR/findings/<specialist>.js
 
 **Do NOT**:
 
-- Invent top-level keys like `reviewer`, `pr`, `non_findings`, `summary`, or put a `scan_complete` key inside the JSON body. They are silently ignored at parse time but signal you are not following the schema. (The `scan_complete: <role>` signal is sent as a `SendMessage` DM to `team-lead` per workflow step 8 — it is not a JSON field.)
+- Invent top-level keys like `reviewer`, `pr`, `non_findings`, `summary`, or put a `scan_complete` key inside the JSON body. They are silently ignored at parse time but signal you are not following the schema. (The `scan_complete: <role>` signal is sent as a `SendMessage` DM to `team-lead` per workflow step 6 — it is not a JSON field.)
 - Invent per-finding fields like `recommendation`, `risk`, `title`, `location`, `worst_case_complexity`, `budget_breakdown`. Put that material in `explanation`. Extra fields are ignored, but the surface area drift indicates you may have skipped the required fields.
 - Use lowercase severities (`"critical"`, `"medium"`). The helper rejects unknown severities, dropping the finding.
 - Omit `line` (the helper treats Go zero-value `0` as invalid; the finding is dropped).
@@ -136,7 +134,7 @@ Field rules:
 - `language` — for fenced code blocks at posting time (`ts`, `tsx`, `py`, `sql`, `tf`, `yaml`, etc.).
 - `suggested_fix` — the corrected code itself, not prose. The renderer wraps the value in a fenced block tagged with `language`, so write only code (or a minimal patch excerpt with surrounding context if it wouldn't read standalone) — no backticks, headings, or prose prefixes like "Fix:". Put reasoning in `explanation`. Use `null` only when no code-level change applies.
 - `verifications` — empty array if you didn't DM anyone. One entry per peer asked.
-- `scan_status` — `"complete"` if you wrote this file normally at workflow step 7 after a clean scan; `"timed_out"` if either the scan-phase self-budget in workflow step 6 fired with the scan still incomplete, or the lead's `finalize_now` interrupted you before you reached step 7 (rare with self-budgeting).
+- `scan_status` — `"complete"` if you wrote this file normally at workflow step 5 after a clean scan; `"timed_out"` if the lead's `lead-wakeup` DM (driven by the team's 240 s safety monitor) or `finalize_now` interrupted you before you reached step 5.
 
 ### JSON string escaping (read this if you embed code or quotes)
 
@@ -236,7 +234,7 @@ You don't need to literally count seconds. Heuristics:
 
 - Send DMs early and continue scanning.
 - After your scan is complete, wait one more idle cycle to collect late responses.
-- When you reach step 7 of the workflow (writing findings), any still-pending outgoing DMs become `peer_timeout`. Don't hold up findings for a slow peer — your incoming-DM availability afterward (step 9) is unrelated to your outgoing verifications.
+- When you reach step 5 of the workflow (writing findings), any still-pending outgoing DMs become `peer_timeout`. Don't hold up findings for a slow peer — your incoming-DM availability afterward (step 7) is unrelated to your outgoing verifications.
 
 ### One round only
 
@@ -257,7 +255,7 @@ Do not chain verifications. If a peer DMs you and you're unsure, give your best 
 These apply to every `code-review-*` specialist in addition to the workflow above.
 
 - **Don't post to GitHub.** The lead handles all posting. Your output is `$REVIEW_TMPDIR/findings/<role>.json` and your DM replies — nothing else.
-- **Bash usage is rare.** You almost never need Bash beyond `date +%s` for self-budget timestamps. When you do shell out, follow `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` — auto mode handles common patterns; the surviving rules cover real concerns (allowed-tools gaps, destructive ops, RCE).
+- **Bash usage is rare.** When you do shell out, follow `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` — auto mode handles common patterns; the surviving rules cover real concerns (allowed-tools gaps, destructive ops, RCE).
 - **Build the findings JSON with the Write tool**, not `echo`/heredoc/redirection. Write is more reliable for embedding code snippets that contain quotes, backticks, and newlines (a quoting-fidelity concern, not a permission concern).
 - **Spawn-prompt context is authoritative.** The lead inlines the rubric, roster, prior-review issues, CLAUDE.md content, and changed-file list directly into your spawn prompt. Don't Read those files — they're already in your context.
 

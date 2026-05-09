@@ -18,6 +18,7 @@ import (
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/gates"
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/lines"
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/payload"
+	"github.com/jjcfatras/claude-tools/code-review-helper/internal/spawnbatch"
 )
 
 func main() {
@@ -41,6 +42,10 @@ func main() {
 		if err := runBundleContext(args); err != nil {
 			fail(err)
 		}
+	case "spawn-batch":
+		if err := runSpawnBatch(args); err != nil {
+			fail(err)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -57,6 +62,7 @@ Usage:
   code-review-helper diff            [flags]
   code-review-helper finalize        [flags]
   code-review-helper bundle-context  [flags]
+  code-review-helper spawn-batch     [flags]
 
 Run "code-review-helper <subcommand> -h" for subcommand flags.
 `)
@@ -306,7 +312,7 @@ func runBundleContext(argv []string) error {
 	summaryPath := fs.String("summary-paragraph", "", "path to a file containing the prep agent's summary paragraph; pass '-' to read from stdin (avoids a Write that may trip third-party PreToolUse:Write hooks on sensitive-API substrings)")
 	rubricPath := fs.String("rubric", "", "path to references/code-review-rubrics.md")
 	rubricOut := fs.String("rubric-out", "", "when set, copy the rubric verbatim to this path and emit RUBRIC_PATH in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 25k-token Read cap")
-	maxSourceBytes := fs.Int("max-source-bytes", 12288, "embed each changed file <= this many bytes from HEAD; 0 disables source embedding")
+	maxSourceBytes := fs.Int("max-source-bytes", 32768, "embed each changed file <= this many bytes from HEAD; 0 disables source embedding")
 	gitWorkdir := fs.String("git-workdir", "", "cwd for `git show` calls; defaults to current process cwd")
 	out := fs.String("out", "", "output path for spawn-context.md (defaults to <review-tmpdir>/spawn-context.md; use '-' for stdout)")
 	if err := fs.Parse(argv); err != nil {
@@ -361,4 +367,64 @@ func runBundleContext(argv []string) error {
 		return err
 	}
 	return os.WriteFile(outPath, []byte(bundleStr), 0o644)
+}
+
+// runSpawnBatch: render a roster-driven tool-call batch as verbatim markdown
+// the /code-review skill's lead echoes as a single assistant message. See
+// internal/spawnbatch for the contract.
+func runSpawnBatch(argv []string) error {
+	fs := flag.NewFlagSet("spawn-batch", flag.ContinueOnError)
+	kindStr := fs.String("kind", "", "one of: tasks, agents, finalize, shutdown")
+	rosterPath := fs.String("roster", "", "path to roster.json (required)")
+	assignmentsPath := fs.String("assignments-file", "", "path to assignments.json (required for --kind agents)")
+	reviewTmpDir := fs.String("review-tmpdir", "", "path to $REVIEW_TMPDIR (required for --kind agents)")
+	owner := fs.String("owner", "", "GitHub owner (required for --kind agents)")
+	repo := fs.String("repo", "", "GitHub repo (required for --kind agents)")
+	prNumber := fs.Int("pr-number", 0, "PR number (required for --kind agents)")
+	out := fs.String("out", "", "output markdown path (required; '-' for stdout)")
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+	if *kindStr == "" || *rosterPath == "" || *out == "" {
+		return fmt.Errorf("spawn-batch: --kind, --roster, --out are all required")
+	}
+	kind, err := spawnbatch.ParseKind(*kindStr)
+	if err != nil {
+		return fmt.Errorf("spawn-batch: %w", err)
+	}
+
+	roster, err := spawnbatch.LoadRoster(*rosterPath)
+	if err != nil {
+		return fmt.Errorf("spawn-batch: %w", err)
+	}
+
+	in := spawnbatch.Input{
+		Kind:         kind,
+		Roster:       roster,
+		ReviewTmpDir: *reviewTmpDir,
+		Owner:        *owner,
+		Repo:         *repo,
+		PRNumber:     *prNumber,
+	}
+	if kind == spawnbatch.KindAgents {
+		if *assignmentsPath == "" {
+			return fmt.Errorf("spawn-batch: --kind agents requires --assignments-file")
+		}
+		assigns, err := spawnbatch.LoadAssignments(*assignmentsPath)
+		if err != nil {
+			return fmt.Errorf("spawn-batch: %w", err)
+		}
+		in.Assignments = assigns
+	}
+
+	body, err := spawnbatch.Build(in)
+	if err != nil {
+		return fmt.Errorf("spawn-batch: %w", err)
+	}
+
+	if *out == "-" {
+		_, err := io.WriteString(os.Stdout, body)
+		return err
+	}
+	return os.WriteFile(*out, []byte(body), 0o644)
 }
