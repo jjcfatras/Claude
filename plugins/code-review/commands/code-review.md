@@ -13,7 +13,7 @@ Provide a code review for the given pull request using a multi-specialist agent 
 
 **Plan:** 1. Prep PR data, 2. Build team and run specialists, 3. Filter findings, 4. Present and confirm, 5. Post review, 6. Cleanup.
 
-**Batching contract.** The four roster-driven fan-out sites (step 2c specialist TaskCreates, step 2d Agent fan-out + safety Monitor, step 2e `finalize_now` broadcast, step 2g `shutdown_request` broadcast) are now emitted by `code-review-helper spawn-batch` and Read-then-echoed by the lead — see the per-step instructions for the exact invocation. The lead's job at each site is to (1) Bash the helper to produce `$REVIEW_TMPDIR/<kind>-batch.md`, (2) Read that file, and (3) echo every line from the `<!-- echo block below verbatim ... -->` marker to EOF as the body of the next assistant message, with no prose inserted between or within the tool-call lines. Two residual prose-only `<<single-message>>` sites remain — the pre-flight probe (`TaskList` + `TaskCreate`) and step 1a's three `gh` Bash calls — emit each as one assistant message containing every listed tool_use; if you find yourself about to emit fewer, stop and re-batch.
+**Batching contract.** The four roster-driven fan-out sites (step 2c specialist TaskCreates, step 2d Agent fan-out + safety Monitor, step 2e `finalize_now` broadcast, step 2g `shutdown_request` broadcast) are now emitted by `code-review-helper spawn-batch` and Read-then-echoed by the lead — see the per-step instructions for the exact invocation. The lead's job at each site is to (1) Bash the helper to produce `$REVIEW_TMPDIR/<kind>-batch.md`, (2) Read that file, and (3) echo every line from the `<!-- BATCH-EMIT CONTRACT — read before echoing -->` opening marker through EOF as the body of the next assistant message, with no prose inserted between or within the tool-call lines. Two residual prose-only `<<single-message>>` sites remain — the pre-flight probe (`TaskList` + `TaskCreate`) and step 1a's phase-1 batch (`gh pr view` + `gh pr diff`) — emit each as one assistant message containing every listed tool_use; if you find yourself about to emit fewer, stop and re-batch. Step 1a's phase-2 `gh api reviews` call is **not** part of any batch — it emits on its own turn after phase 1 returns, because it needs the base `OWNER`/`REPO` derived from phase 1's `url` field.
 
 **Substep 0a — `/tmp` writability sentinel (mandatory; do not skip).** Some project allowlists permit `Bash(mktemp:*)` but scope the `Write` tool away from `/tmp/` paths. The `mktemp -d` above will succeed against such allowlists; subsequent specialist `Write`s into `$REVIEW_TMPDIR/findings/` will silently fail mid-run after the team has done expensive work.
 
@@ -62,55 +62,61 @@ Earlier revisions of this skill ran three prep agents in parallel. In practice t
 
 ### 1a. Lead-inline gh + helper (parallel Bash + Write)
 
-Capture identifiers and prep the diff. The post target is the PR's `url` field — never look up the base repo as a separate call. Emit the three `Bash` calls below as one assistant message (`<<single-message>>` shape — see step 1 batching note); they're independent and the harness runs them concurrently.
+Capture identifiers and prep the diff in **two phases**. Phase 1 fetches the PR metadata and diff in parallel. Phase 2 — emitted **after** the phase-1 batch returns — fetches prior Claude Code reviews using the authoritative base `OWNER`/`REPO` derived from phase 1's `url` field. The reviews call cannot be batched with `gh pr view` because the reviews call needs the base `OWNER`/`REPO` that the same-batch `gh pr view` would return: on non-fork PRs the head and base repos are identical so the old batched shape worked, but on fork PRs the base repo (where reviews are posted) differs from the head repo (where commits live), and the previous shape 404'd with a cascading `jq` parse error (transcript `6739c9db`, May 2026).
+
+**Phase 1 (parallel, one assistant message — `<<single-message>>`):**
 
 ```
 <<single-message>>
-# These three are the ONLY gh pr view / gh pr diff / gh api calls in step 1a.
-# Do NOT add a 4th — in particular, `gh pr view NUMBER --json baseRepository` is
-# rejected by gh ("Unknown JSON field: baseRepository"). Derive the base repo
-# from the PR's `url` field. See "head vs. base" note below.
-#
 # Note the head owner field name: `.headRepositoryOwner.login`. There is NO
 # `.headRepository.owner.login` — that path silently evaluates to null (the
 # call exits 0 with `owner: null` in the JSON). `headRepository` and
 # `headRepositoryOwner` are siblings in `gh pr view --json`, not nested.
+# Do NOT add `--json baseRepository` to gh pr view — rejected as "Unknown
+# JSON field: baseRepository". Derive the base repo from the PR's `url`.
 Bash({command: "gh pr view NUMBER --json headRefOid,headRepository,headRepositoryOwner,url,number,title,headRefName -q '{sha: .headRefOid, owner: .headRepositoryOwner.login, repo: .headRepository.name, number, title, headRefName, url}'"})
 Bash({command: "gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff"})
-Bash({command: "gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // \"\") | contains(\"Generated with [Claude Code]\"))] | sort_by(.submitted_at) | last'"})
 ```
 
-Substitute `NUMBER` from the user's argument. **`OWNER`/`REPO` substitution is head-vs-base sensitive:**
+From phase 1's `gh pr view` JSON output, capture `url` and derive `BASE_OWNER` / `BASE_REPO` from its path component: `https://github.com/<base-owner>/<base-repo>/pull/<n>` → `<base-owner>` / `<base-repo>`. For non-fork PRs these will equal the head owner/repo; for fork PRs they will differ.
 
-- The merged `gh pr view` call's `-q` extracts the **head** repo from `headRepositoryOwner.login` + `headRepository.name` (used later for SHA-based source reads at the head ref). It also returns the post-target `url`, head branch name, and PR title in one round-trip.
-- The `gh api .../pulls/NUMBER/reviews` call uses the **base** repo (where reviews are posted). For non-fork PRs, base == head, so use the same `OWNER/REPO`. For fork PRs, derive base owner/repo from the PR's `url` field (e.g. `https://github.com/<base-owner>/<base-repo>/pull/<n>` → `<base-owner>/<base-repo>`).
-- **Do not** call `gh pr view NUMBER --json baseRepository` to look the base up — `baseRepository` is not a valid `--json` field on this `gh` version and the call exits 1.
+**Phase 2 (single call, next assistant message):**
+
+```
+Bash({command: "gh api --paginate repos/BASE_OWNER/BASE_REPO/pulls/NUMBER/reviews | jq '[.[] | select((.body // \"\") | contains(\"Generated with [Claude Code]\"))] | sort_by(.submitted_at) | last'"})
+```
+
+Substitute `BASE_OWNER` / `BASE_REPO` from the derived values, not from the head fields. The split adds one extra round-trip (~200-400 ms) but is the only safe shape on fork PRs; on non-fork PRs the wall-clock delta is negligible.
+
+Substitute `NUMBER` from the user's argument throughout. The phase-1 `gh pr view` output gives you both the head `OWNER`/`REPO` (for HEAD-pinned source reads later) and the post-target `url` (from which you derived `BASE_OWNER`/`BASE_REPO` for phase 2). **Do not** call `gh pr view NUMBER --json baseRepository` to look the base up — `baseRepository` is not a valid `--json` field on this `gh` version and the call exits 1.
 
 Notes per call:
 
 - The merged `gh pr view NUMBER --json …` call is the only `gh pr view --json` call you need. It returns the full HEAD SHA, head OWNER, head REPO, post-target URL, head branch name, and PR title in one HTTP round-trip. **Do not split this back into two calls** — the previous shape (separate `headRefOid,headRepository` and `url,number,title,headRefName` calls) was a relic of an older `-q` path bug that's now fixed.
 - `gh pr diff NUMBER > $REVIEW_TMPDIR/pr-NUMBER.diff` — save the diff once. Specialists Read this from disk; don't refetch. **The lead must not Read the diff itself** — the prep agent in step 1c reads it for the summary, and specialists each Read it once via the spawn-context's `DIFF` pointer. Holding the diff in the lead's working set adds 50–200 KB on a large PR for no purpose.
-- `gh api --paginate … reviews | jq '[…contains("Generated with [Claude Code]")] | sort_by(.submitted_at) | last'` — pick the most recent prior Claude Code review (if any). Capture its `id`, `submitted_at`, `commit_id`. Then:
-  - If found: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews/ID/comments` and extract `path`, `line`, `start_line`, snippet (text between the first pair of triple-backtick fences in `body`), and first-line description (first line of `body` after stripping the snippet).
-  - Use the Write tool to write `$REVIEW_TMPDIR/prior-issues.json`. Schema:
 
-    ```json
-    {
-      "last_review_date": "...",
-      "last_review_commit": "...",
-      "issues": [
-        {
-          "path": "...",
-          "line": 0,
-          "start_line": 0,
-          "snippet": "...",
-          "description": "..."
-        }
-      ]
-    }
-    ```
+After phase 2 returns, pick the most recent prior Claude Code review (if any). Capture its `id`, `submitted_at`, `commit_id`. Then:
 
-    If no prior Claude Code review exists, write the file with `last_review_date` / `last_review_commit` set to `null` and an empty `issues` array.
+- If found: `gh api --paginate repos/BASE_OWNER/BASE_REPO/pulls/NUMBER/reviews/ID/comments` and extract `path`, `line`, `start_line`, snippet (text between the first pair of triple-backtick fences in `body`), and first-line description (first line of `body` after stripping the snippet).
+- Use the Write tool to write `$REVIEW_TMPDIR/prior-issues.json`. Schema:
+
+  ```json
+  {
+    "last_review_date": "...",
+    "last_review_commit": "...",
+    "issues": [
+      {
+        "path": "...",
+        "line": 0,
+        "start_line": 0,
+        "snippet": "...",
+        "description": "..."
+      }
+    ]
+  }
+  ```
+
+  If no prior Claude Code review exists, write the file with `last_review_date` / `last_review_commit` set to `null` and an empty `issues` array.
 
 After the diff file lands, run the helper to extract the changed-files list and valid-line map:
 
@@ -122,6 +128,8 @@ code-review-helper diff \
 ```
 
 The helper handles binary files, renames, deletions, and `+0,0` deletion-only hunks deterministically — do not parse the diff yourself.
+
+`changed-files.json` schema: a JSON array of strings (file paths, sorted lexicographically). **NOT** `[{path: "..."}, ...]` — do not write `jq '.[].path'` against it. Use `jq -r '.[]'` to iterate, or `jq 'length'` for the count. (Transcript `6739c9db`, May 2026: the lead burned 3 jq calls discovering the shape by trial and error.)
 
 If `code-review-helper` is missing (the plugin's `bin/` shim or its prebuilt platform binary is unavailable), abort with: "code-review-helper not on PATH. Reinstall the plugin via `/plugin install code-review@jjcfatras-tools`, or rebuild from source: `cd ${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper && make release`." Don't auto-build.
 
@@ -234,7 +242,7 @@ PARA_EOF
 "})
 ```
 
-`--rubric-out` writes the rubric verbatim to `$REVIEW_TMPDIR/rubric.md` and replaces the inline `## Rubric` section in the bundle with a `RUBRIC_PATH:` pointer. This keeps `spawn-context.md` under the 25k-token Read cap on every realistic PR (the previous all-in-one bundle hit 30k+ tokens on PR #1337, forcing every specialist to paginate). Specialists Read the rubric path once after the bundle. `--repo-root` is emitted as `REPO_ROOT:` in the per-PR header so specialists never synthesize paths from their cwd. The default `--max-source-bytes` is 32 KB — large enough that medium changed files (10–30 KB) embed in the bundle and specialists don't each `git show` them separately (transcript `c9fa54fb`, May 2026: 25× duplicate `git show` of `docusign-vendor.service.ts` because the previous 12 KB default rendered it as `_omitted`). Keeping the rubric in a separate file (above) recovered the bundle headroom that earlier motivated the 12 KB cap. Do not override unless you've measured the bundle hitting the 25k-token Read cap on a real PR.
+`--rubric-out` writes the rubric verbatim to `$REVIEW_TMPDIR/rubric.md` and replaces the inline `## Rubric` section in the bundle with a `RUBRIC_PATH:` pointer. This keeps `spawn-context.md` under the Read tool's 256 KB byte cap on every realistic PR (the previous all-in-one bundle hit 30k+ tokens on PR #1337, forcing every specialist to paginate). Specialists Read the rubric path once after the bundle. `--repo-root` is emitted as `REPO_ROOT:` in the per-PR header so specialists never synthesize paths from their cwd. The default `--max-source-bytes` is 32 KB per file — large enough that medium changed files (10–30 KB) embed in the bundle and specialists don't each `git show` them separately (transcript `c9fa54fb`, May 2026: 25× duplicate `git show` of `docusign-vendor.service.ts` because the previous 12 KB default rendered it as `_omitted`). The default `--max-total-source-bytes` is 200000 bytes — the aggregate cap that prevents a 176-file PR from blowing the 256 KB Read byte cap (transcript `6739c9db`, May 2026: 700 KB bundle on the previous all-in / per-file-only shape forced every specialist to paginate the bundle in 5-24 chunks at startup). Files over the per-file cap or that would push the running total over the aggregate cap are listed in `## Source index` with their `_omitted_` reason; specialists `git show` only those. Do not override the defaults unless you've measured the bundle hitting the 256 KB Read byte cap on a real PR.
 
 The helper enumerates `$REVIEW_TMPDIR/changed-files.json`, `roster.json`, `prior-issues.json`, `claude-md-files.json`, and (when present) `migration-history.json`, concatenates them verbatim under named sections, and copies the rubric to `--rubric-out`. With `--max-source-bytes > 0` it also embeds the contents of every changed file at HEAD that fits within the cap (via `git show HEAD_SHA:<path>`); larger files render as a placeholder pointing back at `git show`. This means specialists working on the same small file don't each pay a separate `git show` round-trip.
 
@@ -252,11 +260,11 @@ If `code-review-helper bundle-context` is missing (the prebuilt platform binary 
    Read({file_path: "$REVIEW_TMPDIR/tasks-batch.md"})
    ```
 
-   On the next assistant message, echo the contents of `tasks-batch.md` from the `<!-- echo block below verbatim ... -->` marker through EOF as the body of the message — no prose between or within the lines, no whitespace edits, no summarization. Each `TaskCreate({...})` line becomes a real tool_use call. The helper guarantees the schema is correct (`subject`, `description`, `activeForm` only — never `team_name`); do not edit the line shapes.
+   On the next assistant message, echo the contents of `tasks-batch.md` from the `<!-- BATCH-EMIT CONTRACT — read before echoing -->` opening marker through EOF as the body of the message — no prose between or within the lines, no whitespace edits, no summarization. Each `TaskCreate({...})` line becomes a real tool_use call. The helper guarantees the schema is correct (`subject`, `description`, `activeForm` only — never `team_name`); do not edit the line shapes.
 
    Capture each returned task ID; you'll persist them in step 2c.3 and the helper bakes them into the spawn prompts in step 2d.
 
-3. **Persist the role → task-ID mapping to disk.** Use the Write tool to create `$REVIEW_TMPDIR/assignments.json` as a JSON object mapping each role to the assignment-task ID returned in step 2. Schema: `{"security": "7", "quality": "8", ...}`. The step-2d helper invocation reads this file to bake `ASSIGNMENT_TASK_ID` into each spawn prompt; the teardown ladder in step 2g also reads it to escalate via `TaskStop` deterministically.
+3. **Persist the role → task-ID mapping to disk.** Use the Write tool to create `$REVIEW_TMPDIR/assignments.json` as a JSON object mapping each role to the assignment-task ID returned in step 2. Schema: `{"security": "7", "quality": "8", ...}`. The step-2d helper invocation reads this file to bake `ASSIGNMENT_TASK_ID` into each spawn prompt. (Earlier shapes also used this mapping during teardown escalation via `TaskStop`; that path was removed because `TaskStop` does not apply to plan tasks — see step 2g substep 5 and `references/code-review-design-notes.md`.)
 
 ### 2d. Spawn all applicable specialists in one message
 
@@ -267,9 +275,9 @@ Bash({command: "code-review-helper spawn-batch --kind agents --roster $REVIEW_TM
 Read({file_path: "$REVIEW_TMPDIR/agents-batch.md"})
 ```
 
-On the next assistant message, echo the contents of `agents-batch.md` from the `<!-- echo block below verbatim ... -->` marker through EOF as the body of the message — every `Agent({...})` line becomes a real tool_use call, and the trailing `Monitor({...})` line is the step-2e safety wake. No prose between or within the lines; do not summarize, narrate between blocks, or change whitespace. The helper bakes `ASSIGNMENT_TASK_ID` per role from `assignments.json` and emits `mode: "auto"` (required for long unattended scans).
+On the next assistant message, echo the contents of `agents-batch.md` from the `<!-- BATCH-EMIT CONTRACT — read before echoing -->` opening marker through EOF as the body of the message — every `Agent({...})` line becomes a real tool_use call, and the trailing `Monitor({...})` line is the step-2e safety wake. No prose between or within the lines; do not summarize, narrate between blocks, or change whitespace. The helper bakes `ASSIGNMENT_TASK_ID` per role from `assignments.json` and emits `mode: "auto"` (required for long unattended scans).
 
-The per-role spawn prompt body lives in `${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper/internal/spawnbatch/templates/spawn-prompt.tmpl` — edit that file to change what specialists read at startup. The bundle (`spawn-context.md` from 2b) and rubric (`rubric.md`) are the specialists' two startup Reads; the prompt template itself stays short on purpose so the lead's echo of the batch file remains under the 25k-token Read cap.
+The per-role spawn prompt body lives in `${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper/internal/spawnbatch/templates/spawn-prompt.tmpl` — edit that file to change what specialists read at startup. The bundle (`spawn-context.md` from 2b) and rubric (`rubric.md`) are the specialists' two startup Reads; the prompt template itself stays short on purpose so the lead's echo of the batch file remains under the Read tool's 256 KB byte cap.
 
 When `Agent` is called with `team_name`, it returns immediately (the response includes "Spawned successfully" / "running via mailbox") rather than blocking until the agent's first turn completes. Specialists run asynchronously; you'll be woken via a `scan_complete` DM as each one's findings file lands (see 2e).
 
@@ -277,7 +285,7 @@ When `Agent` is called with `team_name`, it returns immediately (the response in
 
 Specialists DM `team-lead` with `scan_complete: <role>` once they've written `findings/<role>.json` (rubric workflow step 6). The findings file is the source of truth; the DM is the wake signal. There is no polling cadence — the lead ends its turn after spawning and each DM resumes it for one short turn.
 
-The safety wake `Monitor({command: "sleep 240; echo scan_complete_timer_fired", timeout_ms: 245000, persistent: false, description: "code-review scan-complete safety timer"})` is the trailing line of the helper-emitted `agents-batch.md` (step 2d) — co-emitted with every `Agent` call in one assistant message. Do not emit it on its own turn after the spawns; the helper guarantees it lands in the same message. It is the single backstop bounding the team-level scan window in the rare case where a specialist crashes before sending any DM. The 240 s ceiling sits inside the 300 s prompt-cache TTL so the wake-turn is still cache-warm. On the happy path, every roster role DMs well before the monitor emits and you broadcast finalize without ever consulting it. (Per `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` rule #8, `Monitor` is the wake-on-event primitive — never `Bash sleep N` to pace the lead's turn.)
+The safety wake is the trailing `Monitor({command: "sleep <N>; echo scan_complete_timer_fired", timeout_ms: <N>·1000+5000, persistent: false, description: "code-review scan-complete safety timer"})` line of the helper-emitted `agents-batch.md` (step 2d), co-emitted with every `Agent` call in one assistant message. The sleep budget `<N>` scales with the changed-files count: 240 s floor for small PRs (≤50 files), +2 s per file above 50, clamped to a 540 s ceiling. Small PRs stay inside the 300 s prompt-cache TTL so the wake-turn is cache-warm; large PRs (e.g. a 176-file PR → 492 s) trade one cache miss on the wake-turn for not amputating slow specialists' findings. The exact formula is in `${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper/internal/spawnbatch/spawnbatch.go::computeScanBudget`; do not emit the `Monitor` line yourself — the helper emits it. It is the single backstop bounding the team-level scan window in the rare case where a specialist crashes before sending any DM. On the happy path, every roster role DMs well before the monitor emits and you broadcast finalize without ever consulting it. (Per `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` rule #8, `Monitor` is the wake-on-event primitive — never `Bash sleep N` to pace the lead's turn.)
 
 After the spawn-and-timer message, **end your turn**. The next time the harness invokes you, it will be because either (a) a teammate sent a DM or (b) the safety monitor emitted its `scan_complete_timer_fired` line.
 
@@ -328,19 +336,11 @@ Per shell-safety rule #8, every wait window below uses `Monitor` — never `Bash
 4. **On "still active member(s)" error (attempt 1 failed)**:
    a. The slow-but-live recovery path that used to require a manual re-Read + re-merge is now implicit: any findings file a holdout writes between attempt 1 and attempt 3 will be picked up automatically when step 3's helper runs (the helper enumerates `$REVIEW_TMPDIR/findings/` once, fresh). No explicit merge step is needed here.
    b. Send one more `shutdown_request` to each named holdout, arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 2"})`, end the turn, then retry `TeamDelete()` on the wake.
-5. **On second failure (attempt 2 failed) — escalate via `TaskStop`.** Cooperative shutdown has failed; the holdout's slot is still alive. The escalation is a deterministic two-substep sequence — keep the substeps in separate turns. The reason for the split: specialists self-complete their assignment task on `finalize_now` (rubric step 8), so any task ID captured in step 2c may already have been deleted by the time teardown runs. Re-fetch authoritative state before stopping anything.
+5. **On second failure (attempt 2 failed)** — give holdouts one more drain window and retry. `TaskStop` is **not** part of this ladder: specialists self-complete their assignment task on `finalize_now` (rubric step 8), so by the time teardown runs the task is usually gone — `TaskStop` rejects with `No task found` and the call is wasted budget. The pre-flight at the top of this file already notes `TaskStop` is for the background-shell namespace, not plan tasks. Skip it.
 
-   **Substep 5a — re-fetch task state.** In a single message: (i) Read `$REVIEW_TMPDIR/assignments.json` to recover the role → task-ID mapping written in step 2c.3, **and** (ii) call `TaskList()` (no arguments) to get the _current_ live assignment-task IDs. End the turn after the `TaskList` call. The wake delivers `TaskList`'s response.
+   Arm `Monitor({command: "sleep 45; echo teardown_wait_done", timeout_ms: 50000, persistent: false, description: "code-review teardown wait 3"})`, end the turn, then retry `TeamDelete()` on the wake (attempt 3). The 45 s window is longer than the previous 30 s second-retry window because by this point the holdout's mailbox is the only thing keeping its slot alive, and DM drain takes longer than the initial shutdown ack.
 
-   **Substep 5b — apply `TaskStop` per holdout.** For each named holdout, look up its task ID in the `assignments.json` map you read in 5a. Then check whether that ID still appears in the `TaskList` response:
-   - **If the holdout's task ID is in `TaskList`'s output**: pass that exact numeric string (e.g. `"7"`) to `TaskStop({task_id: "<numeric-id>"})`. **Do not pass the agent id** — spawn results, mailbox notifications, and `shutdown_request` acks all surface a string of the form `<role>-reviewer@<team-name>` (e.g. `quality-reviewer@code-review-1337`); that is the agent id, _not_ a task id.
-   - **If the holdout's task ID is _not_ in `TaskList`'s output**: the specialist already self-completed (rubric step 8). The agent slot is hung but the task is gone — `TaskStop` will reject with `No task found`. **Skip `TaskStop` for this holdout** and rely on the third `TeamDelete` to close out the slot (the holdout's mailbox typically drains on its own within ~30 s).
-
-   Worked example. Suppose `assignments.json` is `{"security": "7", "claude-md": "12"}` and `TaskList` returns `{"tasks": [{"id": "7", "subject": "Review for security", ...}]}` (no entry for `"12"`). For a `claude-md-reviewer` holdout, skip `TaskStop` (its task is gone). For a `security-reviewer` holdout, call `TaskStop({task_id: "7"})`.
-
-   Then arm `Monitor({command: "sleep 30; echo teardown_wait_done", timeout_ms: 35000, persistent: false, description: "code-review teardown wait 3"})`, end the turn, then retry `TeamDelete()` on the wake (attempt 3).
-
-6. **On third failure**, stop trying. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Don't loop.
+6. **On third failure**, stop trying — within this teardown ladder. Log one warning naming the leftover team + holdout(s) and continue to step 3 of the skill. Do not retry inside step 2g. (Step 6 cleanup includes one final non-blocking attempt after posting completes — see that step's "post-posting retry" note. That is the only authorized retry beyond this ladder.)
 
 Degraded-state explanation: see `${CLAUDE_PLUGIN_ROOT}/references/code-review-design-notes.md`.
 
@@ -378,9 +378,9 @@ Read `consolidated.json` after the call. If `inline_eligible` and `summary_only`
 
 ## 4. Present and confirm
 
-Read `$REVIEW_TMPDIR/consolidated.json`. Show the user the inline-eligible + summary-only findings (severity, confidence, file:line, description) for each. If `dropped_prior_review` is non-empty, include "Skipped N issue(s) already flagged in prior review (`<last_review_date>`)." plus a brief list (file:line — description) so the user can override if needed. If `missing_roles`, `timed_out_roles`, or `unreadable_roles` is non-empty, surface those names so the user knows the review may be incomplete. If `invalid_findings` is non-empty, surface each entry as `<role> finding <id>: <reason>` — the helper dropped it because it didn't match the rubric schema (e.g. missing `line`, lowercase severity, missing required field). The user should know which specialist to re-scan or whose output is partial; do not silently swallow these.
+Read `$REVIEW_TMPDIR/consolidated.json`. Show the user the inline-eligible + summary-only findings (severity, confidence, file:line, description) for each. **Display each finding with its `id` field verbatim (e.g. `sec-1`, `err-2`, `qual-3`)** — these are the IDs the helper accepts in the subset-post flow below. Do not renumber positionally (the user picking "1, 2, 3" off your display will not match what the helper expects). If `dropped_prior_review` is non-empty, include "Skipped N issue(s) already flagged in prior review (`<last_review_date>`)." plus a brief list (file:line — description) so the user can override if needed. If `missing_roles`, `timed_out_roles`, or `unreadable_roles` is non-empty, surface those names so the user knows the review may be incomplete. If `invalid_findings` is non-empty, surface each entry as `<role> finding <id>: <reason>` — the helper dropped it because it didn't match the rubric schema (e.g. missing `line`, lowercase severity, missing required field). The user should know which specialist to re-scan or whose output is partial; do not silently swallow these.
 
-Ask permission to post. If the user declines, skip step 5 (still run step 6 cleanup).
+Ask permission to post. The choices are: (a) post all findings, (b) post a subset (user names the kept `id`s, e.g. "post `sec-1` and `err-2`, skip `qual-3`"), (c) decline. If the user declines, skip step 5 (still run step 6 cleanup). If the user picks a subset, **re-run `code-review-helper finalize`** with the same arguments as step 3 plus `--include-finding-ids <comma-separated-ids>` (or `--exclude-finding-ids <ids>` if simpler). The helper re-emits `payload.json` / `payload-pending.json` / `payload-body.json` / `fallback.md` with only the selected findings; `consolidated.json` is rewritten to record the `posting_filter` field but its `inline_eligible` / `summary_only` counts are unchanged (it remains the pre-filter audit log). **Do not hand-edit `payload.json` via `jq` or any other tool** — the helper's renderers are the single source of truth (see step 5a).
 
 ## 5. Post the review
 
@@ -438,6 +438,8 @@ gh api repos/OWNER/REPO/pulls/NUMBER/reviews --method POST --input $REVIEW_TMPDI
 Remove the temp workspace. Sanity check before deletion: `$REVIEW_TMPDIR` must start with one of the two writable roots created in setup — `/tmp/pr-review-` or `$HOME/.claude/tmp/pr-review-` — and must equal the path created at the start of this run. If the prefix check fails, log a warning and skip cleanup rather than risk an unintended delete.
 
 Run `rm -rf $REVIEW_TMPDIR` only after the prefix check passes. If `rm` itself is denied by the project allowlist (some configurations grant `mktemp` but not `rm` against `/tmp/`), log a single-line warning naming the leftover path so the user can clean it manually, and continue — do not retry, do not fall back to a per-file deletion loop.
+
+**Post-posting teardown retry (authorized exception to step 2g's "don't loop").** After the cleanup `rm` resolves (success or denied), if the `code-review-<NUMBER>` team is known to still have active members from the step 2g degraded state (i.e. attempt 3 also failed), attempt one final non-blocking `TeamDelete({team_name: "code-review-<NUMBER>"})`. Posting takes 30-120 s, during which holdout mailboxes typically drain on their own; the final attempt closes the team config cleanly without further waiting. On success, log one line confirming teardown. On failure, log one line naming the leftover team and exit the skill — do not arm any further monitors, do not retry, do not loop. This is the only authorized `TeamDelete` retry beyond the step 2g ladder; the rationale is that posting itself acts as a natural drain window the ladder couldn't budget for (transcript `6739c9db`, May 2026: 4th `TeamDelete` succeeded ~4 min after attempt 3 because holdouts had drained naturally during posting).
 
 This runs even if the user declined posting in step 4 (the workspace is no longer needed) and even if the API post failed (the fallback comment is already on the PR).
 

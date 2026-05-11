@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 )
@@ -19,22 +20,65 @@ import (
 const (
 	// EchoMarker opens every batch file. The skill instruction tells the lead
 	// to echo from this marker to EOF — explicit boundary so Read line numbers
-	// from `cat -n` framing don't bleed into the echoed content.
-	EchoMarker = "<!-- echo block below verbatim; strip Read line numbers -->"
+	// from `cat -n` framing don't bleed into the echoed content. The opening
+	// line is intentionally prominent so the lead can't gloss over the contract;
+	// the trailing "echo block below verbatim" line keeps prose anchored to that
+	// marker working (every batch site uses one of these two anchors).
+	EchoMarker = "<!-- BATCH-EMIT CONTRACT — read before echoing -->\n" +
+		"<!-- Emit every tool_use line below in ONE assistant message, in order, with nothing between them. -->\n" +
+		"<!-- No prose, no thinking text, no narration between calls. No whitespace edits. Strip `cat -n` line-number prefix per line. -->\n" +
+		"<!-- If you find yourself about to emit fewer tool_uses than lines below, STOP and re-batch in a single message. -->\n" +
+		"<!-- echo block below verbatim -->"
 
-	// ScanBudgetSeconds is the team-level safety-monitor ceiling. Sits inside
-	// the 300 s prompt-cache TTL so the wake-turn after a fired monitor stays
-	// cache-warm. The same number is referenced in the command file and rubric
-	// prose; this constant is the source of truth for the Go side.
-	ScanBudgetSeconds = 240
+	// Workload-scaled safety-monitor budget. Small PRs stay inside the 300 s
+	// prompt-cache TTL; large PRs trade one cache miss on the wake-turn for not
+	// amputating slow specialists. Rationale in references/code-review-design-notes.md.
+	ScanBudgetSecondsDefault = 240 // floor; used when changed-files <= shoulder or unavailable
+	ScanBudgetSecondsCap     = 540 // ceiling; ~2× of TTL — one cache-miss on wake-turn
+	ScanBudgetPerFileSec     = 2   // seconds added per changed file above the shoulder
+	ScanBudgetShoulderFiles  = 50  // number of files below which the floor applies
 )
 
-// MonitorLine is the trailing safety-timer call appended to the Agent batch.
-// Has no per-roster fields, so it's a constant rather than a template.
-var MonitorLine = fmt.Sprintf(
-	`Monitor({command: "sleep %d; echo scan_complete_timer_fired", timeout_ms: %d, persistent: false, description: "code-review scan-complete safety timer"})`,
-	ScanBudgetSeconds, ScanBudgetSeconds*1000+5000,
-)
+// computeScanBudget returns the safety-monitor sleep budget in seconds, scaled
+// to the changed-file count: min(default + perFile * max(0, files - shoulder), cap).
+func computeScanBudget(filesChanged int) int {
+	extra := filesChanged - ScanBudgetShoulderFiles
+	if extra < 0 {
+		extra = 0
+	}
+	budget := ScanBudgetSecondsDefault + ScanBudgetPerFileSec*extra
+	if budget > ScanBudgetSecondsCap {
+		budget = ScanBudgetSecondsCap
+	}
+	return budget
+}
+
+// monitorLine renders the trailing safety-timer call appended to the Agent
+// batch with a scaled sleep budget.
+func monitorLine(scanBudgetSeconds int) string {
+	return fmt.Sprintf(
+		`Monitor({command: "sleep %d; echo scan_complete_timer_fired", timeout_ms: %d, persistent: false, description: "code-review scan-complete safety timer"})`,
+		scanBudgetSeconds, scanBudgetSeconds*1000+5000,
+	)
+}
+
+// readChangedFilesCount loads <reviewTmpDir>/changed-files.json and returns
+// the number of paths. Any error (missing file, malformed JSON) is treated as
+// "unknown" — caller falls back to the default budget. Never panics.
+func readChangedFilesCount(reviewTmpDir string) int {
+	if reviewTmpDir == "" {
+		return 0
+	}
+	data, err := os.ReadFile(filepath.Join(reviewTmpDir, "changed-files.json"))
+	if err != nil {
+		return 0
+	}
+	var paths []string
+	if err := json.Unmarshal(data, &paths); err != nil {
+		return 0
+	}
+	return len(paths)
+}
 
 type Kind int
 
@@ -179,13 +223,15 @@ func renderAgents(in Input) (string, error) {
 		return "", fmt.Errorf("agents kind requires --review-tmpdir, --owner, --repo, --pr-number")
 	}
 
+	scanBudget := computeScanBudget(readChangedFilesCount(in.ReviewTmpDir))
+
 	var buf bytes.Buffer
 	for _, m := range in.Roster.Members {
 		taskID, ok := in.Assignments[m.Role]
 		if !ok {
 			return "", fmt.Errorf("assignments missing entry for role %q", m.Role)
 		}
-		prompt, err := renderSpawnPrompt(m.Role, taskID, in)
+		prompt, err := renderSpawnPrompt(m.Role, taskID, scanBudget, in)
 		if err != nil {
 			return "", fmt.Errorf("render spawn prompt for %s: %w", m.Role, err)
 		}
@@ -199,7 +245,7 @@ func renderAgents(in Input) (string, error) {
 			return "", fmt.Errorf("render agent for %s: %w", m.Role, err)
 		}
 	}
-	buf.WriteString(MonitorLine)
+	buf.WriteString(monitorLine(scanBudget))
 	buf.WriteString("\n")
 	return buf.String(), nil
 }
@@ -207,15 +253,16 @@ func renderAgents(in Input) (string, error) {
 // renderSpawnPrompt produces the per-role prompt body. Kept in Go (rather
 // than a template variable for the whole prompt body) because the prompt is
 // long and benefits from being editable as a coherent string in source.
-func renderSpawnPrompt(role, taskID string, in Input) (string, error) {
+func renderSpawnPrompt(role, taskID string, scanBudget int, in Input) (string, error) {
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "spawn-prompt.tmpl", map[string]any{
-		"Role":             role,
-		"AssignmentTaskID": taskID,
-		"Owner":            in.Owner,
-		"Repo":             in.Repo,
-		"PRNumber":         in.PRNumber,
-		"ReviewTmpDir":     in.ReviewTmpDir,
+		"Role":              role,
+		"AssignmentTaskID":  taskID,
+		"Owner":             in.Owner,
+		"Repo":              in.Repo,
+		"PRNumber":          in.PRNumber,
+		"ReviewTmpDir":      in.ReviewTmpDir,
+		"ScanBudgetSeconds": scanBudget,
 	}); err != nil {
 		return "", err
 	}

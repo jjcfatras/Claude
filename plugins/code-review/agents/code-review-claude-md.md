@@ -13,7 +13,7 @@ The lead's spawn prompt provides minimal per-specialist runtime context (your ro
 
 CLAUDE.md is your primary working material. Begin by Read'ing `$REVIEW_TMPDIR/spawn-context.md` and `$REVIEW_TMPDIR/rubric.md` (one Read each). Then index the **root** CLAUDE.md once up front from the bundle's CLAUDE.md content section (it usually carries the cross-cutting rules that apply regardless of which subtree the diff touches). For sub-CLAUDE.md files, look them up **lazily** in the bundle as you encounter each touched file — don't pre-scan the whole CLAUDE.md content tree before reading the diff. Then Read the diff at the path the bundle gives you.
 
-The bundle embeds every changed file at HEAD (under `## Source at HEAD`) for files small enough to fit; search that section before reaching for `git show` or `Read`. Never Read absolute paths from your cwd — the cwd may be a worktree that is not checked out to HEAD. Use `Bash: git show <HEAD_SHA>:<repo-relative-path>` for HEAD-pinned source reads, against `<REPO_ROOT>` (the bundle's `REPO_ROOT:` header). For symbol searches, use `Bash: git -C <REPO_ROOT> grep <symbol> <HEAD_SHA>` — **never** `find <repo> | xargs grep`.
+The bundle embeds every changed file at HEAD under `## Source at HEAD`, and the `## Source index` block lists every changed path with its status. **Before any `git show <HEAD_SHA>:<path>` call, scan the Source index for the path.** If the path is listed (embedded or `_omitted: …_`), the bundle is the source of truth — do NOT `git show` it. Embedded → read the content from the bundle directly. `_omitted_` → paginate via `Read` against the worktree path (offset/limit), not via `git show`. The only files you may `git show` are those NOT in the changed-files list at all — for example, a callee file referenced from CLAUDE.md that you need to verify a finding against. Never Read absolute paths from your cwd — the cwd may be a worktree that is not checked out to HEAD. For files NOT embedded in the bundle, use `Bash: git show <HEAD_SHA>:<repo-relative-path>` against `<REPO_ROOT>` (the bundle's `REPO_ROOT:` header). For symbol searches across the repo (which the bundle does not pre-compute), use `Bash: git -C <REPO_ROOT> grep <symbol> <HEAD_SHA>` — **never** `find <repo> | xargs grep`.
 
 Write `findings/<role>.json` via `Bash: cat > $REVIEW_TMPDIR/findings/<role>.json <<'EOF' … EOF` rather than the `Write` tool. A common third-party `PreToolUse:Write` hook substring-matches sensitive-API tokens in payload content; quoting source under review verbatim in your finding's `code` / `suggested_fix` fields will trip it, and the silent recovery is to replace the offending lines with `...` placeholders — that is fidelity loss the user can't see. Bash heredoc is on a separate matcher and lets the source quote land intact.
 
@@ -32,7 +32,7 @@ After Read'ing the bundle and indexing the root CLAUDE.md, judge whether any ind
 
 ## Scan-phase ceilings
 
-The team's safety budget is 240 s (lead-side `Monitor`, step 2d of the command file). Stay well inside it. Concrete ceilings for this specialist:
+The team's safety budget is workload-scaled (lead-side `Monitor`, step 2d of the command file): 240 s floor for ≤50-file PRs, +2 s per file above 50, capped at 540 s. Stay well inside it. Concrete ceilings for this specialist on a typical small/medium PR:
 
 - **≤ 1 repo-wide `Grep`** (e.g., one pass for `!` non-null assertions across the diff's directories).
 - **≤ 8 cross-file `Read`s** outside the diff. If you find yourself wanting a 9th, write findings with what you have and yield.

@@ -63,7 +63,7 @@ func TestBuild_EndToEnd(t *testing.T) {
 		}
 	}
 
-	// findings/ pre-creation guarantee mentioned (Proposal 5).
+	// findings/ pre-creation guarantee is part of the bundle's contract with specialists.
 	if !strings.Contains(out, "findings/ subdirectory is pre-created") {
 		t.Errorf("missing findings/ pre-creation guarantee")
 	}
@@ -114,8 +114,8 @@ func TestBuild_MigrationHistoryGated(t *testing.T) {
 	}
 }
 
-// TestBuild_SourceEmbedding exercises Proposal 7's --max-source-bytes path:
-// small files inline, oversize files render as a placeholder.
+// TestBuild_SourceEmbedding exercises the --max-source-bytes path: small
+// files inline, oversize files render as a placeholder.
 func TestBuild_SourceEmbedding(t *testing.T) {
 	repo := t.TempDir()
 	if err := runIn(repo, "git", "init", "-q"); err != nil {
@@ -223,8 +223,7 @@ func TestBuild_RepoRoot(t *testing.T) {
 
 // TestBuild_RubricExternal verifies the rubric is copied to the external path
 // and replaced by a RUBRIC_PATH pointer line when RubricExternal is set.
-// Keeps spawn-context.md under the 25k-token Read cap on PRs that previously
-// overflowed (transcript 65606fdb, May 2026).
+// Keeps spawn-context.md under the Read tool's 256 KB byte cap.
 func TestBuild_RubricExternal(t *testing.T) {
 	dir := t.TempDir()
 	seedMinimalArtifacts(t, dir)
@@ -267,6 +266,185 @@ func TestBuild_RubricExternal(t *testing.T) {
 		t.Errorf("external rubric mismatch:\nwant: %q\ngot:  %q", rubricBody, string(got))
 	}
 }
+
+// TestBuild_SourceIndexBlock verifies the `## Source index` section: every
+// changed path is listed with its status so specialists don't have to scroll
+// the source section to know whether a file is embedded.
+func TestBuild_SourceIndexBlock(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts","c.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `{"team_name":"x","members":[]}`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	// Synthetic git show: a.ts is small, b.ts is over the per-file cap,
+	// c.ts errors.
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		switch path {
+		case "a.ts":
+			content := "export const a = 1;\n"
+			return content, len(content), nil
+		case "b.ts":
+			content := strings.Repeat("// pad\n", 200) // ~1.4 KB
+			return content, len(content), nil
+		case "c.ts":
+			return "", 0, &fakeErr{"path not found at HEAD"}
+		}
+		return "", 0, &fakeErr{"unexpected path " + path}
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:   dir,
+		HeadSHA:        "deadbeef",
+		PRNumber:       1,
+		Owner:          "o",
+		Repo:           "r",
+		RubricPath:     rubric,
+		MaxSourceBytes: 512, // forces b.ts to be omitted
+		GitShowFn:      showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if !strings.Contains(out, "## Source index") {
+		t.Error("missing `## Source index` header")
+	}
+	if !strings.Contains(out, "| File | Status | Bytes | Note |") {
+		t.Error("Source index table header missing")
+	}
+	if !strings.Contains(out, "| a.ts | embedded | 20 |  |") {
+		t.Error("a.ts row missing or wrong in Source index")
+	}
+	if !strings.Contains(out, "| b.ts | omitted | 1400 |") {
+		t.Error("b.ts omitted row missing or wrong in Source index")
+	}
+	if !strings.Contains(out, "| c.ts | omitted | 0 | git show:") {
+		t.Errorf("c.ts (git-show error) row missing or wrong in Source index; got:\n%s", out)
+	}
+
+	// Source index appears BEFORE Source at HEAD.
+	idxIdx := strings.Index(out, "## Source index")
+	srcIdx := strings.Index(out, "## Source at HEAD")
+	if idxIdx < 0 || srcIdx < 0 || idxIdx > srcIdx {
+		t.Errorf("Source index must precede Source at HEAD; got positions %d, %d", idxIdx, srcIdx)
+	}
+}
+
+// TestBuild_AggregateByteCap verifies the aggregate-byte cap: the first file
+// to overflow records the "would exceed" reason, and subsequent files
+// short-circuit with a distinct "already exhausted" reason and no git show
+// subprocess.
+func TestBuild_AggregateByteCap(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts","c.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `{"team_name":"x","members":[]}`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	// Each file is 600 bytes; per-file cap 1024 lets all three pass that gate,
+	// but aggregate cap 1000 only fits one.
+	body := strings.Repeat("x", 600)
+	var shownPaths []string
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		shownPaths = append(shownPaths, path)
+		return body, len(body), nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:        dir,
+		HeadSHA:             "deadbeef",
+		PRNumber:            1,
+		Owner:               "o",
+		Repo:                "r",
+		RubricPath:          rubric,
+		MaxSourceBytes:      1024,
+		MaxTotalSourceBytes: 1000,
+		GitShowFn:           showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	// a.ts embeds (600 bytes fits both caps).
+	if !strings.Contains(out, "| a.ts | embedded | 600 |  |") {
+		t.Errorf("a.ts should be embedded; got:\n%s", out)
+	}
+	// b.ts is the first overflow — recorded with the "would exceed" reason.
+	if !strings.Contains(out, "| b.ts | omitted | 600 | would exceed 1000-byte aggregate bundle cap") {
+		t.Errorf("b.ts should be omitted with the would-exceed reason; got:\n%s", out)
+	}
+	// c.ts short-circuits — size not measured, distinct "already exhausted" reason.
+	if !strings.Contains(out, "| c.ts | omitted | 0 | aggregate bundle cap already exhausted") {
+		t.Errorf("c.ts should be omitted with the already-exhausted reason and size 0; got:\n%s", out)
+	}
+	// Per-file cap reason should NOT fire — the section heading mentions
+	// "per-file cap:" but the omission-reason text is "bytes > N per-file cap".
+	if strings.Contains(out, "per-file cap — use `git show") {
+		t.Errorf("per-file cap reason leaked into output despite all files being under it; got:\n%s", out)
+	}
+	// showFn should have been called for a.ts and b.ts but not c.ts.
+	if want := []string{"a.ts", "b.ts"}; !equalStringSlice(shownPaths, want) {
+		t.Errorf("showFn calls = %v, want %v (c.ts must be short-circuited)", shownPaths, want)
+	}
+}
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestBuild_AggregateCapDisabledWhenZero verifies MaxTotalSourceBytes=0
+// preserves the legacy per-file-only behavior.
+func TestBuild_AggregateCapDisabledWhenZero(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `{"team_name":"x","members":[]}`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	body := strings.Repeat("x", 600)
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		return body, len(body), nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:        dir,
+		HeadSHA:             "deadbeef",
+		PRNumber:            1,
+		Owner:               "o",
+		Repo:                "r",
+		RubricPath:          rubric,
+		MaxSourceBytes:      1024,
+		MaxTotalSourceBytes: 0, // disabled — per-file cap is the only gate
+		GitShowFn:           showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	// Both files should be embedded.
+	if !strings.Contains(out, "| a.ts | embedded | 600 |") || !strings.Contains(out, "| b.ts | embedded | 600 |  |") {
+		t.Errorf("expected both files embedded when aggregate cap disabled; got:\n%s", out)
+	}
+	if strings.Contains(out, "aggregate bundle cap") {
+		t.Error("aggregate-cap reason leaked into output despite MaxTotalSourceBytes=0")
+	}
+}
+
+// fakeErr is a simple error type used by tests injecting GitShowFn failures.
+type fakeErr struct{ msg string }
+
+func (e *fakeErr) Error() string { return e.msg }
 
 func mustWrite(t *testing.T, p, content string) {
 	t.Helper()

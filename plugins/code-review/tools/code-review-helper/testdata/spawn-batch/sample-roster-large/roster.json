@@ -1,0 +1,30 @@
+{
+  "team_name": "code-review-1337",
+  "members": [
+    {
+      "role": "security",
+      "name": "security-reviewer",
+      "subagent_type": "code-review-security"
+    },
+    {
+      "role": "quality",
+      "name": "quality-reviewer",
+      "subagent_type": "code-review-quality"
+    },
+    {
+      "role": "errors",
+      "name": "errors-reviewer",
+      "subagent_type": "code-review-errors"
+    },
+    {
+      "role": "perf",
+      "name": "perf-reviewer",
+      "subagent_type": "code-review-perf"
+    },
+    {
+      "role": "claude-md",
+      "name": "claude-md-reviewer",
+      "subagent_type": "code-review-claude-md"
+    }
+  ]
+}

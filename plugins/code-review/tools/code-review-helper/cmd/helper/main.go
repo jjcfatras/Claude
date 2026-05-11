@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/bundle"
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/dedup"
@@ -124,6 +126,20 @@ type consolidatedFile struct {
 	UnreadableRoles    []string                  `json:"unreadable_roles"`
 	InvalidFindings    []findings.InvalidFinding `json:"invalid_findings"`
 	LastReviewDate     *string                   `json:"last_review_date"`
+	// PostingFilter records the --include-finding-ids / --exclude-finding-ids
+	// arguments (if any) applied between consolidated emission and payload
+	// assembly. The consolidated counts above reflect the PRE-filter
+	// classification — they're the audit log of what the pipeline produced.
+	// The payload files (payload.json, payload-body.json, etc.) reflect the
+	// POST-filter subset. nil when no filter was applied (omitempty keeps
+	// existing goldens byte-identical).
+	PostingFilter *postingFilter `json:"posting_filter,omitempty"`
+}
+
+// postingFilter is the on-disk audit trail for a subset-post run.
+type postingFilter struct {
+	IncludeIDs []string `json:"include_ids,omitempty"`
+	ExcludeIDs []string `json:"exclude_ids,omitempty"`
 }
 
 // runFinalize: dedup, gate, snap, render — produce consolidated.json,
@@ -143,6 +159,8 @@ func runFinalize(argv []string) error {
 	outBody := fs.String("out-body", "", "output path for payload-body.json (just `{\"body\": ...}`, used for the submit step of the two-step fallback)")
 	outFallback := fs.String("out-fallback", "", "output path for fallback.md")
 	expected := fs.String("expected-roles", "", "comma-separated list of expected specialist roles (optional)")
+	includeIDs := fs.String("include-finding-ids", "", "comma-separated specialist finding IDs to keep for posting (e.g. \"sec-1,err-2\"); the user's step-4 subset choice routes through this flag instead of editing payload.json by hand. Default empty = keep all classified findings. Unknown IDs are a hard error.")
+	excludeIDs := fs.String("exclude-finding-ids", "", "comma-separated specialist finding IDs to drop from posting (e.g. \"qual-3\"); ignored if --include-finding-ids is also set. Unknown IDs are a hard error.")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -191,7 +209,32 @@ func runFinalize(argv []string) error {
 	step4 := gates.Filter(step3)
 	classified := lines.Classify(step4, parsed)
 
-	// Outputs.
+	// Subset-post filter (--include-finding-ids / --exclude-finding-ids).
+	// Applied AFTER classification so the IDs match what the user saw in
+	// consolidated.json at step 4, and AFTER the consolidated.json emit so the
+	// consolidated file remains a true pre-filter audit log. Unknown IDs are a
+	// hard error to surface user mistakes (typo, stale ID) at the failing call
+	// site rather than silently skipping.
+	includeList := splitCSV(*includeIDs)
+	excludeList := splitCSV(*excludeIDs)
+	var pf *postingFilter
+	if len(includeList) > 0 || len(excludeList) > 0 {
+		if len(includeList) > 0 && len(excludeList) > 0 {
+			fmt.Fprintln(os.Stderr, "code-review-helper: warning: both --include-finding-ids and --exclude-finding-ids supplied; --include-finding-ids wins, --exclude-finding-ids ignored")
+			excludeList = nil
+		}
+		knownIDs := collectIDs(classified.InlineEligible, classified.SummaryOnly)
+		if unknown := missingIDs(includeList, knownIDs); len(unknown) > 0 {
+			return fmt.Errorf("finalize: --include-finding-ids referenced unknown id(s) %v (available: %v)", unknown, knownIDs)
+		}
+		if unknown := missingIDs(excludeList, knownIDs); len(unknown) > 0 {
+			return fmt.Errorf("finalize: --exclude-finding-ids referenced unknown id(s) %v (available: %v)", unknown, knownIDs)
+		}
+		pf = &postingFilter{IncludeIDs: includeList, ExcludeIDs: excludeList}
+	}
+
+	// Outputs. Consolidated.json reflects the pre-filter classification — it is
+	// the audit log of what dedup + gates + classify produced.
 	cf := consolidatedFile{
 		InlineEligible:     coalesce(classified.InlineEligible),
 		SummaryOnly:        coalesce(classified.SummaryOnly),
@@ -202,17 +245,23 @@ func runFinalize(argv []string) error {
 		UnreadableRoles:    coalesce(loaded.UnreadableRoles),
 		InvalidFindings:    coalesce(loaded.InvalidFindings),
 		LastReviewDate:     prior.LastReviewDate,
+		PostingFilter:      pf,
 	}
 	if err := writeJSON(*outConsolidated, cf); err != nil {
 		return err
 	}
 
+	// Payload-side findings reflect the POST-filter subset. When pf is nil this
+	// is a no-op (filterFindings returns the input unchanged).
+	postInline := filterFindings(classified.InlineEligible, includeList, excludeList)
+	postSummary := filterFindings(classified.SummaryOnly, includeList, excludeList)
+
 	buildIn := payload.BuildInput{
 		HeadSHA:        *headSHA,
 		Owner:          *owner,
 		Repo:           *repo,
-		InlineEligible: classified.InlineEligible,
-		SummaryOnly:    classified.SummaryOnly,
+		InlineEligible: postInline,
+		SummaryOnly:    postSummary,
 		Specialists:    loaded.Specialists,
 	}
 
@@ -282,9 +331,85 @@ func splitCSV(s string) []string {
 	for i := 0; i <= len(s); i++ {
 		if i == len(s) || s[i] == ',' {
 			if i > start {
-				out = append(out, s[start:i])
+				// Trim whitespace so callers can write "sec-1, err-2" without
+				// the space surviving into the validator (which would then
+				// reject " err-2" as unknown).
+				entry := strings.TrimSpace(s[start:i])
+				if entry != "" {
+					out = append(out, entry)
+				}
 			}
 			start = i + 1
+		}
+	}
+	return out
+}
+
+// collectIDs returns the union of finding IDs across the inline_eligible and
+// summary_only buckets, deduplicated and lexicographically sorted. Used to
+// validate --include-finding-ids / --exclude-finding-ids inputs.
+func collectIDs(buckets ...[]findings.Finding) []string {
+	seen := map[string]struct{}{}
+	for _, b := range buckets {
+		for _, f := range b {
+			if f.ID != "" {
+				seen[f.ID] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// missingIDs returns the subset of `want` that does not appear in `known`.
+// Used to surface unknown filter inputs as a hard error.
+func missingIDs(want, known []string) []string {
+	knownSet := map[string]struct{}{}
+	for _, id := range known {
+		knownSet[id] = struct{}{}
+	}
+	var missing []string
+	for _, id := range want {
+		if _, ok := knownSet[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+// filterFindings returns the subset of `in` that survives the include/exclude
+// filter. When include is non-empty, exclude is ignored (caller enforces this
+// in the warning, so the same precedence holds here for safety). When both are
+// empty, returns `in` unchanged.
+func filterFindings(in []findings.Finding, include, exclude []string) []findings.Finding {
+	if len(include) == 0 && len(exclude) == 0 {
+		return in
+	}
+	if len(include) > 0 {
+		keep := map[string]struct{}{}
+		for _, id := range include {
+			keep[id] = struct{}{}
+		}
+		out := make([]findings.Finding, 0, len(in))
+		for _, f := range in {
+			if _, ok := keep[f.ID]; ok {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
+	drop := map[string]struct{}{}
+	for _, id := range exclude {
+		drop[id] = struct{}{}
+	}
+	out := make([]findings.Finding, 0, len(in))
+	for _, f := range in {
+		if _, ok := drop[f.ID]; !ok {
+			out = append(out, f)
 		}
 	}
 	return out
@@ -311,8 +436,9 @@ func runBundleContext(argv []string) error {
 	repoRoot := fs.String("repo-root", "", "repo working-tree root; emitted as REPO_ROOT in the bundle so specialists never synthesize paths from cwd (which may be a worktree not checked out to HEAD)")
 	summaryPath := fs.String("summary-paragraph", "", "path to a file containing the prep agent's summary paragraph; pass '-' to read from stdin (avoids a Write that may trip third-party PreToolUse:Write hooks on sensitive-API substrings)")
 	rubricPath := fs.String("rubric", "", "path to references/code-review-rubrics.md")
-	rubricOut := fs.String("rubric-out", "", "when set, copy the rubric verbatim to this path and emit RUBRIC_PATH in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 25k-token Read cap")
+	rubricOut := fs.String("rubric-out", "", "when set, copy the rubric verbatim to this path and emit RUBRIC_PATH in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the Read tool's 256 KB byte cap")
 	maxSourceBytes := fs.Int("max-source-bytes", 32768, "embed each changed file <= this many bytes from HEAD; 0 disables source embedding")
+	maxTotalSourceBytes := fs.Int("max-total-source-bytes", 200000, "aggregate cap across all embedded files; once running embedded byte count + next file size > cap, the next file and all remaining files are marked _omitted_ with the aggregate-cap reason. Default leaves headroom inside the Read tool's 256 KB byte cap. 0 disables (per-file cap still applies).")
 	gitWorkdir := fs.String("git-workdir", "", "cwd for `git show` calls; defaults to current process cwd")
 	out := fs.String("out", "", "output path for spawn-context.md (defaults to <review-tmpdir>/spawn-context.md; use '-' for stdout)")
 	if err := fs.Parse(argv); err != nil {
@@ -341,17 +467,18 @@ func runBundleContext(argv []string) error {
 	}
 
 	in := bundle.Input{
-		ReviewTmpDir:     *reviewTmpDir,
-		HeadSHA:          *headSHA,
-		PRNumber:         *prNumber,
-		Owner:            *owner,
-		Repo:             *repo,
-		RepoRoot:         *repoRoot,
-		SummaryParagraph: summary,
-		RubricPath:       *rubricPath,
-		RubricExternal:   *rubricOut,
-		MaxSourceBytes:   *maxSourceBytes,
-		GitWorkdir:       *gitWorkdir,
+		ReviewTmpDir:        *reviewTmpDir,
+		HeadSHA:             *headSHA,
+		PRNumber:            *prNumber,
+		Owner:               *owner,
+		Repo:                *repo,
+		RepoRoot:            *repoRoot,
+		SummaryParagraph:    summary,
+		RubricPath:          *rubricPath,
+		RubricExternal:      *rubricOut,
+		MaxSourceBytes:      *maxSourceBytes,
+		MaxTotalSourceBytes: *maxTotalSourceBytes,
+		GitWorkdir:          *gitWorkdir,
 	}
 	bundleStr, err := bundle.Build(in)
 	if err != nil {

@@ -118,6 +118,47 @@ func TestBuild_OutputStartsWithEchoMarker(t *testing.T) {
 	}
 }
 
+// TestComputeScanBudget covers the workload-scaled safety-monitor formula:
+// min(default + perFile * max(0, files - shoulder), cap).
+// Defaults: 240 s floor, 540 s ceiling, 2 s per file above 50.
+func TestComputeScanBudget(t *testing.T) {
+	cases := []struct {
+		files int
+		want  int
+	}{
+		{files: 0, want: 240},    // empty diff → floor
+		{files: 1, want: 240},    // below shoulder
+		{files: 49, want: 240},   // just below shoulder
+		{files: 50, want: 240},   // exactly shoulder — still floor
+		{files: 51, want: 242},   // one file over shoulder
+		{files: 100, want: 340},  // mid-range
+		{files: 176, want: 492},  // mid-range, above shoulder
+		{files: 200, want: 540},  // 240 + 2*150 = 540 — exactly cap
+		{files: 245, want: 540},  // 240 + 2*195 = 630 — clamped to cap
+		{files: 295, want: 540},  // well into cap territory
+		{files: 1000, want: 540}, // far above; ceiling holds
+		{files: -5, want: 240},   // defensive: negative input clamped to floor
+	}
+	for _, c := range cases {
+		got := computeScanBudget(c.files)
+		if got != c.want {
+			t.Errorf("computeScanBudget(%d) = %d, want %d", c.files, got, c.want)
+		}
+	}
+}
+
+// TestReadChangedFilesCount_GracefulFallback verifies that missing or malformed
+// changed-files.json returns 0 (caller falls back to the default budget) rather
+// than failing the spawn-batch render.
+func TestReadChangedFilesCount_GracefulFallback(t *testing.T) {
+	if got := readChangedFilesCount(""); got != 0 {
+		t.Errorf("empty reviewTmpDir: got %d, want 0", got)
+	}
+	if got := readChangedFilesCount(t.TempDir()); got != 0 {
+		t.Errorf("missing file: got %d, want 0", got)
+	}
+}
+
 func TestParseKind(t *testing.T) {
 	cases := map[string]Kind{
 		"tasks":    KindTasks,

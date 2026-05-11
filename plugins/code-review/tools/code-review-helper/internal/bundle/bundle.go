@@ -25,17 +25,23 @@ import (
 // Input is what the `bundle-context` subcommand collects from flags +
 // $REVIEW_TMPDIR.
 type Input struct {
-	ReviewTmpDir     string
-	HeadSHA          string
-	PRNumber         int
-	Owner            string
-	Repo             string
-	RepoRoot         string // repo working-tree root for specialist `git -C <REPO_ROOT> ...` calls; emitted in Per-PR header so specialists never synthesize paths from cwd (which may be a worktree not checked out to HEAD)
-	SummaryParagraph string // contents of the file the prep agent wrote
-	RubricPath       string // path to references/code-review-rubrics.md
-	RubricExternal   string // when non-empty, helper writes rubric to this path and emits `RUBRIC_PATH: <path>` in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 25k-token Read cap
-	MaxSourceBytes   int    // per-file embedding cap; 0 disables
-	GitWorkdir       string // cwd for `git show` calls (repo root)
+	ReviewTmpDir        string
+	HeadSHA             string
+	PRNumber            int
+	Owner               string
+	Repo                string
+	RepoRoot            string // repo working-tree root for specialist `git -C <REPO_ROOT> ...` calls; emitted in Per-PR header so specialists never synthesize paths from cwd (which may be a worktree not checked out to HEAD)
+	SummaryParagraph    string // contents of the file the prep agent wrote
+	RubricPath          string // path to references/code-review-rubrics.md
+	RubricExternal      string // when non-empty, helper writes rubric to this path and emits `RUBRIC_PATH: <path>` in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 256 KB Read byte cap
+	MaxSourceBytes      int    // per-file embedding cap; 0 disables
+	MaxTotalSourceBytes int    // aggregate cap across all embedded files; 0 disables (only per-file cap applies). Once running embedded bytes + next file size > cap, the next file and all remaining files are marked _omitted_ with the aggregate-cap reason.
+	GitWorkdir          string // cwd for `git show` calls (repo root)
+
+	// GitShowFn allows tests to inject a deterministic substitute for
+	// `git show HEAD_SHA:path`. Returns (content, size, error). When nil, the
+	// production gitShowAtHead is used.
+	GitShowFn func(workdir, sha, path string) (string, int, error)
 }
 
 // Build reads the on-disk artifacts in ReviewTmpDir and emits the spawn-context
@@ -80,7 +86,8 @@ func Build(in Input) (string, error) {
 	// When the caller requested the rubric be externalized, copy it verbatim
 	// to that path before assembling the bundle. Specialists Read the bundle
 	// once, then Read the rubric path once — keeping each file under the
-	// 25k-token Read cap.
+	// Read tool's 256 KB byte cap (the binding limit; the 25k-token cap is
+	// roomier on most diffs).
 	if in.RubricExternal != "" {
 		if err := os.WriteFile(in.RubricExternal, rubricRaw, 0o644); err != nil {
 			return "", fmt.Errorf("write rubric to %s: %w", in.RubricExternal, err)
@@ -105,7 +112,7 @@ func Build(in Input) (string, error) {
 		fmt.Fprintf(&b, "- REPO_ROOT: %s\n", in.RepoRoot)
 	}
 	if in.RubricExternal != "" {
-		fmt.Fprintf(&b, "- RUBRIC_PATH: %s (Read this once after the bundle — moved out of the bundle body to keep spawn-context.md under the 25k-token Read cap)\n", in.RubricExternal)
+		fmt.Fprintf(&b, "- RUBRIC_PATH: %s (Read this once after the bundle — moved out of the bundle body to keep spawn-context.md under the Read tool's 256 KB byte cap)\n", in.RubricExternal)
 	}
 	fmt.Fprintf(&b, "- The findings/ subdirectory is pre-created by the lead — do not mkdir or pre-test it before your Write.\n\n")
 
@@ -139,11 +146,9 @@ func Build(in Input) (string, error) {
 	}
 
 	if in.MaxSourceBytes > 0 && len(changedFiles) > 0 {
-		section, err := renderSourceSection(in, changedFiles)
-		if err != nil {
-			return "", err
-		}
-		b.WriteString(section)
+		decisions := planSourceSection(in, changedFiles)
+		b.WriteString(renderSourceIndex(decisions))
+		b.WriteString(renderSourceContent(decisions, in))
 	}
 
 	if in.RubricExternal == "" {
@@ -157,34 +162,125 @@ func Build(in Input) (string, error) {
 	return b.String(), nil
 }
 
-// renderSourceSection inlines each changed file <= MaxSourceBytes via
-// `git show HEAD_SHA:path`. Larger files (or read failures) get a one-line
-// placeholder so the section is still useful as a manifest.
-func renderSourceSection(in Input, paths []string) (string, error) {
+// sourceStatus enumerates the two possible source-section dispositions.
+type sourceStatus string
+
+const (
+	sourceEmbedded sourceStatus = "embedded"
+	sourceOmitted  sourceStatus = "omitted"
+)
+
+// sourceDecision is one row of the per-file embed-or-omit plan. `planSourceSection`
+// produces these up front so the Source index and Source content sections agree.
+type sourceDecision struct {
+	Path    string
+	Size    int          // size returned by git show (0 when not measured or err)
+	Content string       // populated only when Status == sourceEmbedded
+	Status  sourceStatus // sourceEmbedded | sourceOmitted
+	Reason  string       // omission rationale (per-file cap, aggregate cap, git show error)
+}
+
+// planSourceSection iterates the changed paths in lexicographic order and
+// decides per-file whether to embed the content, mark it omitted under the
+// per-file cap, or mark it omitted under the aggregate-bytes cap. Lexicographic
+// ordering is deterministic, greppable, and golden-test friendly. Per-file cap
+// is checked BEFORE the aggregate cap so a single large file is reported with
+// the more useful per-file reason ("47 KB > 32 KB cap") rather than being
+// blamed on cumulative usage.
+//
+// Once the aggregate cap is reached, remaining files skip the `git show`
+// subprocess entirely — no future file can embed, and their size is not
+// load-bearing for the index (the row still appears with size 0 and a
+// distinct reason directing the specialist to fetch on demand). On a 176-file
+// PR with default caps this avoids ~100+ subprocesses.
+func planSourceSection(in Input, paths []string) []sourceDecision {
 	sorted := append([]string(nil), paths...)
 	sort.Strings(sorted)
 
-	var b bytes.Buffer
-	fmt.Fprintf(&b, "## Source at HEAD (changed files <= %d bytes; larger files omitted, use `git show %s:<path>` to fetch)\n\n", in.MaxSourceBytes, in.HeadSHA)
+	showFn := in.GitShowFn
+	if showFn == nil {
+		showFn = gitShowAtHead
+	}
 
+	out := make([]sourceDecision, 0, len(sorted))
+	running := 0
+	exhausted := false
 	for _, p := range sorted {
-		content, size, err := gitShowAtHead(in.GitWorkdir, in.HeadSHA, p)
-		if err != nil {
-			fmt.Fprintf(&b, "### %s\n_omitted: %s_\n\n", p, err)
+		if exhausted {
+			out = append(out, sourceDecision{
+				Path:   p,
+				Status: sourceOmitted,
+				Reason: fmt.Sprintf("aggregate bundle cap already exhausted (running=%d ≥ %d) — use `git show %s:%s`", running, in.MaxTotalSourceBytes, in.HeadSHA, p),
+			})
 			continue
 		}
-		if size > in.MaxSourceBytes {
-			fmt.Fprintf(&b, "### %s\n_omitted: %d bytes > %d max — use `git show %s:%s`_\n\n", p, size, in.MaxSourceBytes, in.HeadSHA, p)
+		content, size, err := showFn(in.GitWorkdir, in.HeadSHA, p)
+		d := sourceDecision{Path: p, Size: size}
+		switch {
+		case err != nil:
+			d.Status = sourceOmitted
+			d.Reason = fmt.Sprintf("git show: %s", err)
+		case size > in.MaxSourceBytes:
+			d.Status = sourceOmitted
+			d.Reason = fmt.Sprintf("%d bytes > %d per-file cap — use `git show %s:%s`", size, in.MaxSourceBytes, in.HeadSHA, p)
+		case in.MaxTotalSourceBytes > 0 && running+size > in.MaxTotalSourceBytes:
+			d.Status = sourceOmitted
+			d.Reason = fmt.Sprintf("would exceed %d-byte aggregate bundle cap (running=%d, file=%d) — use `git show %s:%s`", in.MaxTotalSourceBytes, running, size, in.HeadSHA, p)
+			// First aggregate-cap trip flips the latch: subsequent files would
+			// almost always also overflow, and we save the subprocess by
+			// short-circuiting. The rare case of a smaller-than-headroom file
+			// later in the alphabet not embedding is an acceptable trade for
+			// ~100+ saved subprocesses on a 176-file PR.
+			exhausted = true
+		default:
+			d.Status = sourceEmbedded
+			d.Content = content
+			running += size
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// renderSourceIndex emits a markdown table listing every changed path with its
+// status. Specialists check this index FIRST to decide whether a file is in the
+// bundle (read inline / paginate via Read) or needs a `git show` fetch.
+func renderSourceIndex(decisions []sourceDecision) string {
+	var b bytes.Buffer
+	fmt.Fprint(&b, "## Source index\n\n")
+	fmt.Fprint(&b, "Specialists: search this index FIRST. `embedded` → read content under `## Source at HEAD`. `omitted` → fetch via `git show HEAD_SHA:path`. Do not `git show` files marked `embedded`.\n\n")
+	fmt.Fprint(&b, "| File | Status | Bytes | Note |\n")
+	fmt.Fprint(&b, "|------|--------|-------|------|\n")
+	for _, d := range decisions {
+		note := ""
+		if d.Status == sourceOmitted {
+			note = d.Reason
+		}
+		fmt.Fprintf(&b, "| %s | %s | %d | %s |\n", d.Path, d.Status, d.Size, note)
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// renderSourceContent emits the per-file content section. Embedded files get a
+// fenced code block; omitted files get a one-line placeholder so the section is
+// still self-describing as a manifest.
+func renderSourceContent(decisions []sourceDecision, in Input) string {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "## Source at HEAD (per-file cap: %d bytes; aggregate cap: %d bytes; omitted files listed in `## Source index` — use `git show %s:<path>` to fetch)\n\n", in.MaxSourceBytes, in.MaxTotalSourceBytes, in.HeadSHA)
+	for _, d := range decisions {
+		if d.Status == sourceOmitted {
+			fmt.Fprintf(&b, "### %s\n_omitted: %s_\n\n", d.Path, d.Reason)
 			continue
 		}
-		lang := languageHint(p)
-		fmt.Fprintf(&b, "### %s\n```%s\n%s", p, lang, content)
-		if !strings.HasSuffix(content, "\n") {
+		lang := languageHint(d.Path)
+		fmt.Fprintf(&b, "### %s\n```%s\n%s", d.Path, lang, d.Content)
+		if !strings.HasSuffix(d.Content, "\n") {
 			b.WriteString("\n")
 		}
 		b.WriteString("```\n\n")
 	}
-	return b.String(), nil
+	return b.String()
 }
 
 // gitShowAtHead returns the contents of `path` at HEAD_SHA. If the file is
