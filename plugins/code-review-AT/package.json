@@ -1,0 +1,20 @@
+{
+  "name": "@jjcfatras/code-review",
+  "version": "3.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Multi-specialist code review of a PR via the Anthropic Claude Agent SDK",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.140",
+    "zod": "^4.0.0",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0"
+  }
+}

@@ -32,10 +32,10 @@
       "category": "code-review"
     },
     {
-      "name": "code-review",
-      "source": "./plugins/code-review",
+      "name": "code-review-AT",
+      "source": "./plugins/code-review-AT",
       "description": "Multi-specialist code review of a PR via a sub-agent team",
-      "version": "1.0.0",
+      "version": "3.0.0",
       "category": "code-review"
     },
     {

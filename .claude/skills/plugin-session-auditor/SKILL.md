@@ -64,7 +64,7 @@ Before spawning specialists, you (the lead) skim `parsed.json` to:
 
 - Note `plugins_used` — the specialists should focus their fix proposals on these plugins.
 - Note unusual signals — high `tool_failure_rate`, long `permission_denial_runs`, many repeated `slash_commands`, big `turn_duration_ms_p95`.
-- Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/code-review` — point the orchestration specialist at `plugins/code-review/commands/code-review.md` and the agents under `plugins/code-review/agents/`").
+- Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/code-review-AT` — point the orchestration specialist at `plugins/code-review-AT/commands/code-review-AT.md` and the agents under `plugins/code-review-AT/agents/`").
 
 ### Step 4 — Run the four specialists
 

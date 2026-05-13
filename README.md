@@ -17,7 +17,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `merge`             | `/merge <source-branch>`                                  | Merges a source branch into the current branch with conflict resolution.                                                                                             |
 | `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                          | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                   |
 | `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`             | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                   |
-| `code-review`       | `/code-review [pr-number]`                                | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.           |
+| `code-review-AT`    | `/code-review-AT [pr-number]`                             | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.           |
 | `doc-audit`         | `/audit-docs`                                             | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes. |
 
 Install only the plugins you want — each is independent.
@@ -88,9 +88,9 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 4. Triages each item as **false positive**, **preexisting code (not introduced by this PR)**, or **valid issue**.
 5. Implements fixes for the valid items and replies confirming the change; replies to the others with an explanation dismissing the finding.
 
-### `/code-review`
+### `/code-review-AT`
 
-**Invoke:** `/code-review [pr-number]` — omit the argument to review the PR for the current branch.
+**Invoke:** `/code-review-AT [pr-number]` — omit the argument to review the PR for the current branch.
 
 **Prereqs:** `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` must be set before launching Claude Code (see [Requirements](#requirements) below); `/tmp` must be writable for the agent's `Write` tool, or grant `Write` to `$HOME/.claude/tmp/pr-review-*` as a fallback.
 
@@ -118,14 +118,14 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 5. Reports findings grouped by source file with suggested fixes.
 6. Offers to apply fixes one at a time. **Read-only until you approve a specific fix.**
 
-## `code-review` — extras
+## `code-review-AT` — extras
 
 - Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
 - Installs eight `code-review-*` review specialists into the team that runs the review.
 
 ### Requirements
 
-`/code-review` orchestrates multiple specialist subagents via Claude Code's agent-team APIs (`TeamCreate`, `SendMessage`, concurrent `Agent` spawns). Those tools are gated behind an experimental flag — without it, the command's preflight aborts with an allowlist error. Enable agent teams in your shell before running `/code-review`:
+`/code-review-AT` orchestrates multiple specialist subagents via Claude Code's agent-team APIs (`TeamCreate`, `SendMessage`, concurrent `Agent` spawns). Those tools are gated behind an experimental flag — without it, the command's preflight aborts with an allowlist error. Enable agent teams in your shell before running `/code-review-AT`:
 
 ```sh
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1

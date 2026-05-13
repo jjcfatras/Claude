@@ -14,9 +14,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pnpm prettier --write .` — format all files
 - `pnpm prettier --check .` — check formatting without writing
 
-Go helper (only needed when releasing the `code-review` plugin):
+Go helper (only needed when releasing the `code-review-AT` plugin):
 
-- `cd plugins/code-review/tools/code-review-helper && make release` — cross-compile prebuilts for darwin/linux × amd64/arm64 into `plugins/code-review/bin/`
+- `cd plugins/code-review-AT/tools/code-review-helper && make release` — cross-compile prebuilts for darwin/linux × amd64/arm64 into `plugins/code-review-AT/bin/`
 - `make test` — run Go tests for the helper
 
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
@@ -24,15 +24,15 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 - **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `go mod edit -fmt` for `go.mod`, `prettier --write` for everything else. Don't run formatters manually.
 - **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
 - **Command frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md` must start with `---` and include a `description:` field.
-- **`go vet` on helper edits** (`PostToolUse`): edits to `plugins/code-review/tools/code-review-helper/**/*.go` run `go vet ./...`; fix any reported issues.
-- **Prebuilt binaries are write-locked** (`PreToolUse`): direct edits to `plugins/code-review/bin/*` are blocked. Rebuild via `cd plugins/code-review/tools/code-review-helper && make release`.
+- **`go vet` on helper edits** (`PostToolUse`): edits to `plugins/code-review-AT/tools/code-review-helper/**/*.go` run `go vet ./...`; fix any reported issues.
+- **Prebuilt binaries are write-locked** (`PreToolUse`): direct edits to `plugins/code-review-AT/bin/*` are blocked. Rebuild via `cd plugins/code-review-AT/tools/code-review-helper && make release`.
 
 ## Project Structure
 
 This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping six plugins under `plugins/`:
 
 - `cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit` — single slash command each
-- `code-review` — multi-agent review; ships agents, references, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`)
+- `code-review-AT` — multi-agent review; ships agents, references, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`)
 
 Per-plugin layout:
 
@@ -54,7 +54,7 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `description` — what the command does (shown in `/` menu)
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — `haiku` / `sonnet` / `opus` (simple → moderate → multi-agent orchestration)
-- `effort` — `high` (thorough) or `xhigh` (most thorough; used by `code-review`)
+- `effort` — `high` (thorough) or `xhigh` (most thorough; used by `code-review-AT`)
 - `argument-hint` — usage hint (optional)
 - `disable-model-invocation` — `true` = user-only trigger (optional)
 
@@ -70,7 +70,7 @@ When a change touches anything under `plugins/<name>/` (commands, agents, refere
 
 Bump rules:
 
-- Bump only the affected plugin(s). A change scoped to `plugins/code-review/` does not touch `plugins/cherry-pick/.claude-plugin/plugin.json`.
+- Bump only the affected plugin(s). A change scoped to `plugins/code-review-AT/` does not touch `plugins/cherry-pick/.claude-plugin/plugin.json`.
 - A single change picks one tier — the highest tier triggered by any part of the diff. (A breaking command rename plus a bug fix is MAJOR, not MAJOR + PATCH.)
 - Bumping a higher tier resets lower tiers to `0` (1.4.7 → MINOR → 1.5.0, not 1.5.7).
 - Pure non-plugin changes (root `CLAUDE.md`, `.claude/settings.json`, `.claude-plugin/marketplace.json`, repo-level docs, `code-review-workspace/`) do not require any plugin version bump.

@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "prettier --write .",
-    "format:go": "gofmt -w plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser && go -C plugins/code-review/tools/code-review-helper mod edit -fmt && go -C .claude/skills/plugin-session-auditor/tools/session-parser mod edit -fmt",
+    "format:go": "gofmt -w plugins/code-review-AT/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser && go -C plugins/code-review-AT/tools/code-review-helper mod edit -fmt && go -C .claude/skills/plugin-session-auditor/tools/session-parser mod edit -fmt",
     "prepare": "husky",
     "check-types": "tsc --noEmit"
   },

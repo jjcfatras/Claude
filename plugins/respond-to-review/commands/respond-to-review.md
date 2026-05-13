@@ -20,7 +20,7 @@ Follow these steps precisely:
 4. Run `gh api user` and extract the `login` field — this is the current user.
 5. Run `gh pr view $PR_NUMBER --json headRefName,headRefOid,baseRefName,baseRefOid` to get branch info and commit SHAs.
 6. Run `gh pr diff $PR_NUMBER` and save the output to `$TMPDIR/pr.diff` using the Write tool.
-7. Parse the diff to build a map of changed files and their hunk ranges (same as in code-review: `file path → list of [newStart, newStart+newCount-1]` ranges), and whether each line is added (`+`) or context (` `).
+7. Parse the diff to build a map of changed files and their hunk ranges (same as in code-review-AT: `file path → list of [newStart, newStart+newCount-1]` ranges), and whether each line is added (`+`) or context (` `).
 
 ## Step 1: Fetch and filter flagged items
 

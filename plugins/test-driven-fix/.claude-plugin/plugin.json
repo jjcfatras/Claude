@@ -1,6 +1,6 @@
 {
   "name": "test-driven-fix",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Autonomously fix failing tests by iterating patch → test → revert-on-regression, with a 10-iteration cap",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

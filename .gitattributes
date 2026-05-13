@@ -1,6 +1,6 @@
 # Go E2E goldens are byte-compared; force LF on all platforms regardless of
 # the user's core.autocrlf setting.
-plugins/code-review/tools/code-review-helper/testdata/golden/** text eol=lf
-plugins/code-review/tools/code-review-helper/testdata/diffs/** text eol=lf
-plugins/code-review/tools/code-review-helper/testdata/findings/** text eol=lf
-plugins/code-review/tools/code-review-helper/testdata/prior-issues/** text eol=lf
+plugins/code-review-AT/tools/code-review-helper/testdata/golden/** text eol=lf
+plugins/code-review-AT/tools/code-review-helper/testdata/diffs/** text eol=lf
+plugins/code-review-AT/tools/code-review-helper/testdata/findings/** text eol=lf
+plugins/code-review-AT/tools/code-review-helper/testdata/prior-issues/** text eol=lf
