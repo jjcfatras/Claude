@@ -1,0 +1,36 @@
+{
+  "specialist": "quality",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 38,
+      "startLine": null,
+      "confidence": 45,
+      "severity": "Minor",
+      "rationale": "low-confidence style nit",
+      "explanation": "The new field `genericWorkloadEnabled` could use a doc comment explaining why it exists and what it gates.",
+      "code": "genericWorkloadEnabled bool",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    },
+    {
+      "id": "qual-2",
+      "category": "quality",
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 200,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "out-of-diff defect referenced from the diff context",
+      "explanation": "The function batchStateCompatible (line 200, not in this diff) has no test that exercises the new GenericWorkload code path with a NIL lastCycle. Coverage gap should be filled in this PR.",
+      "code": "func (b *OpportunisticBatch) batchStateCompatible(ctx context.Context, pod *v1.Pod) {",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    }
+  ]
+}

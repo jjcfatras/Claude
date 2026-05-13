@@ -1,0 +1,24 @@
+{
+  "packages/next/src/client/route-params.ts": [
+    [49, 72],
+    [79, 85],
+    [91, 100],
+    [103, 109],
+    [118, 124],
+    [137, 143]
+  ],
+  "test/e2e/app-dir/segment-cache/encoded-slash-params/app/[slug]/page.tsx": [
+    [1, 16]
+  ],
+  "test/e2e/app-dir/segment-cache/encoded-slash-params/app/layout.tsx": [
+    [1, 8]
+  ],
+  "test/e2e/app-dir/segment-cache/encoded-slash-params/app/page.tsx": [[1, 27]],
+  "test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx": [
+    [1, 33]
+  ],
+  "test/e2e/app-dir/segment-cache/encoded-slash-params/encoded-slash-params.test.ts": [
+    [1, 77]
+  ],
+  "test/e2e/app-dir/segment-cache/encoded-slash-params/next.config.js": [[1, 8]]
+}

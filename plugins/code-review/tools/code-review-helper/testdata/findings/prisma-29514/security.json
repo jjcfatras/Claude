@@ -1,0 +1,36 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "package.json",
+      "line": 166,
+      "startLine": null,
+      "confidence": 90,
+      "severity": "Critical",
+      "rationale": "hono floor bumped to >=4.12.14 to mitigate CVE",
+      "explanation": "The override raises hono to >=4.12.14 to pick up the recent prototype-pollution patch. Verify the lockfile resolved version is at-or-above this floor across every workspace; otherwise transitively pinned consumers may still resolve 4.12.7 and miss the fix.",
+      "code": "\"hono\": \">=4.12.14\",",
+      "suggested_fix": null,
+      "language": "json",
+      "verifications": []
+    },
+    {
+      "id": "sec-2",
+      "category": "security",
+      "file": "packages/client-engine-runtime/package.json",
+      "line": 39,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Critical",
+      "rationale": "uuid major bump 11.x → 14.x crosses two majors",
+      "explanation": "uuid 11 → 14 spans two majors. The runtime export shape changed in 12 (named-only, no default export) and the v7 ID scheme was reworked in 13. Confirm every import in this package uses the named API, otherwise runtime breakage will surface only when a code path that mints UUIDs runs.",
+      "code": "\"uuid\": \"14.0.0\"",
+      "suggested_fix": null,
+      "language": "json",
+      "verifications": []
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "specialist": "quality",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 200,
+      "startLine": null,
+      "confidence": 78,
+      "severity": "Medium",
+      "rationale": "out-of-diff helper duplication that should be unified",
+      "explanation": "There is an existing helper in this module that performs a similar decode/encode round-trip on the server side. Maintaining two slightly-different helpers will drift; recommend extracting a shared canonicalizeURLPart utility used by both sides.",
+      "code": "// arbitrary code at line 200",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    }
+  ]
+}

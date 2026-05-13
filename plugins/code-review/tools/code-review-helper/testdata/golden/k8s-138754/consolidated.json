@@ -1,0 +1,74 @@
+{
+  "inline_eligible": [
+    {
+      "id": "err-2",
+      "category": "errors",
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 174,
+      "startLine": null,
+      "confidence": 60,
+      "severity": "Medium",
+      "rationale": "nested condition in batchStateCompatible adds branching that is hard to follow",
+      "explanation": "The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.",
+      "code": "if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {\n    b.logUnusableState(logger, cycleCount, metrics.BatchFlushPodSkipped)\n    return false\n}",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": [],
+      "cross_refs": [
+        {
+          "specialist": "perf",
+          "confidence": 55,
+          "file": "pkg/scheduler/framework/runtime/batch.go",
+          "line": 175
+        }
+      ]
+    },
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "pkg/scheduler/framework/runtime/framework.go",
+      "line": 358,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "feature-gate value captured at construction time without re-check",
+      "explanation": "newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.",
+      "code": "f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": [],
+      "cross_refs": [
+        {
+          "specialist": "errors",
+          "confidence": 75,
+          "file": "pkg/scheduler/framework/runtime/framework.go",
+          "line": 358
+        }
+      ]
+    }
+  ],
+  "summary_only": [
+    {
+      "id": "qual-2",
+      "category": "quality",
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 200,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "out-of-diff defect referenced from the diff context",
+      "explanation": "The function batchStateCompatible (line 200, not in this diff) has no test that exercises the new GenericWorkload code path with a NIL lastCycle. Coverage gap should be filled in this PR.",
+      "code": "func (b *OpportunisticBatch) batchStateCompatible(ctx context.Context, pod *v1.Pod) {",
+      "suggested_fix": null,
+      "language": "go",
+      "verifications": []
+    }
+  ],
+  "dropped_prior_review": [],
+  "specialists_used": ["errors", "perf", "quality", "security"],
+  "timed_out_roles": [],
+  "missing_roles": [],
+  "unreadable_roles": [],
+  "invalid_findings": [],
+  "last_review_date": null
+}

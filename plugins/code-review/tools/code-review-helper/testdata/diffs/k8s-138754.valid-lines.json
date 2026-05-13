@@ -1,0 +1,15 @@
+{
+  "pkg/scheduler/framework/runtime/batch.go": [
+    [38, 45],
+    [170, 181],
+    [234, 242]
+  ],
+  "pkg/scheduler/framework/runtime/batch_test.go": [
+    [195, 202],
+    [204, 210],
+    [293, 326],
+    [370, 376],
+    [385, 392]
+  ],
+  "pkg/scheduler/framework/runtime/framework.go": [[356, 362]]
+}

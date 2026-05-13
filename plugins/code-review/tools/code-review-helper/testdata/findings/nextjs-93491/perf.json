@@ -1,0 +1,21 @@
+{
+  "specialist": "perf",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 48,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Minor",
+      "rationale": "decode+encode round-trip on every URL segment",
+      "explanation": "canonicalizeURLPart now runs on every catchall and dynamic segment for every navigation. The decode/encode round-trip is fast individually but adds up with deep catchalls; consider memoizing for repeat keys.",
+      "code": "// Pathname parts come from URL.pathname.split('/')",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    }
+  ]
+}

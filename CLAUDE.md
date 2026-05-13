@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Environment
 
-- **Node.js**: v22.21.1 (see `.nvmrc`)
+- **Node.js**: v24.15.0 (see `.nvmrc`)
 - **Package manager**: pnpm (v10.32.1)
 - **Formatting**: Prettier 3.8.1 (default config, no `.prettierrc`)
 
@@ -29,18 +29,20 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping six plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping seven plugins under `plugins/`:
 
 - `cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit` — single slash command each
-- `code-review-AT` — multi-agent review; ships agents, references, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`)
+- `code-review-AT` — multi-agent review via Anthropic Agent SDK + agent teams; ships TypeScript source under `src/` (specialist agents at `src/agents/*.ts`), references, hooks, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`); builds to `dist/` via tsup
+- `code-review` — same multi-specialist review but native Claude Code only (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
 
 Per-plugin layout:
 
 ```
 plugins/<name>/
-  .claude-plugin/plugin.json   # plugin manifest
-  commands/<command>.md        # slash command(s); usually `<plugin-name>.md`, but `doc-audit` ships `audit-docs.md`
-  agents/, references/, bin/, tools/   # only where needed
+  .claude-plugin/plugin.json                      # plugin manifest
+  commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `doc-audit` ships `audit-docs.md`
+  agents/, references/, bin/, tools/, hooks/      # only where needed
+  src/, dist/, package.json, tsconfig.json        # code-review-AT only — SDK build with tsup
 ```
 
 `code-review-workspace/` at the repo root is a gitignored scratch dir for the skill-creator workflow — safe to ignore.
@@ -54,7 +56,7 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `description` — what the command does (shown in `/` menu)
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — `haiku` / `sonnet` / `opus` (simple → moderate → multi-agent orchestration)
-- `effort` — `high` (thorough) or `xhigh` (most thorough; used by `code-review-AT`)
+- `effort` — `high` (thorough) or `xhigh` (most thorough)
 - `argument-hint` — usage hint (optional)
 - `disable-model-invocation` — `true` = user-only trigger (optional)
 

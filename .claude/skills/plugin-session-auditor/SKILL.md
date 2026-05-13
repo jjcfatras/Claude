@@ -11,7 +11,7 @@ Audits Claude Code jsonl session logs for plugin issues, then proposes fixes.
 ## When this triggers
 
 - User passes a path like `~/.claude/projects/.../<uuid>.jsonl` and asks for a review, audit, or analysis.
-- User says one of the plugins (`cherry-pick`, `merge`, `code-review`, `respond-to-review`, `test-driven-fix`, `doc-audit`) misbehaved in a recent session.
+- User says one of the plugins (`cherry-pick`, `merge`, `code-review`, `code-review-AT`, `respond-to-review`, `test-driven-fix`, `doc-audit`) misbehaved in a recent session.
 - User wants to find inefficiencies, repeated permission prompts, or orchestration mistakes from a real run.
 
 The user may pass a single jsonl, a directory of them, or a glob — the parser accepts all three.
@@ -64,7 +64,7 @@ Before spawning specialists, you (the lead) skim `parsed.json` to:
 
 - Note `plugins_used` — the specialists should focus their fix proposals on these plugins.
 - Note unusual signals — high `tool_failure_rate`, long `permission_denial_runs`, many repeated `slash_commands`, big `turn_duration_ms_p95`.
-- Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/code-review-AT` — point the orchestration specialist at `plugins/code-review-AT/commands/code-review-AT.md` and the agents under `plugins/code-review-AT/agents/`").
+- Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/code-review-AT` — point the orchestration specialist at `plugins/code-review-AT/commands/code-review-AT.md` and the specialist agents under `plugins/code-review-AT/src/agents/*.ts`").
 
 ### Step 4 — Run the four specialists
 

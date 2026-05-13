@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping six slash commands the author uses for everyday Git, testing, code-review, and documentation workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping seven slash commands the author uses for everyday Git, testing, code-review, and documentation workflows.
 
 ## Install
 
@@ -18,6 +18,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                          | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                   |
 | `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`             | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                   |
 | `code-review-AT`    | `/code-review-AT [pr-number]`                             | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.           |
+| `code-review`       | `/code-review [pr-number]`                                | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.       |
 | `doc-audit`         | `/audit-docs`                                             | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes. |
 
 Install only the plugins you want — each is independent.
@@ -102,6 +103,23 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 4. The Go `code-review-helper` finalizes, dedupes, and gates findings, then assembles the review payload.
 5. You're shown the inline + summary findings and asked to approve before anything is posted.
 6. On approval: posts the review with inline comments, then cleans up the temp workspace.
+
+### `/code-review`
+
+**Invoke:** `/code-review <pr-number>` — the PR number is required (the command treats an absent or non-integer argument as a hard error).
+
+**Prereqs:** `gh` CLI authenticated for the repo; `/tmp` (or `$TMPDIR`) writable for the scratch workspace under `pr-review-<number>-<epoch>/`. Unlike `/code-review-AT`, this plugin does **not** require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — it uses native Claude Code subagents (`Agent` with `subagent_type`) only.
+
+**What happens:**
+
+1. Fetches PR metadata, the full diff, and the most recent prior Claude-Code review (for dedup) via `gh`.
+2. Parses the diff with the bundled Go `code-review-helper` and builds the specialist roster — always-on: `security`, `quality`, `errors`, `perf`; conditional by changed-file extension/path: `typescript` (`.ts/.tsx/.cts/.mts`), `react` (`.tsx/.jsx` or component/pages paths), `infra` (`.sql`, `.tf`, `.hcl`, `Dockerfile`, `docker-compose`, `k8s/`, `terraform/`, …).
+3. Runs a `pr-summary` pre-pass subagent to produce a one-paragraph technical summary written to the scratch workspace.
+4. Spawns all roster specialists in parallel against a shared `spawn-context.md` bundle and a separate `rubric.md`.
+5. The helper finalizes — dedup, severity/confidence gating, line-snapping, payload rendering — and you're shown the findings summary with a `Post review? [Y]es/[n]o/[i]ds <csv>` prompt. You can post all, skip, or filter to specific finding IDs.
+6. On approval: posts via a three-tier fallback (batched review → pending-then-submit → plain PR comment), then removes the scratch dir.
+
+**Hook:** the plugin bundles a `PreToolUse` hook that auto-approves `Grep` and `Glob` so specialist subagents never stall on permission prompts during parallel scans.
 
 ### `/audit-docs`
 
