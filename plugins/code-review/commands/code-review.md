@@ -87,23 +87,49 @@ Build the roster from `changed-files.json`. Always-on roles: `security`, `qualit
 - `typescript` — `\.(ts|tsx|cts|mts)$`
 - `react` — `\.(tsx|jsx)$` OR `(^|/)(components|pages|app|src/app|src/components|src/pages)/`
 - `infra` — `\.sql$` OR `(^|/)migrations/` OR `(^|/)db/migrations/` OR `\.tf$` OR `\.hcl$` OR `(^|/)terraform/` OR `(^|/)Dockerfile` OR `(^|/)docker-compose` OR `(^|/)k8s/` OR `(^|/)kubernetes/` OR `(^|/)helm/` OR `(^|/)deploy/` OR `(^|/)infra(structure)?/`
+- `claude-md` — at least one changed file has a `CLAUDE.md` ancestor at or above its directory (root `CLAUDE.md` counts).
 
-Write the roster as a flat JSON array of role strings. Do it via jq so the patterns are visible and the JSON is byte-clean:
+Walk CLAUDE.md ancestors first, since the roster needs the result. For every changed file, emit each ancestor-dir candidate (`<dir>/CLAUDE.md` for every prefix of the file's path, plus root `CLAUDE.md`), filter to files that actually exist at `$REPO_ROOT`, and write the result as a JSON array of repo-relative paths. This is the same shape `code-review-AT`'s `walkClaudeMd` produces.
 
 ```bash
-jq -c '
+jq -r '
+  [ .[]
+    | (./"/") as $parts
+    | $parts[0:($parts|length)-1] as $dirs
+    | range(($dirs|length)+1) as $i
+    | ($dirs[0:$i] | join("/"))
+    | if . == "" then "CLAUDE.md" else . + "/CLAUDE.md" end
+  ] | unique | .[]
+' "$TMP/changed-files.json" > "$TMP/claude-md-candidates.txt"
+```
+
+```bash
+: > "$TMP/claude-md-found.txt"
+```
+
+```bash
+while IFS= read -r p; do [ -f "$REPO_ROOT/$p" ] && printf '%s\n' "$p" >> "$TMP/claude-md-found.txt"; done < "$TMP/claude-md-candidates.txt"
+```
+
+```bash
+jq -Rsc 'split("\n") | map(select(length>0)) | unique' "$TMP/claude-md-found.txt" > "$TMP/claude-md-files.json"
+```
+
+`claude-md-files.json` is now a JSON array of zero-or-more relative CLAUDE.md paths. Empty array means the `claude-md` specialist will not be added to the roster.
+
+Write the roster as a flat JSON array of role strings. Do it via jq so the patterns are visible and the JSON is byte-clean. `--slurpfile cm` makes `claude-md-files.json` available as `$cm[0]` (the parsed array of paths):
+
+```bash
+jq -c --slurpfile cm "$TMP/claude-md-files.json" '
   ["security","quality","errors","perf"]
   + ( if any(test("\\.(ts|tsx|cts|mts)$"; "i")) then ["typescript"] else [] end )
   + ( if any(test("\\.(tsx|jsx)$"; "i") or test("(^|/)(components|pages|app|src/app|src/components|src/pages)/"; "i")) then ["react"] else [] end )
   + ( if any(test("\\.sql$"; "i") or test("(^|/)migrations/"; "i") or test("(^|/)db/migrations/"; "i") or test("\\.tf$"; "i") or test("\\.hcl$"; "i") or test("(^|/)terraform/"; "i") or test("(^|/)Dockerfile"; "i") or test("(^|/)docker-compose"; "i") or test("(^|/)k8s/"; "i") or test("(^|/)kubernetes/"; "i") or test("(^|/)helm/"; "i") or test("(^|/)deploy/"; "i") or test("(^|/)infra(structure)?/"; "i")) then ["infra"] else [] end )
+  + ( if ($cm[0] | length) > 0 then ["claude-md"] else [] end )
 ' "$TMP/changed-files.json" > "$TMP/roster.json"
 ```
 
 Read `$TMP/roster.json` to know which specialists you'll spawn.
-
-The helper's `bundle-context` step also needs an empty `claude-md-files.json`. The bundle no longer carries CLAUDE.md guidance (the claude-md specialist was dropped from this plugin), but the helper still reads the file. Write an empty object:
-
-Use the Write tool to create `$TMP/claude-md-files.json` with content `{}`.
 
 ---
 
@@ -135,7 +161,7 @@ The helper writes `$TMP/spawn-context.md` and `$TMP/rubric.md`. Both must exist 
 
 Now spawn every roster role **in parallel** — emit one single message that contains one `Agent` tool call per role. Read `$TMP/roster.json` to know the role list. For each role:
 
-- `subagent_type: "<role>"` (one of: `security`, `quality`, `errors`, `perf`, `typescript`, `react`, `infra`)
+- `subagent_type: "<role>"` (one of: `security`, `quality`, `errors`, `perf`, `typescript`, `react`, `infra`, `claude-md`)
 - `description: "<role> specialist scan"`
 - `prompt`:
 
