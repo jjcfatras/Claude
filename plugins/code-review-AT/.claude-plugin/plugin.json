@@ -1,6 +1,6 @@
 {
   "name": "code-review-AT",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Multi-specialist code review of a PR. Orchestrated in TypeScript via the Anthropic Claude Agent SDK; specialists (security, types, react, infra, errors, perf, quality, claude-md) run in parallel, findings consolidated via the bundled Go helper, inline review comments posted via gh.",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

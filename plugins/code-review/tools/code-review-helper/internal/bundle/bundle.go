@@ -18,7 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -123,26 +123,12 @@ func Build(in Input) (string, error) {
 	}
 	fmt.Fprintf(&b, "%s\n\n", summary)
 
-	fmt.Fprint(&b, "## Changed files\n")
-	b.Write(bytes.TrimRight(changedFilesRaw, "\n"))
-	b.WriteString("\n\n")
-
-	fmt.Fprint(&b, "## Roster (active specialists)\n")
-	b.Write(bytes.TrimRight(rosterRaw, "\n"))
-	b.WriteString("\n\n")
-
-	fmt.Fprint(&b, "## Prior issues (most recent prior Claude Code review on this PR; may be empty)\n")
-	b.Write(bytes.TrimRight(priorIssuesRaw, "\n"))
-	b.WriteString("\n\n")
-
-	fmt.Fprint(&b, "## CLAUDE.md content (paths + contents from step 1b; may be empty `{}`)\n")
-	b.Write(bytes.TrimRight(claudeMDRaw, "\n"))
-	b.WriteString("\n\n")
-
+	writeSection(&b, "## Changed files\n", changedFilesRaw)
+	writeSection(&b, "## Roster (active specialists)\n", rosterRaw)
+	writeSection(&b, "## Prior issues (most recent prior Claude Code review on this PR; may be empty)\n", priorIssuesRaw)
+	writeSection(&b, "## CLAUDE.md content (paths + contents from step 1b; may be empty `{}`)\n", claudeMDRaw)
 	if hasMigration {
-		fmt.Fprint(&b, "## Migration history\n")
-		b.Write(bytes.TrimRight(migrationRaw, "\n"))
-		b.WriteString("\n\n")
+		writeSection(&b, "## Migration history\n", migrationRaw)
 	}
 
 	if in.MaxSourceBytes > 0 && len(changedFiles) > 0 {
@@ -181,6 +167,15 @@ type sourceDecision struct {
 }
 
 // planSourceSection iterates the changed paths in lexicographic order and
+// writeSection emits a heading followed by raw bytes (trimmed of trailing
+// newlines so consecutive sections aren't separated by a growing blank-line
+// run). The "\n\n" suffix keeps the per-section separator deterministic.
+func writeSection(b *bytes.Buffer, heading string, raw []byte) {
+	b.WriteString(heading)
+	b.Write(bytes.TrimRight(raw, "\n"))
+	b.WriteString("\n\n")
+}
+
 // decides per-file whether to embed the content, mark it omitted under the
 // per-file cap, or mark it omitted under the aggregate-bytes cap. Lexicographic
 // ordering is deterministic, greppable, and golden-test friendly. Per-file cap
@@ -195,7 +190,7 @@ type sourceDecision struct {
 // PR with default caps this avoids ~100+ subprocesses.
 func planSourceSection(in Input, paths []string) []sourceDecision {
 	sorted := append([]string(nil), paths...)
-	sort.Strings(sorted)
+	slices.Sort(sorted)
 
 	showFn := in.GitShowFn
 	if showFn == nil {

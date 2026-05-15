@@ -19,12 +19,11 @@ type IssueOptions struct {
 
 // Issue renders one finding in ISSUE_FORMAT.
 //
-// Defense-in-depth note: the loader's `validateFinding` already rejects
-// findings with empty `rationale`/`explanation`/`code`/`language`, so in
-// practice the empty-field branches below are unreachable. They exist so any
-// future regression that bypasses the validator degrades to readable output
-// instead of the visible empty-placeholder bug observed in
-// https://github.com/FS-Main/fairsquare/pull/1345#pullrequestreview-4232328571.
+// The loader's `validateFinding` already rejects findings with empty
+// `rationale`/`explanation`/`code`/`language`, so in practice the empty-field
+// branches below are unreachable. They are kept as defense-in-depth against a
+// validator regression that would otherwise emit the visible empty-placeholder
+// bug observed in https://github.com/FS-Main/fairsquare/pull/1345#pullrequestreview-4232328571.
 func Issue(finding findings.Finding, opt IssueOptions) string {
 	var b strings.Builder
 
@@ -36,13 +35,13 @@ func Issue(finding findings.Finding, opt IssueOptions) string {
 	fmt.Fprintf(&b, "%s **%s** (Confidence: %d/100) - %s\n\n",
 		finding.Severity.Emoji(), finding.Severity, finding.Confidence, brief)
 
-	if strings.TrimSpace(finding.Explanation) == "" {
+	if finding.Explanation == "" {
 		fmt.Fprint(&b, "**Issue & impact:** _(no explanation provided)_\n\n")
 	} else {
 		fmt.Fprintf(&b, "**Issue & impact:** %s\n\n", finding.Explanation)
 	}
 
-	if strings.TrimSpace(finding.Code) != "" {
+	if finding.Code != "" {
 		fmt.Fprint(&b, "**Code:**\n\n")
 		fmt.Fprintf(&b, "```%s\n%s\n```\n", finding.Language, strings.TrimRight(finding.Code, "\n"))
 	}

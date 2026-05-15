@@ -12,9 +12,11 @@ import (
 	"bufio"
 	"io"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/jjcfatras/claude-tools/code-review-helper/internal/intmath"
 )
 
 type Parsed struct {
@@ -140,7 +142,7 @@ func Parse(reader io.Reader) (*Parsed, error) {
 			newPath := strings.TrimPrefix(line, "rename to ")
 			if newPath != currentPath {
 				if seen[currentPath] {
-					parsed.ChangedFiles = removeStr(parsed.ChangedFiles, currentPath)
+					parsed.ChangedFiles = slices.DeleteFunc(parsed.ChangedFiles, func(s string) bool { return s == currentPath })
 					delete(seen, currentPath)
 				}
 				currentPath = newPath
@@ -184,18 +186,8 @@ func Parse(reader io.Reader) (*Parsed, error) {
 		}
 	}
 
-	sort.Strings(parsed.ChangedFiles)
+	slices.Sort(parsed.ChangedFiles)
 	return parsed, nil
-}
-
-func removeStr(slice []string, target string) []string {
-	out := slice[:0]
-	for _, item := range slice {
-		if item != target {
-			out = append(out, item)
-		}
-	}
-	return out
 }
 
 // IsAddedLine reports whether `line` was introduced by the PR (a `+` line in
@@ -233,18 +225,11 @@ func (p *Parsed) NearestValid(path string, line int) (int, bool) {
 		default:
 			return line, true
 		}
-		dist := abs(candidate - line)
+		dist := intmath.Abs(candidate - line)
 		if bestDist == -1 || dist < bestDist {
 			best = candidate
 			bestDist = dist
 		}
 	}
 	return best, true
-}
-
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
 }

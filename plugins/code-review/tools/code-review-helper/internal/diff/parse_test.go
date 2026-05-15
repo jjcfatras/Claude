@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -28,7 +29,7 @@ index abc..def 100644
  ctx
 `
 	parsed := parseString(t, in)
-	if got, want := parsed.ChangedFiles, []string{"src/foo.ts"}; !equal(got, want) {
+	if got, want := parsed.ChangedFiles, []string{"src/foo.ts"}; !slices.Equal(got, want) {
 		t.Errorf("changed files: got %v want %v", got, want)
 	}
 	runs := parsed.ValidLines["src/foo.ts"]
@@ -96,7 +97,7 @@ index abc..def 100644
 Binary files a/img.png and b/img.png differ
 `
 	parsed := parseString(t, in)
-	if got, want := parsed.ChangedFiles, []string{"img.png"}; !equal(got, want) {
+	if got, want := parsed.ChangedFiles, []string{"img.png"}; !slices.Equal(got, want) {
 		t.Errorf("changed files: got %v want %v", got, want)
 	}
 	if _, ok := parsed.ValidLines["img.png"]; ok {
@@ -111,7 +112,7 @@ rename from old.txt
 rename to new.txt
 `
 	parsed := parseString(t, in)
-	if got, want := parsed.ChangedFiles, []string{"new.txt"}; !equal(got, want) {
+	if got, want := parsed.ChangedFiles, []string{"new.txt"}; !slices.Equal(got, want) {
 		t.Errorf("changed files: got %v want %v", got, want)
 	}
 	if _, ok := parsed.ValidLines["new.txt"]; ok {
@@ -130,7 +131,7 @@ deleted file mode 100644
 -c
 `
 	parsed := parseString(t, in)
-	if got, want := parsed.ChangedFiles, []string{"gone.txt"}; !equal(got, want) {
+	if got, want := parsed.ChangedFiles, []string{"gone.txt"}; !slices.Equal(got, want) {
 		t.Errorf("changed files: got %v want %v", got, want)
 	}
 	if _, ok := parsed.ValidLines["gone.txt"]; ok {
@@ -169,7 +170,7 @@ rename to new.go
  keep
 `
 	parsed := parseString(t, in)
-	if got, want := parsed.ChangedFiles, []string{"new.go"}; !equal(got, want) {
+	if got, want := parsed.ChangedFiles, []string{"new.go"}; !slices.Equal(got, want) {
 		t.Errorf("changed files: got %v want %v", got, want)
 	}
 	if _, ok := parsed.ValidLines["old.go"]; ok {
@@ -198,7 +199,7 @@ diff --git a/img.bin b/img.bin
 Binary files a/img.bin and b/img.bin differ
 `
 	parsed := parseString(t, in)
-	if got, want := parsed.ChangedFiles, []string{"a.go", "b.go", "img.bin"}; !equal(got, want) {
+	if got, want := parsed.ChangedFiles, []string{"a.go", "b.go", "img.bin"}; !slices.Equal(got, want) {
 		t.Errorf("changed files: got %v want %v", got, want)
 	}
 }
@@ -225,16 +226,4 @@ func TestInRangeAndNearest(t *testing.T) {
 	if _, ok := parsed.NearestValid("y.go", 1); ok {
 		t.Errorf("missing path should report no run")
 	}
-}
-
-func equal(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
 }

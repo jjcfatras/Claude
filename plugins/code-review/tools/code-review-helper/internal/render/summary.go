@@ -3,7 +3,7 @@ package render
 import (
 	"fmt"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
@@ -38,7 +38,7 @@ func Summary(in SummaryInput) string {
 
 func summaryNoIssues(specialists []string) string {
 	roles := append([]string(nil), specialists...)
-	sort.Strings(roles)
+	slices.Sort(roles)
 	return fmt.Sprintf("### Code review\n\nNo issues found. Reviewed by: %s.\n\n%s",
 		strings.Join(roles, ", "), summaryFooter)
 }

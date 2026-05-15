@@ -8,6 +8,7 @@ import (
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/diff"
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
+	"github.com/jjcfatras/claude-tools/code-review-helper/internal/intmath"
 )
 
 const snapWindow = 5
@@ -62,7 +63,7 @@ func Classify(in []findings.Finding, parsed *diff.Parsed) Result {
 			res.SummaryOnly = append(res.SummaryOnly, finding)
 			continue
 		}
-		if abs(nearest-finding.Line) > snapWindow {
+		if intmath.Abs(nearest-finding.Line) > snapWindow {
 			res.SummaryOnly = append(res.SummaryOnly, finding)
 			continue
 		}
@@ -72,11 +73,4 @@ func Classify(in []findings.Finding, parsed *diff.Parsed) Result {
 		res.InlineEligible = append(res.InlineEligible, finding)
 	}
 	return res
-}
-
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
 }

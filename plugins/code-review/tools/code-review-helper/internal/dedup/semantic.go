@@ -1,7 +1,8 @@
 package dedup
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
@@ -89,11 +90,11 @@ func Semantic(in []findings.Finding, isInDiff inDiff) []findings.Finding {
 		}
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].File != out[j].File {
-			return out[i].File < out[j].File
-		}
-		return out[i].Line < out[j].Line
+	slices.SortFunc(out, func(a, b findings.Finding) int {
+		return cmp.Or(
+			cmp.Compare(a.File, b.File),
+			cmp.Compare(a.Line, b.Line),
+		)
 	})
 	return out
 }
@@ -162,9 +163,7 @@ func longestCommonSubstringLen(left, right string) int {
 			}
 		}
 		prev, curr = curr, prev
-		for j := range curr {
-			curr[j] = 0
-		}
+		clear(curr)
 	}
 	return best
 }

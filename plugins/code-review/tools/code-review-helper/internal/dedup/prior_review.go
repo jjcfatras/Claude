@@ -2,6 +2,7 @@ package dedup
 
 import (
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
+	"github.com/jjcfatras/claude-tools/code-review-helper/internal/intmath"
 )
 
 // PriorIssue is the schema persisted by the skill's step 1c (prep agent for
@@ -40,9 +41,12 @@ type addedLineLookup func(path string, line int) bool
 // the prior issue, which the skill uses to render the "Skipped N issues"
 // summary.
 func PriorReview(in []findings.Finding, prior PriorIssuesFile, isAdded addedLineLookup) (kept []findings.Finding, dropped []findings.Finding) {
+	priorByPath := make(map[string][]PriorIssue, len(prior.Issues))
+	for _, p := range prior.Issues {
+		priorByPath[p.Path] = append(priorByPath[p.Path], p)
+	}
 	for _, finding := range in {
-		match, ok := matchPrior(finding, prior.Issues)
-		if !ok {
+		if !matchPrior(finding, priorByPath[finding.File]) {
 			kept = append(kept, finding)
 			continue
 		}
@@ -51,23 +55,21 @@ func PriorReview(in []findings.Finding, prior PriorIssuesFile, isAdded addedLine
 			kept = append(kept, finding)
 			continue
 		}
-		_ = match
 		dropped = append(dropped, finding)
 	}
 	return kept, dropped
 }
 
-func matchPrior(finding findings.Finding, prior []PriorIssue) (PriorIssue, bool) {
-	for _, priorIssue := range prior {
-		if priorIssue.Path != finding.File {
-			continue
-		}
-		if abs(priorIssue.Line-finding.Line) <= priorLineWindow {
-			return priorIssue, true
+// matchPrior reports whether finding overlaps any prior issue on the same file
+// (caller pre-filters by path).
+func matchPrior(finding findings.Finding, sameFile []PriorIssue) bool {
+	for _, priorIssue := range sameFile {
+		if intmath.Abs(priorIssue.Line-finding.Line) <= priorLineWindow {
+			return true
 		}
 		if longestCommonSubstringLen(priorIssue.Snippet, finding.Code) >= priorSnippetOverlapN {
-			return priorIssue, true
+			return true
 		}
 	}
-	return PriorIssue{}, false
+	return false
 }

@@ -125,7 +125,7 @@ func Fallback(in BuildInput, apiErr string) string {
 	if footerErr == "" {
 		footerErr = "{API_ERROR}"
 	}
-	b.WriteString(fmt.Sprintf("\n_Note: Inline comments failed (%s)._\n\n", strings.TrimSpace(footerErr)))
+	b.WriteString(fmt.Sprintf("_Note: Inline comments failed (%s)._\n\n", strings.TrimSpace(footerErr)))
 	b.WriteString("🤖 Generated with [Claude Code](https://claude.ai/code)\n\n<sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>\n")
 	return b.String()
 }

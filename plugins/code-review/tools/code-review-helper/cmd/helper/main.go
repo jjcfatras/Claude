@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/bundle"
@@ -260,29 +260,16 @@ func runFinalize(argv []string) error {
 	}
 
 	rev := payload.Build(buildIn)
-	payloadJSON, err := payload.MarshalJSON(rev)
-	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
-	}
-	if err := os.WriteFile(*outPayload, payloadJSON, 0o644); err != nil {
-		return fmt.Errorf("write payload: %w", err)
+	if err := writeJSON(*outPayload, rev); err != nil {
+		return err
 	}
 
-	pending := payload.BuildPending(buildIn)
-	pendingJSON, err := payload.MarshalJSON(pending)
-	if err != nil {
-		return fmt.Errorf("marshal pending payload: %w", err)
-	}
-	if err := os.WriteFile(*outPendingPayload, pendingJSON, 0o644); err != nil {
-		return fmt.Errorf("write pending payload: %w", err)
+	if err := writeJSON(*outPendingPayload, payload.BuildPending(buildIn)); err != nil {
+		return err
 	}
 
-	bodyJSON, err := json.MarshalIndent(payload.BodyOnly{Body: rev.Body}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal body: %w", err)
-	}
-	if err := os.WriteFile(*outBody, bodyJSON, 0o644); err != nil {
-		return fmt.Errorf("write body: %w", err)
+	if err := writeJSON(*outBody, payload.BodyOnly{Body: rev.Body}); err != nil {
+		return err
 	}
 
 	fallback := payload.Fallback(buildIn, "")
@@ -310,6 +297,7 @@ func writeJSON(path string, v any) error {
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", path, err)
 	}
+	b = append(b, '\n')
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
@@ -355,7 +343,7 @@ func collectIDs(buckets ...[]findings.Finding) []string {
 	for id := range seen {
 		out = append(out, id)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

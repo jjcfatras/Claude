@@ -6,7 +6,8 @@
 package dedup
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
 )
@@ -30,48 +31,34 @@ func Positional(in []findings.Finding) []findings.Finding {
 	}
 
 	var out []findings.Finding
-	for file, group := range byFile {
-		_ = file
-		sort.Slice(group, func(i, j int) bool {
-			return group[i].Line < group[j].Line
+	for _, group := range byFile {
+		slices.SortFunc(group, func(a, b findings.Finding) int {
+			return cmp.Compare(a.Line, b.Line)
 		})
 
+		// Group is sorted by line, so a new finding can only join the most-recent
+		// cluster (its last member is the largest line so far). Check that one
+		// boundary instead of scanning every cluster.
 		var clusters [][]findings.Finding
 		for _, finding := range group {
-			placed := false
-			for clusterIdx := range clusters {
-				for _, member := range clusters[clusterIdx] {
-					if abs(member.Line-finding.Line) <= 3 {
-						clusters[clusterIdx] = append(clusters[clusterIdx], finding)
-						placed = true
-						break
-					}
-				}
-				if placed {
-					break
+			if n := len(clusters); n > 0 {
+				last := clusters[n-1]
+				if finding.Line-last[len(last)-1].Line <= 3 {
+					clusters[n-1] = append(last, finding)
+					continue
 				}
 			}
-			if !placed {
-				clusters = append(clusters, []findings.Finding{finding})
-			}
+			clusters = append(clusters, []findings.Finding{finding})
 		}
 
 		for _, cluster := range clusters {
-			sort.Slice(cluster, func(i, j int) bool {
-				if cluster[i].Confidence != cluster[j].Confidence {
-					return cluster[i].Confidence > cluster[j].Confidence
-				}
-				ai := domainMatch(cluster[i].Specialist, cluster[i].Category)
-				aj := domainMatch(cluster[j].Specialist, cluster[j].Category)
-				if ai != aj {
-					return ai
-				}
-				if cluster[i].Specialist != cluster[j].Specialist {
-					return cluster[i].Specialist < cluster[j].Specialist
-				}
-				// Last-resort tiebreak by ID so the outcome is fully deterministic
-				// when two findings share confidence, domain, and specialist.
-				return cluster[i].ID < cluster[j].ID
+			slices.SortFunc(cluster, func(a, b findings.Finding) int {
+				return cmp.Or(
+					cmp.Compare(b.Confidence, a.Confidence),
+					boolCompare(domainMatch(a.Specialist, a.Category), domainMatch(b.Specialist, b.Category)),
+					cmp.Compare(a.Specialist, b.Specialist),
+					cmp.Compare(a.ID, b.ID),
+				)
 			})
 			kept := cluster[0]
 			for _, other := range cluster[1:] {
@@ -81,11 +68,11 @@ func Positional(in []findings.Finding) []findings.Finding {
 		}
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].File != out[j].File {
-			return out[i].File < out[j].File
-		}
-		return out[i].Line < out[j].Line
+	slices.SortFunc(out, func(a, b findings.Finding) int {
+		return cmp.Or(
+			cmp.Compare(a.File, b.File),
+			cmp.Compare(a.Line, b.Line),
+		)
 	})
 	return out
 }
@@ -111,9 +98,14 @@ func domainMatch(specialist, category string) bool {
 	return specialist == category
 }
 
-func abs(value int) int {
-	if value < 0 {
-		return -value
+// boolCompare orders true before false (sort-descending on a bool flag).
+func boolCompare(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return -1
+	default:
+		return 1
 	}
-	return value
 }

@@ -32,6 +32,8 @@ func BenchmarkFinalizePipeline(b *testing.B) {
 				"--expected-roles", fx.roles,
 				"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
 				"--out-payload", filepath.Join(outDir, "payload.json"),
+				"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
+				"--out-body", filepath.Join(outDir, "payload-body.json"),
 				"--out-fallback", filepath.Join(outDir, "fallback.md"),
 			}
 			b.ResetTimer()

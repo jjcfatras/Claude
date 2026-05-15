@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -386,21 +387,9 @@ func TestBuild_AggregateByteCap(t *testing.T) {
 		t.Errorf("per-file cap reason leaked into output despite all files being under it; got:\n%s", out)
 	}
 	// showFn should have been called for a.ts and b.ts but not c.ts.
-	if want := []string{"a.ts", "b.ts"}; !equalStringSlice(shownPaths, want) {
+	if want := []string{"a.ts", "b.ts"}; !slices.Equal(shownPaths, want) {
 		t.Errorf("showFn calls = %v, want %v (c.ts must be short-circuited)", shownPaths, want)
 	}
-}
-
-func equalStringSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // TestBuild_AggregateCapDisabledWhenZero verifies MaxTotalSourceBytes=0

@@ -85,7 +85,7 @@ Parse the diff into changed-files + valid-lines maps:
 Build the roster from `changed-files.json`. Always-on roles: `security`, `quality`, `errors`, `perf`. Conditional roles activate when any changed file matches:
 
 - `typescript` — `\.(ts|tsx|cts|mts)$`
-- `react` — `\.(tsx|jsx)$` OR `(^|/)(components|pages|app|src/app|src/components|src/pages)/`
+- `react` — `\.(tsx|jsx)$`
 - `infra` — `\.sql$` OR `(^|/)migrations/` OR `(^|/)db/migrations/` OR `\.tf$` OR `\.hcl$` OR `(^|/)terraform/` OR `(^|/)Dockerfile` OR `(^|/)docker-compose` OR `(^|/)k8s/` OR `(^|/)kubernetes/` OR `(^|/)helm/` OR `(^|/)deploy/` OR `(^|/)infra(structure)?/`
 - `claude-md` — at least one changed file has a `CLAUDE.md` ancestor at or above its directory (root `CLAUDE.md` counts).
 
@@ -123,7 +123,7 @@ Write the roster as a flat JSON array of role strings. Do it via jq so the patte
 jq -c --slurpfile cm "$TMP/claude-md-files.json" '
   ["security","quality","errors","perf"]
   + ( if any(test("\\.(ts|tsx|cts|mts)$"; "i")) then ["typescript"] else [] end )
-  + ( if any(test("\\.(tsx|jsx)$"; "i") or test("(^|/)(components|pages|app|src/app|src/components|src/pages)/"; "i")) then ["react"] else [] end )
+  + ( if any(test("\\.(tsx|jsx)$"; "i")) then ["react"] else [] end )
   + ( if any(test("\\.sql$"; "i") or test("(^|/)migrations/"; "i") or test("(^|/)db/migrations/"; "i") or test("\\.tf$"; "i") or test("\\.hcl$"; "i") or test("(^|/)terraform/"; "i") or test("(^|/)Dockerfile"; "i") or test("(^|/)docker-compose"; "i") or test("(^|/)k8s/"; "i") or test("(^|/)kubernetes/"; "i") or test("(^|/)helm/"; "i") or test("(^|/)deploy/"; "i") or test("(^|/)infra(structure)?/"; "i")) then ["infra"] else [] end )
   + ( if ($cm[0] | length) > 0 then ["claude-md"] else [] end )
 ' "$TMP/changed-files.json" > "$TMP/roster.json"
