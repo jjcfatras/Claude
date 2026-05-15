@@ -48,6 +48,8 @@ Check the exit code:
 
 When the merge produces conflicts:
 
+Resolve every conflicting file directly in this context using the `Read` and `Edit` tools. Do not spawn a subagent (the `Agent` tool is intentionally not in this command's `allowed-tools`) — delegating conflict resolution breaks the per-context Read-before-Edit guard and causes cascading `File has not been read yet` errors when the main thread later edits files the subagent touched.
+
 ### 4a: Identify all conflicting files
 
 Run `git status` and identify files marked as "both modified", "both added", "deleted by us", "deleted by them", or any other conflict state.
@@ -108,6 +110,7 @@ After the merge has been applied:
 ## Error handling
 
 - If `git merge --continue` fails after resolution, run `git status` to diagnose remaining conflicts or unstaged changes.
+- If `git commit --no-edit` (or `git merge --continue`) is rejected by a pre-commit hook (husky, lint-staged, etc.), read the hook output, fix the reported issues (type errors, lint failures, failed tests, residual duplicate declarations from conflict resolution), re-stage the corrected files, and retry the commit. **Never pass `--no-verify`** — the hook is catching latent bugs the merge introduced.
 - If the user wants to abort, run `git merge --abort` to restore the original state.
 - If the merge fails for reasons other than conflicts (e.g., refusing because of unrelated histories), report the error and ask the user how to proceed — do not silently pass `--allow-unrelated-histories` or other overrides without confirmation.
 - If the source branch is identical to the current branch (already up to date), report this from Step 1 and exit cleanly — do not invoke `git merge`.

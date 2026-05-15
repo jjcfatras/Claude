@@ -1,6 +1,6 @@
 {
   "name": "merge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Merge a source branch into the current branch with conflict resolution",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
