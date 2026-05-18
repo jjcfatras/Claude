@@ -65,7 +65,7 @@ The pnpm.overrides block doesn't surface when an override fails to apply. If a t
 **Code:**
 
 ```yaml
-version: 14.0.0
+    version: 14.0.0
 ```
 
 _Note: Inline comments failed ({API_ERROR})._

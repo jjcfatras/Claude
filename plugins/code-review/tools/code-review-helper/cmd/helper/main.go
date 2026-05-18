@@ -136,100 +136,133 @@ type postingFilter struct {
 	ExcludeIDs []string `json:"exclude_ids,omitempty"`
 }
 
-// runFinalize: dedup, gate, snap, render — produce consolidated.json,
-// payload.json, fallback.md.
-func runFinalize(argv []string) error {
+// finalizeOpts holds parsed `finalize` flag values. Storage lives on the struct
+// so parseFinalizeArgs returns one populated value instead of runFinalize
+// juggling fourteen pointer locals.
+type finalizeOpts struct {
+	diffPath          string
+	findingsDir       string
+	priorPath         string
+	headSHA           string
+	owner             string
+	repo              string
+	prNumber          int
+	outConsolidated   string
+	outPayload        string
+	outPendingPayload string
+	outBody           string
+	outFallback       string
+	expectedRoles     string
+	includeIDs        string
+	excludeIDs        string
+}
+
+func parseFinalizeArgs(argv []string) (finalizeOpts, error) {
+	var opts finalizeOpts
 	fs := flag.NewFlagSet("finalize", flag.ContinueOnError)
-	diffPath := fs.String("diff", "", "path to unified diff file")
-	findingsDir := fs.String("findings-dir", "", "directory containing findings/<role>.json files")
-	priorPath := fs.String("prior-issues", "", "path to prior-issues.json")
-	headSHA := fs.String("head-sha", "", "full HEAD SHA")
-	owner := fs.String("owner", "", "GitHub owner")
-	repo := fs.String("repo", "", "GitHub repo")
-	prNumber := fs.Int("pr-number", 0, "pull request number")
-	outConsolidated := fs.String("out-consolidated", "", "output path for consolidated.json")
-	outPayload := fs.String("out-payload", "", "output path for payload.json")
-	outPendingPayload := fs.String("out-pending-payload", "", "output path for payload-pending.json (no `event` field, used for two-step fallback)")
-	outBody := fs.String("out-body", "", "output path for payload-body.json (just `{\"body\": ...}`, used for the submit step of the two-step fallback)")
-	outFallback := fs.String("out-fallback", "", "output path for fallback.md")
-	expected := fs.String("expected-roles", "", "comma-separated list of expected specialist roles (optional)")
-	includeIDs := fs.String("include-finding-ids", "", "comma-separated specialist finding IDs to keep for posting (e.g. \"sec-1,err-2\"); the user's step-4 subset choice routes through this flag instead of editing payload.json by hand. Default empty = keep all classified findings. Unknown IDs are a hard error.")
-	excludeIDs := fs.String("exclude-finding-ids", "", "comma-separated specialist finding IDs to drop from posting (e.g. \"qual-3\"); ignored if --include-finding-ids is also set. Unknown IDs are a hard error.")
+	fs.StringVar(&opts.diffPath, "diff", "", "path to unified diff file")
+	fs.StringVar(&opts.findingsDir, "findings-dir", "", "directory containing findings/<role>.json files")
+	fs.StringVar(&opts.priorPath, "prior-issues", "", "path to prior-issues.json")
+	fs.StringVar(&opts.headSHA, "head-sha", "", "full HEAD SHA")
+	fs.StringVar(&opts.owner, "owner", "", "GitHub owner")
+	fs.StringVar(&opts.repo, "repo", "", "GitHub repo")
+	fs.IntVar(&opts.prNumber, "pr-number", 0, "pull request number")
+	fs.StringVar(&opts.outConsolidated, "out-consolidated", "", "output path for consolidated.json")
+	fs.StringVar(&opts.outPayload, "out-payload", "", "output path for payload.json")
+	fs.StringVar(&opts.outPendingPayload, "out-pending-payload", "", "output path for payload-pending.json (no `event` field, used for two-step fallback)")
+	fs.StringVar(&opts.outBody, "out-body", "", "output path for payload-body.json (just `{\"body\": ...}`, used for the submit step of the two-step fallback)")
+	fs.StringVar(&opts.outFallback, "out-fallback", "", "output path for fallback.md")
+	fs.StringVar(&opts.expectedRoles, "expected-roles", "", "comma-separated list of expected specialist roles (optional)")
+	fs.StringVar(&opts.includeIDs, "include-finding-ids", "", "comma-separated specialist finding IDs to keep for posting (e.g. \"sec-1,err-2\"); the user's step-4 subset choice routes through this flag instead of editing payload.json by hand. Default empty = keep all classified findings. Unknown IDs are a hard error.")
+	fs.StringVar(&opts.excludeIDs, "exclude-finding-ids", "", "comma-separated specialist finding IDs to drop from posting (e.g. \"qual-3\"); ignored if --include-finding-ids is also set. Unknown IDs are a hard error.")
 	if err := fs.Parse(argv); err != nil {
-		return err
+		return finalizeOpts{}, err
 	}
-	if *diffPath == "" || *findingsDir == "" || *priorPath == "" || *headSHA == "" ||
-		*owner == "" || *repo == "" || *outConsolidated == "" || *outPayload == "" ||
-		*outPendingPayload == "" || *outBody == "" || *outFallback == "" {
+	return opts, nil
+}
+
+func (o finalizeOpts) validate() error {
+	if o.diffPath == "" || o.findingsDir == "" || o.priorPath == "" || o.headSHA == "" ||
+		o.owner == "" || o.repo == "" || o.outConsolidated == "" || o.outPayload == "" ||
+		o.outPendingPayload == "" || o.outBody == "" || o.outFallback == "" {
 		return fmt.Errorf("finalize: missing required flag (run with -h)")
 	}
-	_ = prNumber // currently logged-only; reserved for future use
+	return nil
+}
 
-	df, err := os.Open(*diffPath)
+func loadFinalizeInputs(opts finalizeOpts) (*diffpkg.Parsed, *findings.LoadResult, dedup.PriorIssuesFile, error) {
+	df, err := os.Open(opts.diffPath)
 	if err != nil {
-		return fmt.Errorf("open diff: %w", err)
+		return nil, nil, dedup.PriorIssuesFile{}, fmt.Errorf("open diff: %w", err)
 	}
 	parsed, err := diffpkg.Parse(df)
 	df.Close()
 	if err != nil {
-		return fmt.Errorf("parse diff: %w", err)
+		return nil, nil, dedup.PriorIssuesFile{}, fmt.Errorf("parse diff: %w", err)
 	}
 
-	expectedRoles := splitCSV(*expected)
-	loaded, err := findings.LoadDir(*findingsDir, expectedRoles)
+	loaded, err := findings.LoadDir(opts.findingsDir, splitCSV(opts.expectedRoles))
 	if err != nil {
-		return fmt.Errorf("load findings: %w", err)
+		return nil, nil, dedup.PriorIssuesFile{}, fmt.Errorf("load findings: %w", err)
 	}
 
-	// Surface schema-rejected findings to the operator. The lead agent reads
-	// consolidated.json at step 4 and is expected to mention these to the user
-	// before posting; the stderr line is so they're visible in the bash output
-	// even if the lead skips the consolidated.json check.
-	for _, inv := range loaded.InvalidFindings {
+	prior, err := loadPriorIssues(opts.priorPath)
+	if err != nil {
+		return nil, nil, dedup.PriorIssuesFile{}, fmt.Errorf("load prior issues: %w", err)
+	}
+	return parsed, loaded, prior, nil
+}
+
+// warnInvalid surfaces schema-rejected findings to the operator. The lead agent
+// reads consolidated.json at step 4 and is expected to mention these to the
+// user before posting; the stderr line is so they're visible in the bash output
+// even if the lead skips the consolidated.json check.
+func warnInvalid(invalid []findings.InvalidFinding) {
+	for _, inv := range invalid {
 		fmt.Fprintf(os.Stderr, "code-review-helper: warning: dropped %s finding %q: %s\n",
 			inv.Role, inv.ID, inv.Reason)
 	}
+}
 
-	prior, err := loadPriorIssues(*priorPath)
-	if err != nil {
-		return fmt.Errorf("load prior issues: %w", err)
-	}
-
-	// Pipeline.
+func runPipeline(parsed *diffpkg.Parsed, loaded *findings.LoadResult, prior dedup.PriorIssuesFile) (lines.Result, []findings.Finding) {
 	step1 := dedup.Positional(loaded.Findings)
 	inDiff := func(path string) bool { _, ok := parsed.ValidLines[path]; return ok }
 	step2 := dedup.Semantic(step1, inDiff)
 	step3, dropped := dedup.PriorReview(step2, prior, parsed.IsAddedLine)
 	step4 := gates.Filter(step3)
-	classified := lines.Classify(step4, parsed)
+	return lines.Classify(step4, parsed), dropped
+}
 
-	// Subset-post filter (--include-finding-ids / --exclude-finding-ids).
-	// Applied AFTER classification so the IDs match what the user saw in
-	// consolidated.json at step 4, and AFTER the consolidated.json emit so the
-	// consolidated file remains a true pre-filter audit log. Unknown IDs are a
-	// hard error to surface user mistakes (typo, stale ID) at the failing call
-	// site rather than silently skipping.
-	includeList := splitCSV(*includeIDs)
-	excludeList := splitCSV(*excludeIDs)
-	var pf *postingFilter
-	if len(includeList) > 0 || len(excludeList) > 0 {
-		if len(includeList) > 0 && len(excludeList) > 0 {
-			fmt.Fprintln(os.Stderr, "code-review-helper: warning: both --include-finding-ids and --exclude-finding-ids supplied; --include-finding-ids wins, --exclude-finding-ids ignored")
-			excludeList = nil
-		}
-		knownIDs := collectIDs(classified.InlineEligible, classified.SummaryOnly)
-		if unknown := missingIDs(includeList, knownIDs); len(unknown) > 0 {
-			return fmt.Errorf("finalize: --include-finding-ids referenced unknown id(s) %v (available: %v)", unknown, knownIDs)
-		}
-		if unknown := missingIDs(excludeList, knownIDs); len(unknown) > 0 {
-			return fmt.Errorf("finalize: --exclude-finding-ids referenced unknown id(s) %v (available: %v)", unknown, knownIDs)
-		}
-		pf = &postingFilter{IncludeIDs: includeList, ExcludeIDs: excludeList}
+// buildPostingFilter parses the --include-finding-ids / --exclude-finding-ids
+// arguments and validates them against the IDs the pipeline actually produced.
+// Returns nil when no subset filter is active.
+//
+// Applied AFTER classification so IDs match what the user saw in
+// consolidated.json at step 4. Unknown IDs are a hard error to surface user
+// mistakes (typo, stale ID) at the failing call site rather than silently
+// skipping.
+func buildPostingFilter(includeIDs, excludeIDs string, classified lines.Result) (*postingFilter, error) {
+	includeList := splitCSV(includeIDs)
+	excludeList := splitCSV(excludeIDs)
+	if len(includeList) == 0 && len(excludeList) == 0 {
+		return nil, nil
 	}
+	if len(includeList) > 0 && len(excludeList) > 0 {
+		fmt.Fprintln(os.Stderr, "code-review-helper: warning: both --include-finding-ids and --exclude-finding-ids supplied; --include-finding-ids wins, --exclude-finding-ids ignored")
+		excludeList = nil
+	}
+	knownIDs := collectIDs(classified.InlineEligible, classified.SummaryOnly)
+	if unknown := missingIDs(includeList, knownIDs); len(unknown) > 0 {
+		return nil, fmt.Errorf("finalize: --include-finding-ids referenced unknown id(s) %v (available: %v)", unknown, knownIDs)
+	}
+	if unknown := missingIDs(excludeList, knownIDs); len(unknown) > 0 {
+		return nil, fmt.Errorf("finalize: --exclude-finding-ids referenced unknown id(s) %v (available: %v)", unknown, knownIDs)
+	}
+	return &postingFilter{IncludeIDs: includeList, ExcludeIDs: excludeList}, nil
+}
 
-	// Outputs. Consolidated.json reflects the pre-filter classification — it is
-	// the audit log of what dedup + gates + classify produced.
-	cf := consolidatedFile{
+func assembleConsolidated(classified lines.Result, dropped []findings.Finding, loaded *findings.LoadResult, prior dedup.PriorIssuesFile, pf *postingFilter) consolidatedFile {
+	return consolidatedFile{
 		InlineEligible:     coalesce(classified.InlineEligible),
 		SummaryOnly:        coalesce(classified.SummaryOnly),
 		DroppedPriorReview: coalesce(dropped),
@@ -241,43 +274,77 @@ func runFinalize(argv []string) error {
 		LastReviewDate:     prior.LastReviewDate,
 		PostingFilter:      pf,
 	}
-	if err := writeJSON(*outConsolidated, cf); err != nil {
+}
+
+// assembleBuildInput builds the payload BuildInput from POST-filter findings.
+// When pf is nil, filterFindings returns its input unchanged.
+func assembleBuildInput(opts finalizeOpts, classified lines.Result, specialists []string, pf *postingFilter) payload.BuildInput {
+	var include, exclude []string
+	if pf != nil {
+		include = pf.IncludeIDs
+		exclude = pf.ExcludeIDs
+	}
+	return payload.BuildInput{
+		HeadSHA:        opts.headSHA,
+		Owner:          opts.owner,
+		Repo:           opts.repo,
+		InlineEligible: filterFindings(classified.InlineEligible, include, exclude),
+		SummaryOnly:    filterFindings(classified.SummaryOnly, include, exclude),
+		Specialists:    specialists,
+	}
+}
+
+// writeFinalizeOutputs writes all five finalize outputs: consolidated.json
+// (pre-filter audit log), payload.json, payload-pending.json, payload-body.json,
+// and fallback.md.
+func writeFinalizeOutputs(opts finalizeOpts, cf consolidatedFile, buildIn payload.BuildInput) error {
+	if err := writeJSON(opts.outConsolidated, cf); err != nil {
 		return err
 	}
-
-	// Payload-side findings reflect the POST-filter subset. When pf is nil this
-	// is a no-op (filterFindings returns the input unchanged).
-	postInline := filterFindings(classified.InlineEligible, includeList, excludeList)
-	postSummary := filterFindings(classified.SummaryOnly, includeList, excludeList)
-
-	buildIn := payload.BuildInput{
-		HeadSHA:        *headSHA,
-		Owner:          *owner,
-		Repo:           *repo,
-		InlineEligible: postInline,
-		SummaryOnly:    postSummary,
-		Specialists:    loaded.Specialists,
-	}
-
 	rev := payload.Build(buildIn)
-	if err := writeJSON(*outPayload, rev); err != nil {
+	if err := writeJSON(opts.outPayload, rev); err != nil {
 		return err
 	}
-
-	if err := writeJSON(*outPendingPayload, payload.BuildPending(buildIn)); err != nil {
+	if err := writeJSON(opts.outPendingPayload, payload.BuildPending(buildIn)); err != nil {
 		return err
 	}
-
-	if err := writeJSON(*outBody, payload.BodyOnly{Body: rev.Body}); err != nil {
+	if err := writeJSON(opts.outBody, payload.BodyOnly{Body: rev.Body}); err != nil {
 		return err
 	}
-
 	fallback := payload.Fallback(buildIn, "")
-	if err := os.WriteFile(*outFallback, []byte(fallback), 0o644); err != nil {
+	if err := os.WriteFile(opts.outFallback, []byte(fallback), 0o644); err != nil {
 		return fmt.Errorf("write fallback: %w", err)
 	}
-
 	return nil
+}
+
+// runFinalize: dedup, gate, snap, render — produce consolidated.json,
+// payload.json, fallback.md.
+func runFinalize(argv []string) error {
+	opts, err := parseFinalizeArgs(argv)
+	if err != nil {
+		return err
+	}
+	if err := opts.validate(); err != nil {
+		return err
+	}
+	_ = opts.prNumber // currently logged-only; reserved for future use
+
+	parsed, loaded, prior, err := loadFinalizeInputs(opts)
+	if err != nil {
+		return err
+	}
+	warnInvalid(loaded.InvalidFindings)
+
+	classified, dropped := runPipeline(parsed, loaded, prior)
+	pf, err := buildPostingFilter(opts.includeIDs, opts.excludeIDs, classified)
+	if err != nil {
+		return err
+	}
+
+	cf := assembleConsolidated(classified, dropped, loaded, prior, pf)
+	buildIn := assembleBuildInput(opts, classified, loaded.Specialists, pf)
+	return writeFinalizeOutputs(opts, cf, buildIn)
 }
 
 func loadPriorIssues(path string) (dedup.PriorIssuesFile, error) {
@@ -304,24 +371,19 @@ func writeJSON(path string, v any) error {
 	return nil
 }
 
+// splitCSV splits a comma-separated list and trims whitespace from each entry
+// so callers can write "sec-1, err-2" without the space surviving into the
+// validator (which would then reject " err-2" as unknown). Empty entries are
+// dropped.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
 	}
-	var out []string
-	start := 0
-	for i := 0; i <= len(s); i++ {
-		if i == len(s) || s[i] == ',' {
-			if i > start {
-				// Trim whitespace so callers can write "sec-1, err-2" without
-				// the space surviving into the validator (which would then
-				// reject " err-2" as unknown).
-				entry := strings.TrimSpace(s[start:i])
-				if entry != "" {
-					out = append(out, entry)
-				}
-			}
-			start = i + 1
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
 		}
 	}
 	return out
