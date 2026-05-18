@@ -65,4 +65,4 @@ Write your findings as JSON to `$REVIEW_TMPDIR/findings/infra.json` using the Wr
 
 Schema is in the rubric. Required: `specialist: "infra"`, `scan_status` (`"complete"` or `"timed_out"`), `findings` (array, may be empty). Each finding requires `id`, `category`, `file`, `line`, `confidence`, `severity` (`"Critical"`/`"Medium"`/`"Minor"`), `rationale`, `explanation`, `code`, `language`.
 
-After the Write returns, end your turn with a short status line. Do not print the JSON to chat.
+After the Write returns, validate the file with `jq -e . "$REVIEW_TMPDIR/findings/infra.json" >/dev/null` using the Bash tool. If `jq` exits non-zero, the JSON is malformed — typically a `` \` `` escape inside a string value. Backticks are literal in JSON strings (see `references/code-review-rubrics.md` § "JSON string escaping"); the only valid JSON string escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`. Re-`Write` the file with corrected escapes and re-run `jq -e` until it exits 0. Then end your turn with a short status line. Do not print the JSON to chat.
