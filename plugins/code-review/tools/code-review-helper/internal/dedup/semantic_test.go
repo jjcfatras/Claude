@@ -7,69 +7,6 @@ import (
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
 )
 
-func mkFinding(id, specialist, category, file string, line, conf int, sev findings.Severity, expl, code string) findings.Finding {
-	return findings.Finding{
-		ID:          id,
-		Specialist:  specialist,
-		Category:    category,
-		File:        file,
-		Line:        line,
-		Confidence:  conf,
-		Severity:    sev,
-		Explanation: expl,
-		Code:        code,
-	}
-}
-
-func TestPositional_DropsCloseLine(t *testing.T) {
-	findingA := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "issue A", "code")
-	findingB := mkFinding("b", "quality", "security", "src/x.ts", 12, 60, findings.SeverityCritical, "issue B", "code")
-	out := Positional([]findings.Finding{findingA, findingB})
-	if len(out) != 1 {
-		t.Fatalf("want 1 finding, got %d", len(out))
-	}
-	if out[0].ID != "a" {
-		t.Errorf("want kept=a (higher confidence), got %s", out[0].ID)
-	}
-	if len(out[0].CrossRefs) != 1 || out[0].CrossRefs[0].Specialist != "quality" {
-		t.Errorf("expected one CrossRef for specialist=quality, got: %+v", out[0].CrossRefs)
-	}
-	if strings.Contains(out[0].Explanation, "quality") {
-		t.Errorf("Explanation should remain pristine; got: %s", out[0].Explanation)
-	}
-}
-
-func TestPositional_KeepsFarLines(t *testing.T) {
-	findingA := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "A", "")
-	findingB := mkFinding("b", "quality", "quality", "src/x.ts", 14, 60, findings.SeverityMedium, "B", "")
-	// 14-10 = 4 > 3 → no merge
-	out := Positional([]findings.Finding{findingA, findingB})
-	if len(out) != 2 {
-		t.Fatalf("want 2, got %d", len(out))
-	}
-}
-
-func TestPositional_DomainTieBreak(t *testing.T) {
-	findingA := mkFinding("a", "quality", "security", "src/x.ts", 10, 80, findings.SeverityCritical, "A", "")
-	findingB := mkFinding("b", "security", "security", "src/x.ts", 11, 80, findings.SeverityCritical, "B", "")
-	out := Positional([]findings.Finding{findingA, findingB})
-	if len(out) != 1 {
-		t.Fatalf("want 1, got %d", len(out))
-	}
-	if out[0].ID != "b" {
-		t.Errorf("expected security specialist to win the tie, got %s", out[0].ID)
-	}
-}
-
-func TestPositional_DifferentFilesNotMerged(t *testing.T) {
-	findingA := mkFinding("a", "security", "security", "src/x.ts", 10, 75, findings.SeverityCritical, "A", "")
-	findingB := mkFinding("b", "security", "security", "src/y.ts", 10, 75, findings.SeverityCritical, "B", "")
-	out := Positional([]findings.Finding{findingA, findingB})
-	if len(out) != 2 {
-		t.Fatalf("want 2 (different files), got %d", len(out))
-	}
-}
-
 func TestSemantic_FileInExplanation(t *testing.T) {
 	findingA := mkFinding("a", "quality", "quality", "src/generators/ts.ts", 10, 70, findings.SeverityMedium,
 		"TS generator updated. The JS counterpart at src/generators/js.ts should mirror this.", "")
@@ -117,58 +54,6 @@ func TestSemantic_UnrelatedCategorySubstring(t *testing.T) {
 	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return false })
 	if len(out) != 2 {
 		t.Errorf("unrelated categories should not merge: got %d", len(out))
-	}
-}
-
-func TestPriorReview_DropsContextLine(t *testing.T) {
-	in := []findings.Finding{
-		mkFinding("a", "security", "security", "src/x.ts", 50, 80, findings.SeverityMedium, "expl", "snippet code"),
-	}
-	prior := PriorIssuesFile{
-		Issues: []PriorIssue{
-			{Path: "src/x.ts", Line: 51, Snippet: "anything"},
-		},
-	}
-	isAdded := func(_ string, _ int) bool { return false }
-	kept, dropped := PriorReview(in, prior, isAdded)
-	if len(kept) != 0 || len(dropped) != 1 {
-		t.Fatalf("kept=%d dropped=%d (want 0/1)", len(kept), len(dropped))
-	}
-}
-
-func TestPriorReview_KeepsAddedLine(t *testing.T) {
-	in := []findings.Finding{
-		mkFinding("a", "security", "security", "src/x.ts", 50, 80, findings.SeverityMedium, "expl", "snippet code"),
-	}
-	prior := PriorIssuesFile{
-		Issues: []PriorIssue{
-			{Path: "src/x.ts", Line: 51, Snippet: "anything"},
-		},
-	}
-	isAdded := func(_ string, _ int) bool { return true }
-	kept, dropped := PriorReview(in, prior, isAdded)
-	if len(kept) != 1 || len(dropped) != 0 {
-		t.Fatalf("kept=%d dropped=%d (want 1/0)", len(kept), len(dropped))
-	}
-	if !strings.Contains(kept[0].Explanation, "prior review") {
-		t.Errorf("expected prior-review note appended, got: %s", kept[0].Explanation)
-	}
-}
-
-func TestPriorReview_SnippetMatch(t *testing.T) {
-	snippet := strings.Repeat("Z", 50) + " distinctive code here"
-	in := []findings.Finding{
-		mkFinding("a", "security", "security", "src/x.ts", 1000, 80, findings.SeverityMedium, "expl", snippet),
-	}
-	prior := PriorIssuesFile{
-		Issues: []PriorIssue{
-			{Path: "src/x.ts", Line: 5, Snippet: "preamble " + snippet + " trail"},
-		},
-	}
-	isAdded := func(_ string, _ int) bool { return false }
-	kept, dropped := PriorReview(in, prior, isAdded)
-	if len(kept) != 0 || len(dropped) != 1 {
-		t.Fatalf("kept=%d dropped=%d (snippet should match)", len(kept), len(dropped))
 	}
 }
 
