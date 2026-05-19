@@ -97,20 +97,32 @@ Notes:
 
 ## [3/5] Debate loop (max 5 rounds, early exit on convergence)
 
+Before entering the loop, initialize `pro_zero_streak = 0` and `con_zero_streak = 0`. These track consecutive rounds where one side filed no attacks and no defenses, and feed the convergence check in step [3d].
+
 For `round = 1` to `5`:
 
 ### [3a] Spawn rebuttal pair in parallel
 
-Read the current `$TMP/state.json`. Use the **Write** tool to create both rebuttal input files at `$TMP/rebuttal-pro-r${round}.json` and `$TMP/rebuttal-con-r${round}.json`. Each contains:
+Use the **Write** tool to create both rebuttal input files at `$TMP/rebuttal-pro-r${round}.json` and `$TMP/rebuttal-con-r${round}.json`. Each contains:
 
 ```json
 {
   "role": "<pro|con>",
   "round": <round>,
   "claim": "<CLAIM>",
-  "state": <the full contents of $TMP/state.json, embedded inline>
+  "state": <a pruned view of state — see "State view for rebuttal input" below>
 }
 ```
+
+**Do NOT** use `Bash`+`jq`, `cat`, or any shell pipeline to assemble these files. You already hold the canonical state in context (you Wrote it in step [2/5] or updated it in the previous round's [3b]). Build the embedded state object in-context and pass it directly to `Write`. The only `Bash` calls anywhere in step [3] should be the agent spawns themselves (which are `Agent` tool calls, not Bash) and the final `rm -rf` in step [5/5].
+
+**State view for rebuttal input.** The embedded `state` is **not** the full `state.json` — it is a pruned view containing only what a rebuttal agent can act on:
+
+- `claim`, `round`: copied verbatim from the canonical state.
+- `findings`: only entries whose `status` is `"standing"` or `"disputed"`. Drop every `"negated"` finding entirely (along with its `attacks[]` and `defenses[]` sub-arrays).
+- `attacks`: only attack records whose `target_finding_id` references a finding kept above. Drop attacks targeting now-negated findings.
+
+This keeps the input focused on live targets and prevents quadratic growth of the input as the debate progresses. The canonical `state.json` on disk still retains the full history for the final report.
 
 Spawn both rebuttal agents **in parallel** — one single message, two `Agent` tool calls. For each:
 
@@ -129,7 +141,7 @@ After both return, Read both output files.
 
 ### [3b] Merge deltas into state
 
-You own the merge. Subagents never set `status`; you do, by following these rules **exactly** (re-read **State machine reference** below if anything is unclear). All work happens against the in-memory state you just Read.
+You own the merge. Subagents never set `status`; you do, by following these rules **exactly** (re-read **State machine reference** below if anything is unclear). All work happens in-context against the canonical state object you already hold. **Do NOT** invoke `Bash`+`jq`, `cat`, or any shell pipeline to perform the merge — apply the rules directly in your reasoning and emit the updated state to disk via the **Write** tool at the end of [3c]. There is no need to `Read` `state.json` back after writing it; the file you just wrote is the file you already have in context.
 
 For each `new_attacks` entry across both rebuttal outputs (process pro's attacks first, then con's — order does not matter semantically, just be consistent):
 
@@ -176,16 +188,25 @@ Then increment `state.round = current_round`. Use the **Write** tool to save the
 
 ### [3d] Convergence check
 
-Compute:
+Compute per-side and total deltas for this round:
 
 ```
-total_new = len(pro.new_attacks) + len(pro.new_defenses)
-          + len(con.new_attacks) + len(con.new_defenses)
+pro_new = len(pro.new_attacks) + len(pro.new_defenses)
+con_new = len(con.new_attacks) + len(con.new_defenses)
+total_new = pro_new + con_new
 ```
 
-If `total_new == 0`, break out of the loop — the debate has converged. Note which round converged for the report.
+Then update the streak counters initialized before the loop:
 
-Otherwise, continue to the next round (up to 5 total).
+- If `pro_new == 0`, increment `pro_zero_streak` by 1; otherwise reset `pro_zero_streak = 0`.
+- If `con_new == 0`, increment `con_zero_streak` by 1; otherwise reset `con_zero_streak = 0`.
+
+Exit conditions (check in order, break on the first match):
+
+1. **Mutual convergence** — if `total_new == 0`, the debate has converged. Note "converged on round N" for the report.
+2. **One-sided exhaustion** — if `pro_zero_streak >= 2` or `con_zero_streak >= 2`, one side has been silent for two consecutive rounds and the structural outcome is decided. Note "converged on round N (one-sided exhaustion)" for the report.
+
+Otherwise, continue to the next round (up to 5 total). The 5-round hard cap remains a safety net; both convergence paths above are the expected exits.
 
 ---
 
@@ -291,4 +312,9 @@ Discards are not surfaced to the user. They are normal artifacts of stateless su
 
 ### Convergence
 
-If a full round produces zero new attacks AND zero new defenses across both sides, the debate has converged — break early. The 5-round hard cap exists as a safety net; convergence is the expected exit path.
+Two convergence signals trigger early exit (see step [3d] for the procedural form):
+
+1. **Mutual convergence** — a full round produces zero new attacks and zero new defenses across both sides. Nothing more to say.
+2. **One-sided exhaustion** — one side produces zero attacks and zero defenses for two consecutive rounds. The other side may still be active, but the silent side has no live targets and no undefended attacks of its own to address, so the structural outcome is decided. The two-round threshold avoids false exits on a single tactical pause.
+
+The 5-round hard cap exists as a safety net; both convergence paths above are the expected exits.
