@@ -1,0 +1,23 @@
+{
+  "skill_name": "debate",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/debate Remote work is better than office work for software engineers",
+      "expected_output": "Report has both Pro and Con sections populated with at least 3 findings each. Debate runs at least 1 rebuttal round. Summary counts are non-zero. Trace section shows specific attacks and responses (not generic).",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "/debate GraphQL should replace REST for all new APIs",
+      "expected_output": "Pro covers type-safety, single-fetch, or schema-driven tooling. Con covers caching, operational complexity, or N+1 risk. At least one finding reaches 'negated' status across rounds. Trace shows the negating attack explicitly.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "/debate Unit tests are more valuable than integration tests for catching regressions",
+      "expected_output": "Debate runs at least 2 rebuttal rounds with non-trivial back-and-forth. At least one finding is marked 'disputed' (attacked then successfully defended). Report renders all four sections (Summary, Pro, Con, Negated/Disputed, Trace).",
+      "files": []
+    }
+  ]
+}

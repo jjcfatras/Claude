@@ -51,6 +51,13 @@
       "description": "Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
       "version": "0.1.0",
       "category": "documentation"
+    },
+    {
+      "name": "debate",
+      "source": "./plugins/debate",
+      "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 5 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
+      "version": "0.1.0",
+      "category": "reasoning"
     }
   ]
 }

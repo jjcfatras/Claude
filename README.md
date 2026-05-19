@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping seven slash commands the author uses for everyday Git, testing, code-review, and documentation workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping eight slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -20,6 +20,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `code-review-AT`    | `/code-review-AT [pr-number]`                             | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.           |
 | `code-review`       | `/code-review [pr-number]`                                | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.       |
 | `doc-audit`         | `/audit-docs`                                             | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes. |
+| `debate`            | `/debate <claim>`                                         | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.  |
 
 Install only the plugins you want — each is independent.
 
