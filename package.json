@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "prettier --write .",
-    "format:go": "gofmt -w plugins/code-review-AT/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser && go -C plugins/code-review-AT/tools/code-review-helper mod edit -fmt && go -C .claude/skills/plugin-session-auditor/tools/session-parser mod edit -fmt",
+    "format:go": "for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w \"$d\" && go -C \"$d\" mod edit -fmt || exit 1; done",
+    "build:go": "for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper; do make -C \"$d\" release || exit 1; done",
     "prepare": "husky",
     "check-types": "tsc --noEmit"
   },

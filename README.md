@@ -150,7 +150,7 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`) do not need this flag.
+The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`) do not need this flag.
 
 ### Building the helper from source
 
@@ -161,6 +161,22 @@ make test
 ```
 
 `make release` is what the author runs before tagging a new plugin version. End users do not need a Go toolchain.
+
+## Maintainer scripts
+
+All cross-plugin scripts live in the repo-root `package.json` and are invoked with `pnpm <script>`. End users installing the plugins via the marketplace never need these — they exist for contributors editing this repo.
+
+| Script             | Command                                                                                                                                                                                                                | Purpose                                                                                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`     | Installs dependencies; also fires `prepare`.                                                                                                                                                                           | Standard install.                                                                                                                                                                       |
+| `pnpm format`      | `prettier --write .`                                                                                                                                                                                                   | Format every file the prettier config matches. Uses `prettier-plugin-sh` for shell.                                                                                                     |
+| `pnpm format:go`   | `for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w "$d" && go -C "$d" mod edit -fmt; done` | `gofmt -w` and `go mod edit -fmt` across all three Go modules (both code-review helpers + plugin-session-auditor session-parser).                                                       |
+| `pnpm build:go`    | `for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper; do make -C "$d" release; done`                                                                                 | `make release` for **both** code-review helpers — cross-compiles darwin/linux × amd64/arm64 prebuilts into each plugin's `bin/`. Skips session-parser (no prebuilt shipped).            |
+| `pnpm check-types` | `tsc --noEmit`                                                                                                                                                                                                         | TypeScript type-check using the root `tsconfig.json` (also extended by `plugins/code-review-AT/tsconfig.json`).                                                                         |
+| `pnpm test`        | `echo "Error: no test specified" && exit 1`                                                                                                                                                                            | **Stub — no JS/TS test suite.** Go tests live in each helper's `make test`.                                                                                                             |
+| `pnpm prepare`     | `husky`                                                                                                                                                                                                                | Installs the Husky git hooks (runs automatically after `pnpm install`). The repo's `pre-commit` runs `pnpm exec lint-staged`; the lint-staged config lives at `lint-staged.config.mjs`. |
+
+To build a single Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review-AT/tools/code-review-helper/` or `plugins/code-review/tools/code-review-helper/`.
 
 ## Repo-internal skills
 
@@ -183,10 +199,11 @@ The repo also ships skills under `.claude/skills/`. These are **not** part of th
 ## Repository layout
 
 ```
-.claude-plugin/marketplace.json   # marketplace manifest
-plugins/<name>/                    # one directory per plugin
+.claude-plugin/marketplace.json                # marketplace manifest
+plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
-  commands/<name>.md
-  agents/, references/, bin/, tools/  # only where the plugin needs them
-.claude/skills/<name>/             # repo-internal skills (not marketplace plugins)
+  commands/<file>.md                            # usually <plugin>.md; doc-audit ships audit-docs.md
+  agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
+  src/, dist/, package.json, tsconfig.json      # code-review-AT only (SDK build)
+.claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)
 ```

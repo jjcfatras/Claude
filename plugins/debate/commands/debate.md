@@ -97,6 +97,8 @@ Notes:
 
 ## [3/5] Debate loop (max 5 rounds, early exit on convergence)
 
+> **Hard constraint for everything inside `[3/5]`.** Never invoke a subprocess to read, transform, or write `state.json` — no `Bash`, `jq`, `cat`, `awk`, `sed`, `python -c`, `node -e`, or any shell pipeline. The canonical state lives in your context window: you `Write` it in `[2/5]` and re-`Write` it at the end of each round's `[3c]`. The urge to re-read it from disk is **context drift, not safety** — if you feel it, re-examine the last `Write` payload in context rather than shelling out. The only `Bash` call permitted anywhere in this section is **none**; the `rm -rf` cleanup lives in `[5/5]`, after the loop has exited. Past versions allowed this and produced stale state. A `Write` of any size — including tens of KB of JSON — is correct and expected.
+
 Before entering the loop, initialize `pro_zero_streak = 0` and `con_zero_streak = 0`. These track consecutive rounds where one side filed no attacks and no defenses, and feed the convergence check in step [3d].
 
 For `round = 1` to `5`:
@@ -114,15 +116,38 @@ Use the **Write** tool to create both rebuttal input files at `$TMP/rebuttal-pro
 }
 ```
 
-**Do NOT** use `Bash`+`jq`, `cat`, or any shell pipeline to assemble these files. You already hold the canonical state in context (you Wrote it in step [2/5] or updated it in the previous round's [3b]). Build the embedded state object in-context and pass it directly to `Write`. The only `Bash` calls anywhere in step [3] should be the agent spawns themselves (which are `Agent` tool calls, not Bash) and the final `rm -rf` in step [5/5].
+Build each rebuttal input by constructing the embedded state object in context and passing it directly to `Write`.
 
-**State view for rebuttal input.** The embedded `state` is **not** the full `state.json` — it is a pruned view containing only what a rebuttal agent can act on:
+❌ **Forbidden — shell pipeline that re-reads state from disk** (this is the exact form past sessions reached for):
 
-- `claim`, `round`: copied verbatim from the canonical state.
-- `findings`: only entries whose `status` is `"standing"` or `"disputed"`. Drop every `"negated"` finding entirely (along with its `attacks[]` and `defenses[]` sub-arrays).
-- `attacks`: only attack records whose `target_finding_id` references a finding kept above. Drop attacks targeting now-negated findings.
+```bash
+jq -n --slurpfile s state.json \
+  --arg role pro --argjson round 3 \
+  '{role: $role, round: $round, claim: $s[0].claim, state: $s[0]}' \
+  > rebuttal-pro-r3.json
+```
 
-This keeps the input focused on live targets and prevents quadratic growth of the input as the debate progresses. The canonical `state.json` on disk still retains the full history for the final report.
+Why forbidden: `--slurpfile` reads `state.json` from disk, so any in-context update not yet persisted via `Write` is silently dropped. It also bypasses the pruning step below by handing the full state object to the subagent verbatim.
+
+✅ **Required — `Write` with the in-context pruned state object:**
+
+```text
+Write(
+  file_path = "$TMP/rebuttal-pro-r3.json",
+  content   = JSON({ role: "pro", round: 3, claim: "<CLAIM>", state: <pruned_state> })
+)
+```
+
+`<pruned_state>` is the filtered view constructed per the next paragraph; never pass the full in-context state object here.
+
+**Construct `<pruned_state>` before calling `Write`.** This is a required procedure, not a description of the output — do not pass the full state object to `Write`. Run these four steps in order every round:
+
+1. Filter `state.findings` to entries with `status == "standing"` or `status == "disputed"`. Drop every `"negated"` entry along with its per-finding `attacks[]` and `defenses[]` sub-arrays.
+2. Filter `state.attacks` (the top-level list) to records whose `target_finding_id` appears in the findings kept in step 1. Drop attacks targeting now-negated findings.
+3. Build `pruned_state = { claim: <state.claim>, round: <state.round>, findings: <filtered findings>, attacks: <filtered attacks> }`.
+4. Pass `pruned_state` (not the full state) inside the `state` field of the rebuttal input JSON when calling `Write`.
+
+This keeps the input focused on live targets and prevents quadratic growth of subagent input as the debate progresses. The canonical state object you hold in context still carries the full history for the final report; only the on-disk rebuttal input is pruned.
 
 Spawn both rebuttal agents **in parallel** — one single message, two `Agent` tool calls. For each:
 
@@ -141,7 +166,9 @@ After both return, Read both output files.
 
 ### [3b] Merge deltas into state
 
-You own the merge. Subagents never set `status`; you do, by following these rules **exactly** (re-read **State machine reference** below if anything is unclear). All work happens in-context against the canonical state object you already hold. **Do NOT** invoke `Bash`+`jq`, `cat`, or any shell pipeline to perform the merge — apply the rules directly in your reasoning and emit the updated state to disk via the **Write** tool at the end of [3c]. There is no need to `Read` `state.json` back after writing it; the file you just wrote is the file you already have in context.
+You own the merge. Subagents never set `status`; you do, by following these rules **exactly** (re-read **State machine reference** below if anything is unclear). All work happens in-context against the canonical state object you already hold. Apply the rules directly in your reasoning and emit the updated state to disk via the **Write** tool at the end of [3c]. There is no need to `Read` `state.json` back after writing it; the file you just wrote is the file you already have in context.
+
+The `[3/5]` hard constraint applies here too: do not shell out to merge state (e.g. `jq '.findings[…] |= ...' state.json > new && mv new state.json`). The merge logic below is easier to apply by reasoning than by transliterating into `jq`, and reading `state.json` back from disk drops any in-context update not yet persisted.
 
 For each `new_attacks` entry across both rebuttal outputs (process pro's attacks first, then con's — order does not matter semantically, just be consistent):
 

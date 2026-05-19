@@ -10,14 +10,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- `pnpm install` — install dependencies
-- `pnpm prettier --write .` — format all files
-- `pnpm prettier --check .` — check formatting without writing
+All scripts live in `package.json` and are invoked with `pnpm <script>`:
 
-Go helper (only needed when releasing the `code-review-AT` plugin):
+- `pnpm install` — install dependencies; also runs `pnpm prepare` automatically
+- `pnpm format` — `prettier --write .` across the repo (uses `prettier-plugin-sh` for shell files)
+- `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across all three Go modules (`plugins/code-review/tools/code-review-helper`, `plugins/code-review-AT/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
+- `pnpm build:go` — `make release` for **both** code-review helpers; cross-compiles darwin/linux × amd64/arm64 prebuilts into each plugin's `bin/`. Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
+- `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json` (also extended by `plugins/code-review-AT/tsconfig.json`)
+- `pnpm test` — **stub** that prints "Error: no test specified" and exits 1. No JS/TS test suite exists; Go tests live in each helper's `make test`
+- `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
 
-- `cd plugins/code-review-AT/tools/code-review-helper && make release` — cross-compile prebuilts for darwin/linux × amd64/arm64 into `plugins/code-review-AT/bin/`
-- `make test` — run Go tests for the helper
+To build a single Go helper without the others, run `make release` (or `make test`) directly from inside `plugins/code-review-AT/tools/code-review-helper/` or `plugins/code-review/tools/code-review-helper/`.
 
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
 
@@ -45,7 +48,7 @@ plugins/<name>/
   src/, dist/, package.json, tsconfig.json        # code-review-AT only — SDK build with tsup
 ```
 
-`code-review-workspace/` at the repo root is a gitignored scratch dir for the skill-creator workflow — safe to ignore.
+`code-review-workspace/`, `doc-audit-workspace/`, and `plugin-session-auditor-workspace/` at the repo root are gitignored scratch dirs for the skill-creator / audit workflows — safe to ignore.
 
 ## Plugin & Command File Structure
 
