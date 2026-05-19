@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ type Input struct {
 	Owner               string
 	Repo                string
 	RepoRoot            string // repo working-tree root for specialist `git -C <REPO_ROOT> ...` calls; emitted in Per-PR header so specialists never synthesize paths from cwd (which may be a worktree not checked out to HEAD)
-	SummaryParagraph    string // contents of the file the prep agent wrote
+	SummaryParagraph    string // optional pre-composed summary. When empty, Build synthesizes a deterministic stub from the changed-files list. Kept for backwards compatibility with callers that still pass a prose summary via `--summary-paragraph`.
 	RubricPath          string // path to references/code-review-rubrics.md
 	RubricExternal      string // when non-empty, helper writes rubric to this path and emits `RUBRIC_PATH: <path>` in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 256 KB Read byte cap
 	MaxSourceBytes      int    // per-file embedding cap; 0 disables
@@ -119,7 +120,7 @@ func Build(in Input) (string, error) {
 	fmt.Fprint(&b, "## Summary\n")
 	summary := strings.TrimSpace(in.SummaryParagraph)
 	if summary == "" {
-		summary = "(no summary paragraph supplied)"
+		summary = stubSummary(changedFiles)
 	}
 	fmt.Fprintf(&b, "%s\n\n", summary)
 
@@ -276,6 +277,65 @@ func renderSourceContent(decisions []sourceDecision, in Input) string {
 		b.WriteString("```\n\n")
 	}
 	return b.String()
+}
+
+// stubSummary builds a deterministic one-line summary from the changed-files
+// list. Used when the caller did not provide a prose summary paragraph —
+// avoids a serial lead-model turn purely to compose orientation text, and
+// keeps the `## Summary` section self-describing.
+func stubSummary(changedFiles []string) string {
+	switch len(changedFiles) {
+	case 0:
+		return "No changed files."
+	case 1:
+		return fmt.Sprintf("1 changed file: %s.", changedFiles[0])
+	}
+
+	counts := make(map[string]int, len(changedFiles))
+	for _, p := range changedFiles {
+		counts[topDir(p)]++
+	}
+	type kv struct {
+		dir   string
+		count int
+	}
+	pairs := make([]kv, 0, len(counts))
+	for d, c := range counts {
+		pairs = append(pairs, kv{d, c})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].count != pairs[j].count {
+			return pairs[i].count > pairs[j].count
+		}
+		return pairs[i].dir < pairs[j].dir
+	})
+
+	top := pairs
+	if len(top) > 5 {
+		top = top[:5]
+	}
+	parts := make([]string, 0, len(top))
+	for _, p := range top {
+		parts = append(parts, fmt.Sprintf("%s (%d)", p.dir, p.count))
+	}
+
+	dirNoun := "directories"
+	if len(counts) == 1 {
+		dirNoun = "directory"
+	}
+	return fmt.Sprintf(
+		"PR touches %d changed files across %d top-level %s. Top: %s. Specialists: see `## Changed files` for the full path list and `## Source index` for embedded vs. omitted status.",
+		len(changedFiles), len(counts), dirNoun, strings.Join(parts, ", "),
+	)
+}
+
+// topDir returns the first path segment of p, or "(root)" if p has no
+// directory component.
+func topDir(p string) string {
+	if i := strings.Index(p, "/"); i >= 0 {
+		return p[:i]
+	}
+	return "(root)"
 }
 
 // gitShowAtHead returns the contents of `path` at HEAD_SHA. If the file is

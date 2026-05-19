@@ -9,7 +9,11 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Agent
 
 # /code-review — orchestrate a multi-specialist PR review
 
-You are the orchestrator for /code-review. Execute the numbered steps below in order. Report progress with one short line per step (e.g. `[1/6] Fetching PR #42…`). Surface every command failure verbatim and stop — do not invent workarounds.
+You are the orchestrator for /code-review. Execute the numbered steps below in order. Report progress with one short line per step (e.g. `[1/5] Fetching PR #42…`). Surface every command failure verbatim and stop — do not invent workarounds.
+
+A "stop" includes harness-side Agent rejections. If any `Agent` call returns a message containing `"user doesn't want to proceed"` or `"tool use was rejected"`, treat it as a fatal stop: do not retry, do not continue spawning further specialists. Report which subagent was denied, then jump to **Cleanup** (which always runs, regardless of whether the workflow finished normally).
+
+All agents in this plugin are namespaced under `code-review:` — use the fully-qualified form for every `subagent_type` value (`code-review:security`, `code-review:quality`, etc.). The unqualified bare names are not registered and will fail with "Agent type not found".
 
 The user passes the PR number as `$ARGUMENTS`. If it is empty or not a positive integer, report the error and stop.
 
@@ -28,7 +32,7 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 
 ---
 
-## [1/6] Fetch PR metadata, diff, and prior issues
+## [1/5] Fetch PR metadata, diff, and prior issues
 
 Run sequentially (each as a separate Bash call — don't chain with `&&`, per `references/shell-safety.md`):
 
@@ -74,7 +78,7 @@ jq --argjson rid "$LATEST_CLAUDE_REVIEW_ID" '{review_id: $rid, comments: [.[] | 
 
 ---
 
-## [2/6] Parse diff and build the roster
+## [2/5] Parse diff and build the roster
 
 Parse the diff into changed-files + valid-lines maps:
 
@@ -82,86 +86,36 @@ Parse the diff into changed-files + valid-lines maps:
 "$HELPER" diff --in "$TMP/pr-$PR_NUMBER.diff" --out-changed-files "$TMP/changed-files.json" --out-valid-lines "$TMP/valid-lines.json"
 ```
 
-Build the roster from `changed-files.json`. Always-on roles: `security`, `quality`, `errors`, `perf`. Conditional roles activate when any changed file matches:
-
-- `typescript` — `\.(ts|tsx|cts|mts)$`
-- `react` — `\.(tsx|jsx)$`
-- `infra` — `\.sql$` OR `(^|/)migrations/` OR `(^|/)db/migrations/` OR `\.tf$` OR `\.hcl$` OR `(^|/)terraform/` OR `(^|/)Dockerfile` OR `(^|/)docker-compose` OR `(^|/)k8s/` OR `(^|/)kubernetes/` OR `(^|/)helm/` OR `(^|/)deploy/` OR `(^|/)infra(structure)?/`
-- `claude-md` — at least one changed file has a `CLAUDE.md` ancestor at or above its directory (root `CLAUDE.md` counts).
-
-Walk CLAUDE.md ancestors first, since the roster needs the result. For every changed file, emit each ancestor-dir candidate (`<dir>/CLAUDE.md` for every prefix of the file's path, plus root `CLAUDE.md`), filter to files that actually exist at `$REPO_ROOT`, and write the result as a JSON array of repo-relative paths. This is the same shape `code-review-AT`'s `walkClaudeMd` produces.
+Compute the CLAUDE.md ancestor walk and the specialist roster. The helper encodes all conditional-role patterns and writes both files in one call:
 
 ```bash
-jq -r '
-  [ .[]
-    | (./"/") as $parts
-    | $parts[0:($parts|length)-1] as $dirs
-    | range(($dirs|length)+1) as $i
-    | ($dirs[0:$i] | join("/"))
-    | if . == "" then "CLAUDE.md" else . + "/CLAUDE.md" end
-  ] | unique | .[]
-' "$TMP/changed-files.json" > "$TMP/claude-md-candidates.txt"
+"$HELPER" roster --changed-files "$TMP/changed-files.json" --repo-root "$REPO_ROOT" --out-claude-md-files "$TMP/claude-md-files.json" --out-roster "$TMP/roster.json"
 ```
 
-```bash
-: > "$TMP/claude-md-found.txt"
-```
+Roster contents:
 
-```bash
-while IFS= read -r p; do [ -f "$REPO_ROOT/$p" ] && printf '%s\n' "$p" >> "$TMP/claude-md-found.txt"; done < "$TMP/claude-md-candidates.txt"
-```
-
-```bash
-jq -Rsc 'split("\n") | map(select(length>0)) | unique' "$TMP/claude-md-found.txt" > "$TMP/claude-md-files.json"
-```
-
-`claude-md-files.json` is now a JSON array of zero-or-more relative CLAUDE.md paths. Empty array means the `claude-md` specialist will not be added to the roster.
-
-Write the roster as a flat JSON array of role strings. Do it via jq so the patterns are visible and the JSON is byte-clean. `--slurpfile cm` makes `claude-md-files.json` available as `$cm[0]` (the parsed array of paths):
-
-```bash
-jq -c --slurpfile cm "$TMP/claude-md-files.json" '
-  ["security","quality","errors","perf"]
-  + ( if any(test("\\.(ts|tsx|cts|mts)$"; "i")) then ["typescript"] else [] end )
-  + ( if any(test("\\.(tsx|jsx)$"; "i")) then ["react"] else [] end )
-  + ( if any(test("\\.sql$"; "i") or test("(^|/)migrations/"; "i") or test("(^|/)db/migrations/"; "i") or test("\\.tf$"; "i") or test("\\.hcl$"; "i") or test("(^|/)terraform/"; "i") or test("(^|/)Dockerfile"; "i") or test("(^|/)docker-compose"; "i") or test("(^|/)k8s/"; "i") or test("(^|/)kubernetes/"; "i") or test("(^|/)helm/"; "i") or test("(^|/)deploy/"; "i") or test("(^|/)infra(structure)?/"; "i")) then ["infra"] else [] end )
-  + ( if ($cm[0] | length) > 0 then ["claude-md"] else [] end )
-' "$TMP/changed-files.json" > "$TMP/roster.json"
-```
+- Always-on: `security`, `quality`, `errors`, `perf`.
+- Conditional: `typescript` (`.ts/.tsx/.cts/.mts`), `react` (`.tsx/.jsx`), `infra` (`.sql`, `migrations/`, `db/migrations/`, `.tf`, `.hcl`, `terraform/`, `Dockerfile`, `docker-compose`, `k8s/`, `kubernetes/`, `helm/`, `deploy/`, `infra(structure)?/`), `claude-md` (any `CLAUDE.md` ancestor of a changed file exists at `$REPO_ROOT`).
 
 Read `$TMP/roster.json` to know which specialists you'll spawn.
 
 ---
 
-## [3/6] PR summary pre-pass
-
-Spawn the pr-summary agent once. It returns a single technical paragraph that goes into the spawn-context bundle.
-
-Invoke via the Agent tool:
-
-- `subagent_type: "pr-summary"`
-- `description: "PR summary paragraph"`
-- `prompt: "Read $TMP/pr-$PR_NUMBER.diff and return a single-paragraph technical summary of PR #$PR_NUMBER in $OWNER/$REPO. Use the actual substituted paths — the diff is at the path you receive verbatim."` (substitute `$TMP`, `$PR_NUMBER`, `$OWNER`, `$REPO` before sending)
-
-Capture the agent's final assistant message verbatim as `SUMMARY`. Write it to a file (the helper reads it from disk to avoid PreToolUse:Write hook collisions on sensitive-API substrings):
-
-Use the Write tool to write `SUMMARY` content to `$TMP/summary.txt`.
-
----
-
-## [4/6] Build spawn-context bundle, spawn specialists in parallel
+## [3/5] Build spawn-context bundle, spawn specialists in parallel
 
 Bundle the spawn context. The helper assembles every shared input into one markdown file plus a separate rubric copy:
 
 ```bash
-"$HELPER" bundle-context --review-tmpdir "$TMP" --head-sha "$HEAD_SHA" --pr-number "$PR_NUMBER" --owner "$OWNER" --repo "$REPO" --repo-root "$REPO_ROOT" --rubric "$RUBRIC" --rubric-out "$TMP/rubric.md" --summary-paragraph "$TMP/summary.txt"
+"$HELPER" bundle-context --review-tmpdir "$TMP" --head-sha "$HEAD_SHA" --pr-number "$PR_NUMBER" --owner "$OWNER" --repo "$REPO" --repo-root "$REPO_ROOT" --rubric "$RUBRIC" --rubric-out "$TMP/rubric.md"
 ```
+
+The helper synthesizes the `## Summary` section deterministically from `changed-files.json` (file count + top directories). No inline summary pre-pass is required from the orchestrator.
 
 The helper writes `$TMP/spawn-context.md` and `$TMP/rubric.md`. Both must exist before specialists run.
 
 Now spawn every roster role **in parallel** — emit one single message that contains one `Agent` tool call per role. Read `$TMP/roster.json` to know the role list. For each role:
 
-- `subagent_type: "<role>"` (one of: `security`, `quality`, `errors`, `perf`, `typescript`, `react`, `infra`, `claude-md`)
+- `subagent_type: "code-review:<role>"` — see top-of-file namespace rule.
 - `description: "<role> specialist scan"`
 - `prompt`:
 
@@ -174,13 +128,15 @@ Now spawn every roster role **in parallel** — emit one single message that con
   PR: #<PR_NUMBER> in <OWNER>/<REPO>
   ```
 
-  Substitute every `<placeholder>` with the actual value before issuing the call. Substitute `<role>` with the role string for that call.
+  Substitute every `<placeholder>` with the actual value before issuing the call. Substitute `<role>` with the bare role string for that call (the description and the findings filename use the bare name; only `subagent_type` is prefixed).
 
 After all Agent calls return, verify each role's findings file exists at `$TMP/findings/<role>.json`. Missing files are surfaced as `missing_roles` by the finalize step — don't retry them.
 
+On harness rejection: see top-of-file stop rule. Specialists whose findings files were written before the denial remain on disk but should not drive a post — abandon the finalize/post phase.
+
 ---
 
-## [5/6] Finalize and confirm
+## [4/5] Finalize and confirm
 
 Run the helper's finalize pipeline (dedup → gate → snap → render):
 
@@ -221,7 +177,7 @@ If the user chose `ids`, re-run finalize with the same flags plus `--include-fin
 
 ---
 
-## [6/6] Post review or skip
+## [5/5] Post review or skip
 
 If the user chose `no`, skip to cleanup. Otherwise post via `gh api` with a three-tier fallback (the same pattern `src/helpers/post-review.ts` implemented in code-review-AT).
 
@@ -263,7 +219,9 @@ If tier 3 also fails, surface the full error and stop. Report `posted via tier 3
 
 ## Cleanup
 
-After posting (or skip), remove the scratch dir. Defensive check: only `rm -rf` paths whose basename starts with `pr-review-` (the prefix we created in step 0):
+Cleanup always runs — after step [5/5] completes normally, after the user chose `no` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Skip it only if `$TMP` is unset (the stop happened before step 0 created the scratch dir).
+
+Defensive check: only `rm -rf` paths whose basename starts with `pr-review-` (the prefix we created in step 0):
 
 ```bash
 case "$(basename "$TMP")" in
@@ -272,4 +230,4 @@ case "$(basename "$TMP")" in
 esac
 ```
 
-Report `[6/6] Done.` and stop.
+On normal completion report `[5/5] Done.`. On a fatal stop report which step failed (e.g., `Stopped at [3/5]: code-review:security spawn denied. Cleanup complete.`) and exit.

@@ -70,6 +70,84 @@ func TestBuild_EndToEnd(t *testing.T) {
 	}
 }
 
+// TestBuild_StubSummary verifies that when SummaryParagraph is empty, Build
+// synthesizes a deterministic stub from the changed-files list rather than
+// emitting a "(no summary paragraph supplied)" placeholder. The stub keeps
+// the `## Summary` section orienting without requiring a lead-model turn.
+func TestBuild_StubSummary(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"),
+		`["src/api/foo.ts","src/api/bar.ts","src/api/baz.ts","src/web/index.tsx","docs/readme.md"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `["security"]`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	out, err := Build(Input{
+		ReviewTmpDir:   dir,
+		HeadSHA:        "deadbeef",
+		PRNumber:       1,
+		Owner:          "o",
+		Repo:           "r",
+		RubricPath:     rubric,
+		MaxSourceBytes: 0,
+		// SummaryParagraph deliberately left empty.
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if strings.Contains(out, "no summary paragraph supplied") {
+		t.Errorf("legacy placeholder still emitted; got:\n%s", out)
+	}
+	if !strings.Contains(out, "PR touches 5 changed files across 2 top-level directories") {
+		t.Errorf("stub summary header missing or wrong; got:\n%s", out)
+	}
+	// Top dirs: src (4), docs (1).
+	if !strings.Contains(out, "Top: src (4), docs (1)") {
+		t.Errorf("stub summary top-dirs missing or wrong; got:\n%s", out)
+	}
+}
+
+// TestBuild_StubSummary_EmptyAndSingle verifies the degenerate-case branches
+// (zero or one changed file). These show up rarely in production but the
+// stub must still produce a well-formed sentence.
+func TestBuild_StubSummary_EmptyAndSingle(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		changed string
+		want    string
+	}{
+		{"empty", `[]`, "No changed files."},
+		{"single", `["a.ts"]`, "1 changed file: a.ts."},
+		{"single-dir", `["src/a.ts","src/b.ts"]`, "across 1 top-level directory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWrite(t, filepath.Join(dir, "changed-files.json"), tc.changed)
+			mustWrite(t, filepath.Join(dir, "roster.json"), `[]`)
+			mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+			mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+			rubric := seedRubric(t, dir)
+
+			out, err := Build(Input{
+				ReviewTmpDir:   dir,
+				HeadSHA:        "deadbeef",
+				PRNumber:       1,
+				Owner:          "o",
+				Repo:           "r",
+				RubricPath:     rubric,
+				MaxSourceBytes: 0,
+			})
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("missing %q in stub output; got:\n%s", tc.want, out)
+			}
+		})
+	}
+}
+
 // TestBuild_MigrationHistoryGated verifies migration-history.json is only
 // rendered when present, matching the gated section semantics in
 // commands/code-review.md step 2b.

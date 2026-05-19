@@ -59,13 +59,19 @@ func TestRunBundleContext_SummaryFromStdin(t *testing.T) {
 	}
 }
 
-func TestRunBundleContext_SummaryEmptyPlaceholder(t *testing.T) {
+func TestRunBundleContext_SummaryEmptyUsesStub(t *testing.T) {
 	dir := seedBundleFixture(t)
 	if err := runBundleContext(commonBundleArgs(dir)); err != nil {
 		t.Fatalf("runBundleContext: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "spawn-context.md")); err != nil {
-		t.Errorf("bundle not written: %v", err)
+	got, err := os.ReadFile(filepath.Join(dir, "spawn-context.md"))
+	if err != nil {
+		t.Fatalf("read bundle: %v", err)
+	}
+	// Fixture has one changed file (`a.ts`), so the stub should be the
+	// single-file form.
+	if !strings.Contains(string(got), "1 changed file: a.ts.") {
+		t.Errorf("expected stub summary for single changed file; got:\n%s", got)
 	}
 }
 

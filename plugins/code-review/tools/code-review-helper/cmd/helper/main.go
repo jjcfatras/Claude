@@ -1,7 +1,7 @@
 // code-review-helper is the deterministic backend for the /code-review plugin.
-// It owns diff parsing, the dedup + gate + snap pipeline, and final payload
-// assembly. The command invokes it via three subcommands; see the package
-// documentation for each subcommand for the exact contract.
+// It owns diff parsing, roster construction, the dedup + gate + snap pipeline,
+// and final payload assembly. The command invokes it via four subcommands;
+// see the package documentation for each subcommand for the exact contract.
 package main
 
 import (
@@ -20,6 +20,10 @@ func main() {
 	switch cmd {
 	case "diff":
 		if err := runDiff(args); err != nil {
+			fail(err)
+		}
+	case "roster":
+		if err := runRoster(args); err != nil {
 			fail(err)
 		}
 	case "finalize":
@@ -44,6 +48,7 @@ func usage() {
 
 Usage:
   code-review-helper diff            [flags]
+  code-review-helper roster          [flags]
   code-review-helper finalize        [flags]
   code-review-helper bundle-context  [flags]
 
