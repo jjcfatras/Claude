@@ -38,6 +38,7 @@ type Input struct {
 	MaxSourceBytes      int    // per-file embedding cap; 0 disables
 	MaxTotalSourceBytes int    // aggregate cap across all embedded files; 0 disables (only per-file cap applies). Once running embedded bytes + next file size > cap, the next file and all remaining files are marked _omitted_ with the aggregate-cap reason.
 	GitWorkdir          string // cwd for `git show` calls (repo root)
+	DiffPath            string // when non-empty and the file exists, helper emits a `## Diff map` section listing each file's byte offset, starting line, and hunk count in the raw diff — lets specialists jump to relevant ranges instead of scanning from offset 0
 
 	// GitShowFn allows tests to inject a deterministic substitute for
 	// `git show HEAD_SHA:path`. Returns (content, size, error). When nil, the
@@ -86,9 +87,9 @@ func Build(in Input) (string, error) {
 
 	// When the caller requested the rubric be externalized, copy it verbatim
 	// to that path before assembling the bundle. Specialists Read the bundle
-	// once, then Read the rubric path once — keeping each file under the
-	// Read tool's 256 KB byte cap (the binding limit; the 25k-token cap is
-	// roomier on most diffs).
+	// once, then Read the rubric path once — splitting them keeps each file
+	// under the Read tool's caps (256 KB bytes AND 25,000 tokens; the token
+	// cap is the binding limit on dense source).
 	if in.RubricExternal != "" {
 		if err := os.WriteFile(in.RubricExternal, rubricRaw, 0o644); err != nil {
 			return "", fmt.Errorf("write rubric to %s: %w", in.RubricExternal, err)
@@ -136,6 +137,12 @@ func Build(in Input) (string, error) {
 		decisions := planSourceSection(in, changedFiles)
 		b.WriteString(renderSourceIndex(decisions))
 		b.WriteString(renderSourceContent(decisions, in))
+	}
+
+	if in.DiffPath != "" {
+		if entries, err := buildDiffMap(in.DiffPath); err == nil && len(entries) > 0 {
+			b.WriteString(renderDiffMap(entries))
+		}
 	}
 
 	if in.RubricExternal == "" {
@@ -276,6 +283,81 @@ func renderSourceContent(decisions []sourceDecision, in Input) string {
 		}
 		b.WriteString("```\n\n")
 	}
+	return b.String()
+}
+
+// diffMapEntry is one row of the `## Diff map` section — a jump table that
+// lets specialists Read the raw diff with targeted offsets instead of scanning
+// from offset 0 (which often blows the Read byte cap on large PRs and causes
+// duplicated work across parallel specialists).
+type diffMapEntry struct {
+	Path       string
+	DiffLine   int // 1-based line number of the `diff --git` header inside the raw diff
+	DiffOffset int // byte offset of the `diff --git` header inside the raw diff
+	HunkCount  int // number of `@@ ... @@` hunks for this file
+}
+
+// buildDiffMap scans the raw unified diff at diffPath and returns one entry per
+// changed file. The parser is permissive: it splits on `\n`, recognises the
+// canonical `diff --git a/<src> b/<dst>` header, and counts `@@ ` hunks until
+// the next header. Files that the parser cannot extract a path for are emitted
+// with an empty Path so the operator can still see something is off.
+func buildDiffMap(diffPath string) ([]diffMapEntry, error) {
+	data, err := os.ReadFile(diffPath)
+	if err != nil {
+		return nil, err
+	}
+	var entries []diffMapEntry
+	cur := -1
+	offset := 0
+	lineNo := 1
+	for _, line := range bytes.SplitAfter(data, []byte("\n")) {
+		switch {
+		case bytes.HasPrefix(line, []byte("diff --git ")):
+			path := parseDiffGitPath(line)
+			entries = append(entries, diffMapEntry{
+				Path:       path,
+				DiffLine:   lineNo,
+				DiffOffset: offset,
+			})
+			cur = len(entries) - 1
+		case cur >= 0 && bytes.HasPrefix(line, []byte("@@ ")):
+			entries[cur].HunkCount++
+		}
+		offset += len(line)
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			lineNo++
+		}
+	}
+	return entries, nil
+}
+
+// parseDiffGitPath extracts the `b/<path>` side of a `diff --git a/<src> b/<dst>`
+// header. Renames (`diff --git a/old b/new`) report the new path, matching how
+// specialists think about a changed file. Returns "" if the header shape is
+// unrecognised.
+func parseDiffGitPath(line []byte) string {
+	tail := bytes.TrimSpace(line[len("diff --git "):])
+	idx := bytes.Index(tail, []byte(" b/"))
+	if idx < 0 {
+		return ""
+	}
+	return string(tail[idx+len(" b/"):])
+}
+
+// renderDiffMap emits the diff jump table. Specialists are told to Read the
+// raw diff with `offset` set to (or just below) the per-file offset rather
+// than scanning from 0.
+func renderDiffMap(entries []diffMapEntry) string {
+	var b bytes.Buffer
+	fmt.Fprint(&b, "## Diff map\n\n")
+	fmt.Fprint(&b, "Specialists: use this table to Read `$REVIEW_TMPDIR/pr-N.diff` with a targeted `offset` (in lines) and a `limit` covering the file's hunks. The raw diff often exceeds the 256 KB Read byte cap on large PRs, so avoid bare Reads. Bytes are reported for reference; pass the `Diff line` value as `offset` and pick a `limit` large enough to span `Hunks` × ~30 lines.\n\n")
+	fmt.Fprint(&b, "| File | Diff line | Diff byte offset | Hunks |\n")
+	fmt.Fprint(&b, "|------|-----------|------------------|-------|\n")
+	for _, e := range entries {
+		fmt.Fprintf(&b, "| %s | %d | %d | %d |\n", e.Path, e.DiffLine, e.DiffOffset, e.HunkCount)
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 

@@ -56,7 +56,7 @@ Every specialist writes its findings to `$REVIEW_TMPDIR/findings/<specialist>.js
 
 **Required per-finding fields**: `id` (non-empty string), `category` (free-form string), `file` (relative path, non-empty), `line` (positive integer — see field rules), `confidence` (0–100 integer), `severity` (exactly `"Critical"` / `"Medium"` / `"Minor"` — title-case, **not** `"critical"`), `rationale`, `explanation`, `code`, `language`.
 
-**Optional per-finding fields**: `startLine` (positive integer ≤ `line`, or null/omit), `suggested_fix` (code snippet string or null — see field rules).
+**Conditionally required per-finding fields**: `suggested_fix` (string with the replacement code when the finding has a concrete code-level fix; `null` only for structural/conceptual findings where no single-snippet replacement applies — see field rules), `startLine` (positive integer ≤ `line`; required when `suggested_fix` spans more than one line; otherwise omit or set to `null` — see field rules).
 
 **Do NOT**:
 
@@ -78,8 +78,8 @@ Schema:
       "id": "f-1",
       "category": "security",
       "file": "src/auth/handler.ts",
-      "line": 42,
-      "startLine": null,
+      "line": 44,
+      "startLine": 42,
       "confidence": 75,
       "severity": "Critical",
       "rationale": "One-sentence justification for confidence and severity.",
@@ -87,10 +87,40 @@ Schema:
       "code": "const user = req.body.user as User;\nreturn db.users.update(user);",
       "suggested_fix": "const parsed = UserSchema.safeParse(req.body.user);\nif (!parsed.success) return res.status(400).json(parsed.error);\nreturn db.users.update(parsed.data);",
       "language": "ts"
+    },
+    {
+      "id": "f-2",
+      "category": "security",
+      "file": "src/auth/handler.ts",
+      "line": 12,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "Single-line bypass; mechanical fix.",
+      "explanation": "Comparison uses == not === — coerces 0/'' to true and lets the role guard pass for empty-string roles.",
+      "code": "if (req.user.role == 'admin') {",
+      "suggested_fix": "if (req.user.role === 'admin') {",
+      "language": "ts"
+    },
+    {
+      "id": "f-3",
+      "category": "architecture",
+      "file": "src/auth/handler.ts",
+      "line": 88,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Minor",
+      "rationale": "Structural concern with no single mechanical fix.",
+      "explanation": "Auth, validation, and persistence all live in this handler. Recommended split is per-concern — too many valid factorings to pin to a single snippet.",
+      "code": "await db.users.update(user);",
+      "suggested_fix": null,
+      "language": "ts"
     }
   ]
 }
 ```
+
+The first finding shows a multi-line replacement anchored over lines 42–44 (`startLine: 42`, `line: 44`). The second is a single-line mechanical fix (`startLine: null`). The third is a structural finding with no single mechanical replacement (`suggested_fix: null`). Match this shape — a single-snippet fix gets a string, a structural finding gets `null`.
 
 Field rules:
 
@@ -107,7 +137,8 @@ Field rules:
 
 - `explanation` — **≤3 short sentences** covering (1) what is wrong on the flagged line and (2) what can happen if it is ignored. Don't restate the severity rating — `rationale` already does that. Don't describe the fix in prose — that's `suggested_fix`. For CLAUDE.md citations, the verbatim quote counts as one of the three sentences. The renderer labels this section "Issue & impact:" — the field's contents should read as exactly that.
 - `language` — for fenced code blocks at posting time (`ts`, `tsx`, `py`, `sql`, `tf`, `yaml`, etc.).
-- `suggested_fix` — the corrected code itself, not prose. The renderer wraps the value in a fenced block tagged with `language`, so write only code (or a minimal patch excerpt with surrounding context if it wouldn't read standalone) — no backticks, headings, or prose prefixes like "Fix:". Put reasoning in `explanation`. Use `null` only when no code-level change applies.
+- `suggested_fix` — **required when the finding has a concrete code-level fix** — i.e., a self-contained replacement that goes on the cited line(s). Set to `null` only when no single-snippet replacement applies: architectural findings (rename a module, restructure a folder), findings that span many non-contiguous sites, or findings where picking between several valid fixes needs human judgment. Single-block code change → string. Architectural/conceptual finding → `null`. The renderer wraps the value in a fenced block tagged with `language`, so write only code (or a minimal patch excerpt with surrounding context if it wouldn't read standalone) — no backticks, headings, or prose prefixes like "Fix:". Put reasoning in `explanation`.
+- `startLine` — **required when `suggested_fix` spans more than one line.** Set to the first line of the replaced range; `line` remains the last line of the range. Both must reference right-side (added/context) lines inside the diff hunk. For single-line fixes, omit `startLine` or set it to `null`. Specialists routinely forget this on multi-line replacements, which then anchor over only the final line and either misrender or get demoted to summary-only.
 - `scan_status` — `"complete"` if you wrote this file normally after a clean scan; `"timed_out"` if you ran out of tool budget or hit repeated tool failures before reaching the end of the diff.
 
 ### JSON string escaping (read this if you embed code or quotes)

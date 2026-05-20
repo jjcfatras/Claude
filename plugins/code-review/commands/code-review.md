@@ -34,7 +34,7 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 
 ## [1/5] Fetch PR metadata, diff, and prior issues
 
-Run sequentially (each as a separate Bash call — don't chain with `&&`, per `references/shell-safety.md`):
+Run sequentially (each as a separate Bash call — don't chain with `&&`, per `references/shell-safety.md`). Independent calls (e.g., `gh pr view` and `gh pr diff` — both depend only on `PR_NUMBER` and `TMP`, not on each other's output) may be emitted in the same model turn; calls that read variables from a previous result (e.g., the jq `OWNER`/`REPO` extraction below, which needs `pr-meta.json` already on disk) must wait for the earlier call to complete:
 
 ```bash
 gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName > "$TMP/pr-meta.json"
@@ -120,7 +120,7 @@ Now spawn every roster role **in parallel** — emit one single message that con
 - `prompt`:
 
   ```
-  Read $TMP/spawn-context.md and $TMP/rubric.md once at startup. Scan $TMP/pr-$PR_NUMBER.diff for issues in your domain, then Write findings JSON to $TMP/findings/<role>.json per the rubric schema.
+  Read $TMP/spawn-context.md once at startup (use offset:0, limit:200 and paginate — the bundle may exceed the 25,000-token Read cap on large PRs) and Read $TMP/rubric.md once. Scan $TMP/pr-$PR_NUMBER.diff for issues in your domain (the raw diff is often >256 KB — use the `## Diff map` section in spawn-context.md to pick a targeted offset+limit, or `Bash: grep -n "^diff --git"` to enumerate file sections; do not bare-Read the diff). Populate `suggested_fix` whenever the fix is a concrete code replacement; use `null` only for structural findings where no single-snippet replacement applies, and set `startLine` when the replacement spans more than one line. Then Write findings JSON to $TMP/findings/<role>.json per the rubric schema.
 
   HEAD_SHA: <HEAD_SHA>
   REPO_ROOT: <REPO_ROOT>
@@ -148,24 +148,27 @@ ROSTER_CSV=$(jq -r 'join(",")' "$TMP/roster.json")
 "$HELPER" finalize --diff "$TMP/pr-$PR_NUMBER.diff" --findings-dir "$TMP/findings" --prior-issues "$TMP/prior-issues.json" --head-sha "$HEAD_SHA" --owner "$OWNER" --repo "$REPO" --pr-number "$PR_NUMBER" --expected-roles "$ROSTER_CSV" --out-consolidated "$TMP/consolidated.json" --out-payload "$TMP/payload.json" --out-pending-payload "$TMP/payload-pending.json" --out-body "$TMP/payload-body.json" --out-fallback "$TMP/fallback.md"
 ```
 
-Read `$TMP/consolidated.json` and display the summary to the user:
+Read `$TMP/consolidated.json` with a single Bash call (use one combined `jq` invocation — do not issue separate jq reads per field) and display the summary to the user:
 
+```bash
+jq -r '
+  "=== Review summary ===",
+  "  Specialists: \(.specialists_used | join(", "))",
+  (if (.timed_out_roles // []) | length > 0 then "  Timed out: \(.timed_out_roles | join(", "))" else empty end),
+  (if (.missing_roles // []) | length > 0 then "  Missing: \(.missing_roles | join(", "))" else empty end),
+  (if (.unreadable_roles // []) | length > 0 then "  Unreadable: \(.unreadable_roles | join(", "))" else empty end),
+  (if (.invalid_findings // []) | length > 0 then "  Invalid findings (\(.invalid_findings | length)):" else empty end),
+  ((.invalid_findings // [])[] | "    [\(.role)/\(.id)] \(.reason)"),
+  (if (.dropped_prior_review // []) | length > 0 then "  Dropped (prior review): \(.dropped_prior_review | length)" else empty end),
+  "  Inline eligible: \(.inline_eligible | length)",
+  "  Summary only: \(.summary_only | length)",
+  "",
+  ((.inline_eligible // [])[] | "  [\(.id)] \(.severity) \(.file):\(.line) — \(.rationale)"),
+  ((.summary_only // [])[]    | "  [\(.id)] \(.severity) (summary) \(.file):\(.line) — \(.rationale)")
+' "$TMP/consolidated.json"
 ```
-=== Review summary ===
-  Specialists: <specialists_used joined by ", ">
-  (If non-empty) Timed out: <timed_out_roles joined by ", ">
-  (If non-empty) Missing: <missing_roles joined by ", ">
-  (If non-empty) Unreadable: <unreadable_roles joined by ", ">
-  (If non-empty) Invalid findings: <invalid_findings.length>
-  (If non-empty) Dropped (prior review): <dropped_prior_review.length>
-  Inline eligible: <inline_eligible.length>
-  Summary only: <summary_only.length>
 
-For each finding in inline_eligible:
-  [<id>] <severity> <file>:<line> — <rationale>
-For each finding in summary_only:
-  [<id>] <severity> (summary) <file>:<line> — <rationale>
-```
+The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). Without this, drops are silent.
 
 Then ask the user: `Post review? [Y]es/[n]o/[i]ds <csv>`.
 

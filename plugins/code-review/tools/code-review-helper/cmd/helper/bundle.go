@@ -23,7 +23,7 @@ func runBundleContext(argv []string) error {
 	rubricPath := fs.String("rubric", "", "path to references/code-review-rubrics.md")
 	rubricOut := fs.String("rubric-out", "", "when set, copy the rubric verbatim to this path and emit RUBRIC_PATH in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the Read tool's 256 KB byte cap")
 	maxSourceBytes := fs.Int("max-source-bytes", 32768, "embed each changed file <= this many bytes from HEAD; 0 disables source embedding")
-	maxTotalSourceBytes := fs.Int("max-total-source-bytes", 200000, "aggregate cap across all embedded files; once running embedded byte count + next file size > cap, the next file and all remaining files are marked _omitted_ with the aggregate-cap reason. Default leaves headroom inside the Read tool's 256 KB byte cap. 0 disables (per-file cap still applies).")
+	maxTotalSourceBytes := fs.Int("max-total-source-bytes", 50000, "aggregate cap across all embedded files; once running embedded byte count + next file size > cap, the next file and all remaining files are marked _omitted_ with the aggregate-cap reason. Default sized so the assembled bundle stays under the Read tool's 25,000-token cap (dense source tokenizes at ~2.2 bytes/token; 50,000 bytes ≈ 22,000 tokens, leaving headroom for the non-source sections). 0 disables (per-file cap still applies).")
 	gitWorkdir := fs.String("git-workdir", "", "cwd for `git show` calls; defaults to current process cwd")
 	out := fs.String("out", "", "output path for spawn-context.md (defaults to <review-tmpdir>/spawn-context.md; use '-' for stdout)")
 	if err := fs.Parse(argv); err != nil {
@@ -64,6 +64,7 @@ func runBundleContext(argv []string) error {
 		MaxSourceBytes:      *maxSourceBytes,
 		MaxTotalSourceBytes: *maxTotalSourceBytes,
 		GitWorkdir:          *gitWorkdir,
+		DiffPath:            fmt.Sprintf("%s/pr-%d.diff", *reviewTmpDir, *prNumber),
 	}
 	bundleStr, err := bundle.Build(in)
 	if err != nil {
