@@ -101,7 +101,7 @@ Read `$TMP/roster.json` to know which specialists you'll spawn.
 
 ---
 
-## [3/5] Build spawn-context bundle, spawn specialists in parallel
+## [3a/5] Build spawn-context bundle
 
 Bundle the spawn context. The helper assembles every shared input into one markdown file plus a separate rubric copy:
 
@@ -113,7 +113,32 @@ The helper synthesizes the `## Summary` section deterministically from `changed-
 
 The helper writes `$TMP/spawn-context.md` and `$TMP/rubric.md`. Both must exist before specialists run.
 
-Now spawn every roster role **in parallel** — emit one single message that contains one `Agent` tool call per role. Read `$TMP/roster.json` to know the role list. For each role:
+---
+
+## [3b/5] Spawn all roster specialists in ONE message
+
+**Parallel-emission contract — read carefully.** Every roster role must be spawned as a sibling `tool_use` block inside a **single assistant message**. Do not send one `Agent` call, wait for its result, then send the next — each specialist scan is independent, and serializing them defeats the parallelism this command is built around and risks tripping the top-of-file stop rule on a single denial. If your next message contains only one `Agent` block, you are doing it wrong; redraft.
+
+Schematic of the outgoing message (illustrative — your roster may include more or fewer roles):
+
+```
+<single assistant message containing N tool_use blocks, where N = roster length>
+  Agent(subagent_type="code-review:security", description="security specialist scan", prompt=…)
+  Agent(subagent_type="code-review:quality",  description="quality specialist scan",  prompt=…)
+  Agent(subagent_type="code-review:errors",   description="errors specialist scan",   prompt=…)
+  Agent(subagent_type="code-review:perf",     description="perf specialist scan",     prompt=…)
+  … one Agent block per remaining roster role (typescript / react / infra / claude-md) …
+</single assistant message>
+```
+
+Pre-emit checklist — run through this **before** sending the spawn message:
+
+1. Read `$TMP/roster.json` and compute `N = roster length`.
+2. Draft an `Agent` block for every roster entry — do not skip, reorder, or substitute roles.
+3. Count the `Agent` blocks in your draft message. If the count is less than `N`, **abort and redraft** — do not send a partial batch.
+4. Only then send the single message containing all N blocks.
+
+Per-role spawn payload (build one of these per roster entry; substitute `<role>` with the bare role string — only `subagent_type` carries the `code-review:` prefix; the description and the findings filename use the bare name):
 
 - `subagent_type: "code-review:<role>"` — see top-of-file namespace rule.
 - `description: "<role> specialist scan"`
@@ -128,7 +153,7 @@ Now spawn every roster role **in parallel** — emit one single message that con
   PR: #<PR_NUMBER> in <OWNER>/<REPO>
   ```
 
-  Substitute every `<placeholder>` with the actual value before issuing the call. Substitute `<role>` with the bare role string for that call (the description and the findings filename use the bare name; only `subagent_type` is prefixed).
+  Substitute every `<placeholder>` with the actual value before issuing the call.
 
 After all Agent calls return, verify each role's findings file exists at `$TMP/findings/<role>.json`. Missing files are surfaced as `missing_roles` by the finalize step — don't retry them.
 
@@ -233,4 +258,4 @@ case "$(basename "$TMP")" in
 esac
 ```
 
-On normal completion report `[5/5] Done.`. On a fatal stop report which step failed (e.g., `Stopped at [3/5]: code-review:security spawn denied. Cleanup complete.`) and exit.
+On normal completion report `[5/5] Done.`. On a fatal stop report which step failed (e.g., `Stopped at [3b/5]: code-review:security spawn denied. Cleanup complete.`) and exit.

@@ -1,6 +1,6 @@
 {
   "name": "code-review",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Multi-specialist PR code review using parallel native subagents. Specialists (security, quality, errors, perf, typescript, react, infra, claude-md) scan independently from a shared spawn-context bundle; findings consolidated via the bundled Go helper and posted as inline review comments via gh.",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
