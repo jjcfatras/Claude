@@ -1,6 +1,6 @@
 BIN := bin/code-review-helper
 PLUGIN_BIN := ../../bin
-PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
+PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
 
 .PHONY: build release test fmt vet clean
 
@@ -13,7 +13,8 @@ build:
 release:
 	@for p in $(PLATFORMS); do \
 	  os=$${p%/*}; arch=$${p#*/}; \
-	  out=$(PLUGIN_BIN)/code-review-helper-$${os}-$${arch}; \
+	  case "$$os" in windows) ext=.exe ;; *) ext= ;; esac; \
+	  out=$(PLUGIN_BIN)/code-review-helper-$${os}-$${arch}$${ext}; \
 	  echo "→ $$out"; \
 	  GOOS=$$os GOARCH=$$arch go build -o $$out ./cmd/helper; \
 	  chmod +x $$out; \

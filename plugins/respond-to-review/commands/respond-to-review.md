@@ -10,6 +10,12 @@ Respond to every flagged issue on a pull request — both **inline review commen
 
 **Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The surviving rules in `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops). The condensed version is included in every agent preamble below.
 
+**Tool discipline:** Three rules apply across every step. They are not stylistic — they keep the command working under stricter permission modes and cut wall time:
+
+- **Use the `Grep` tool, never Bash `grep`/`rg`.** The Grep tool is in `allowed-tools`; Bash `grep` is not. `shell-safety.md` rule 2 names this skill explicitly. Grep tool also sidesteps the zsh "no matches found" glob bug.
+- **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. The GitHub-API JSON parsing in Step 1 is well within `jq`'s capabilities.
+- **Batch independent tool calls in parallel.** When a step says "for each X do Y" and the Y's have no ordering dependency (different file paths, different comment IDs, different verification targets), emit them as multiple tool calls in a single assistant message. Steps 1, 4, and 5 call this out explicitly where it matters.
+
 Follow these steps precisely:
 
 ## Step 0: Setup and fetch PR metadata
@@ -25,6 +31,8 @@ Follow these steps precisely:
 ## Step 1: Fetch and filter flagged items
 
 "Flagged items" covers two sources: **inline comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). Both flow through the same downstream steps. Produce a unified `$TMPDIR/pending-items.json` whose entries have a common shape plus a `source_type` of `inline-comment` or `review-body-finding`.
+
+**Filter the fetched JSON with `jq`.** All three downstream filters (1a inline-comment dedup, 1b review filtering, 1d marker dedup) operate on the JSON files saved in Step 0. Use `jq` — not `node -e` / `python -c` — per the Tool discipline rules above. The three filters are independent (different files, no shared state); issue them as parallel Bash tool calls in a single assistant message rather than serializing.
 
 ### 1a — Inline comments
 
@@ -196,6 +204,8 @@ For each item triaged as **valid** (and approved by the user):
 
 If multiple valid issues exist in the same file, apply them carefully to avoid conflicts. Process them from bottom-to-top (highest line number first) so line numbers remain stable.
 
+**Verification — after the last Edit, before Step 5:** Run the project's affected-project type-check, lint, and test (or equivalents) to confirm the fixes compile and pass. The specific commands depend on the project's tooling — pick the right targets for what you changed (e.g., `npx nx run-many -t check-types -p <projects>` for Nx, `pnpm typecheck && pnpm lint && pnpm test` for plain pnpm, `go test ./...` for Go). Issue type-check, lint, and test as parallel Bash tool calls in a single assistant message — independent targets with no ordering dependency. If any fails, fix it before posting replies in Step 5; a posted "Fixed in this push" reply that turns out to break CI is worse than a slower run.
+
 **Vague valid findings** — some review-body findings are valid concerns but too abstract to fix mechanically (e.g., "consider whether this module is doing too much"). For any item whose Step 2 evidence field was marked as vague/non-mechanical, do **not** attempt a speculative edit. Mark it as `noted` (distinct from `fixed`) and surface it in the Step 5 reply as "noted — will address in a follow-up PR". Silently dropping these leaves the reviewer in the dark; an explicit acknowledgement keeps the conversation honest.
 
 ## Step 5: Post replies to all items
@@ -237,6 +247,15 @@ Noted — this is a valid concern but broader than what I'll resolve inside this
 
 BRIEF_ACKNOWLEDGEMENT of the core concern so the reviewer knows we heard them.
 ```
+
+### Batching the Write and POST phases
+
+By this point in Step 5, every reply body is composed. There is no ordering dependency between writing one reply file and another, or between posting one reply and another (each `gh api ... replies` POST targets a distinct comment-reply resource; the aggregated review-body POST targets the issue-comments endpoint). To avoid serializing the wall-clock:
+
+1. **Write all reply files in one parallel assistant message** — emit every `Write` tool call simultaneously (one assistant turn containing as many `Write` blocks as there are reply files: one per inline-comment reply, plus one per review-body aggregated reply).
+2. **Then post all replies in one parallel assistant message** — emit every `gh api ... /comments/<id>/replies` POST and every `gh api ... /issues/<n>/comments` POST simultaneously. The per-call `--jq .id` check still localizes failures: a missing `id` in any one result identifies the failing call.
+
+Do NOT interleave Write and POST calls in a single message — every Write must complete before the POST that reads its file. Two assistant messages: all Writes, then all POSTs.
 
 ### Posting process — inline comments
 

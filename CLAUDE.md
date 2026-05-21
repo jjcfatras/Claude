@@ -15,7 +15,7 @@ All scripts live in `package.json` and are invoked with `pnpm <script>`:
 - `pnpm install` — install dependencies; also runs `pnpm prepare` automatically
 - `pnpm format` — `prettier --write .` across the repo (uses `prettier-plugin-sh` for shell files)
 - `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across all three Go modules (`plugins/code-review/tools/code-review-helper`, `plugins/code-review-AT/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
-- `pnpm build:go` — `make release` for **both** code-review helpers; cross-compiles darwin/linux × amd64/arm64 prebuilts into each plugin's `bin/`. Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
+- `pnpm build:go` — `make release` for **both** code-review helpers; cross-compiles prebuilts into each plugin's `bin/`. `plugins/code-review/` emits darwin/linux/windows × amd64/arm64 (Windows binaries get a `.exe` suffix); `plugins/code-review-AT/` emits darwin/linux × amd64/arm64. Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
 - `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json` (also extended by `plugins/code-review-AT/tsconfig.json`)
 - `pnpm test` — **stub** that prints "Error: no test specified" and exits 1. No JS/TS test suite exists; Go tests live in each helper's `make test`
 - `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
@@ -59,7 +59,7 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `description` — what the command does (shown in `/` menu)
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — `haiku` / `sonnet` / `opus` (simple → moderate → multi-agent orchestration)
-- `effort` — `high` (thorough) or `xhigh` (most thorough)
+- `effort` — `low` / `high` (controls how thoroughly the model executes the command)
 - `argument-hint` — usage hint (optional)
 - `disable-model-invocation` — `true` = user-only trigger (optional)
 

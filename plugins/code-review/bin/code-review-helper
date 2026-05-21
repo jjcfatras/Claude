@@ -1,8 +1,16 @@
 #!/usr/bin/env sh
 # Platform-dispatch wrapper for the prebuilt code-review-helper binaries.
-# Resolves to code-review-helper-{darwin,linux}-{amd64,arm64} based on uname.
+# Resolves to code-review-helper-{darwin,linux,windows}-{amd64,arm64} based on uname.
+# Git Bash / MSYS2 / Cygwin report MINGW*/MSYS*/CYGWIN* and dispatch to the .exe.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+case "$OS" in
+  mingw* | msys* | cygwin*)
+    OS=windows
+    EXT=.exe
+    ;;
+  *) EXT= ;;
+esac
 case "$(uname -m)" in
   x86_64 | amd64) ARCH=amd64 ;;
   arm64 | aarch64) ARCH=arm64 ;;
@@ -11,7 +19,7 @@ case "$(uname -m)" in
     exit 1
     ;;
 esac
-BIN="$DIR/code-review-helper-${OS}-${ARCH}"
+BIN="$DIR/code-review-helper-${OS}-${ARCH}${EXT}"
 if [ ! -x "$BIN" ]; then
   echo "code-review-helper: no prebuilt for ${OS}-${ARCH}; rebuild from \$CLAUDE_PLUGIN_ROOT/tools/code-review-helper (run 'make release' to regenerate all platforms)" >&2
   exit 1

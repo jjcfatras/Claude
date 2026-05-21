@@ -1,6 +1,6 @@
 ---
 description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding.
-allowed-tools: Bash(find:*), Bash(ls:*), Bash(cat:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(git:*), Bash(node:*), Bash(pnpm:*), Bash(npm:*), Bash(yarn:*), Bash(go:*), Bash(python:*), Bash(python3:*), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(find:*), Bash(ls:*), Bash(cat:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Bash(node:*), Bash(pnpm:*), Bash(npm:*), Bash(yarn:*), Bash(go:*), Bash(python:*), Bash(python3:*), Read, Edit, Write, Grep, Glob
 model: opus
 effort: high
 disable-model-invocation: true
@@ -21,14 +21,16 @@ Run `git rev-parse --show-toplevel` to capture the repo root as `$REPO_ROOT`. Re
 Locate every file matching these globs, all relative to `$REPO_ROOT`:
 
 - `.claude/commands/*.md`
-- `.claude/skills/**/*.md`
+- `.claude/skills/*/SKILL.md`
 - `**/README.md`
 - `**/CLAUDE.md`
 - `**/*[Aa]rchitecture*.md`
 
+Do not include files under `.claude/skills/*/agents/` or `.claude/skills/*/references/` — those are internal specialist prompts, not project documentation.
+
 Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`. Also exclude the plugin's own scratch workspace `doc-audit-workspace/` if present.
 
-Use a single `find` invocation or parallel `Glob` calls. If the total file count exceeds 50, list the files and ask the user whether to proceed with all of them, narrow the scope, or skip directories. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
+Use exactly one `find` invocation or parallel `Glob` calls in a single message. Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files and ask the user whether to proceed with all of them, narrow the scope, or skip directories. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
 
 Report the count and a summary list before continuing.
 
@@ -57,6 +59,8 @@ For each claim, record:
 Keep working notes in memory or a temp file — do not persist them to the repo.
 
 ## Step 3: Verify each claim
+
+**Batch independent verifications.** Issue all verification calls for independent claims in the same message. Only serialize when a probe truly depends on a prior result (e.g., reading a file's contents after confirming it exists, or grepping a symbol inside a path the previous call located). A run that issues all probes one-at-a-time is doing it wrong — claim verification is embarrassingly parallel and the cheapest way to keep wall-clock down on repos with many docs.
 
 Verification depends on category. Use the cheapest tool that answers definitively:
 
@@ -131,6 +135,7 @@ Skip findings the user declines. After the last decision, summarize what was app
 ## Operating notes
 
 - **Performance** — the scan is read-mostly. Use parallel `Glob`/`Read` calls in the same message wherever findings don't depend on each other. Avoid spawning subagents unless the file count exceeds ~30 and per-file extraction starts dominating turn time.
+- **Prefer `Grep` over `Bash(grep:*)` for content and symbol searches** — `Grep` exits 0 on empty matches and avoids shell glob-expansion pitfalls (e.g., brace globs like `*.{ts,mjs}` against directories that hold none of those extensions return non-zero in `/bin/sh` and poison the call's exit code). Reserve `Bash(grep:*)` for flags `Grep` does not expose (`-l`, `-A`, `-B`, multi-step pipelines). When chaining several probes in a single `Bash` call, guard each subcommand that is allowed to find nothing with `|| true` so one empty match does not mark the whole call as failed.
 - **Be conservative on aspirational docs** — sections labelled "Future work", "TODO", "Roadmap", "Design intent" describe intent, not current state. Skip them.
 - **Quote, don't paraphrase** — when you cite a claim, quote it verbatim so the user can grep for it. Paraphrased claims hide the original wording and make fixes harder to apply.
 - **Doc-vs-doc agreement** — if two docs make contradictory claims, both are findings. Don't pick a winner; flag both and let the user reconcile.
