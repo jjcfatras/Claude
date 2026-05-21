@@ -101,59 +101,37 @@ Read `$TMP/roster.json` to know which specialists you'll spawn.
 
 ---
 
-## [3a/5] Build spawn-context bundle
+## [3a/5] Build spawn-context bundle and spawn manifest
 
-Bundle the spawn context. The helper assembles every shared input into one markdown file plus a separate rubric copy:
+Two independent helper calls — both depend only on already-on-disk inputs (`roster.json`, `changed-files.json`, the rubric source). Emit them in the same model turn:
 
 ```bash
 "$HELPER" bundle-context --review-tmpdir "$TMP" --head-sha "$HEAD_SHA" --pr-number "$PR_NUMBER" --owner "$OWNER" --repo "$REPO" --repo-root "$REPO_ROOT" --rubric "$RUBRIC" --rubric-out "$TMP/rubric.md"
 ```
 
-The helper synthesizes the `## Summary` section deterministically from `changed-files.json` (file count + top directories). No inline summary pre-pass is required from the orchestrator.
+```bash
+"$HELPER" spawn-manifest --roster "$TMP/roster.json" --review-tmpdir "$TMP" --head-sha "$HEAD_SHA" --pr-number "$PR_NUMBER" --owner "$OWNER" --repo "$REPO" --repo-root "$REPO_ROOT" --out "$TMP/spawn-manifest.json"
+```
 
-The helper writes `$TMP/spawn-context.md` and `$TMP/rubric.md`. Both must exist before specialists run.
+`bundle-context` synthesizes the `## Summary` section deterministically from `changed-files.json` (file count + top directories) and writes `$TMP/spawn-context.md` plus `$TMP/rubric.md`. `spawn-manifest` reads `roster.json` and writes one fully-rendered Agent payload per role to `$TMP/spawn-manifest.json` — the orchestrator does no per-role string-building in [3b/5].
+
+All three files must exist before specialists run.
 
 ---
 
 ## [3b/5] Spawn all roster specialists in ONE message
 
-**Parallel-emission contract — read carefully.** Every roster role must be spawned as a sibling `tool_use` block inside a **single assistant message**. Do not send one `Agent` call, wait for its result, then send the next — each specialist scan is independent, and serializing them defeats the parallelism this command is built around and risks tripping the top-of-file stop rule on a single denial. If your next message contains only one `Agent` block, you are doing it wrong; redraft.
+Read `$TMP/spawn-manifest.json`. It contains one object per roster entry, each with three pre-rendered fields: `subagent_type`, `description`, `prompt`. Emit one `Agent` `tool_use` block per entry, **all as sibling blocks in this single assistant message**. Forward each object's three fields verbatim — do not modify, truncate, summarize, or skip any entry. The manifest is the ground truth; if it has N entries your message must contain N `Agent` blocks.
 
-Schematic of the outgoing message (illustrative — your roster may include more or fewer roles):
+Schematic — `N` here equals the manifest length, which equals the roster length:
 
 ```
-<single assistant message containing N tool_use blocks, where N = roster length>
-  Agent(subagent_type="code-review:security", description="security specialist scan", prompt=…)
-  Agent(subagent_type="code-review:quality",  description="quality specialist scan",  prompt=…)
-  Agent(subagent_type="code-review:errors",   description="errors specialist scan",   prompt=…)
-  Agent(subagent_type="code-review:perf",     description="perf specialist scan",     prompt=…)
-  … one Agent block per remaining roster role (typescript / react / infra / claude-md) …
+<single assistant message containing N tool_use blocks>
+  Agent(subagent_type=manifest[0].subagent_type, description=manifest[0].description, prompt=manifest[0].prompt)
+  Agent(subagent_type=manifest[1].subagent_type, description=manifest[1].description, prompt=manifest[1].prompt)
+  … one Agent block per remaining manifest entry …
 </single assistant message>
 ```
-
-Pre-emit checklist — run through this **before** sending the spawn message:
-
-1. Read `$TMP/roster.json` and compute `N = roster length`.
-2. Draft an `Agent` block for every roster entry — do not skip, reorder, or substitute roles.
-3. Count the `Agent` blocks in your draft message. If the count is less than `N`, **abort and redraft** — do not send a partial batch.
-4. Only then send the single message containing all N blocks.
-
-Per-role spawn payload (build one of these per roster entry; substitute `<role>` with the bare role string — only `subagent_type` carries the `code-review:` prefix; the description and the findings filename use the bare name):
-
-- `subagent_type: "code-review:<role>"` — see top-of-file namespace rule.
-- `description: "<role> specialist scan"`
-- `prompt`:
-
-  ```
-  Read $TMP/spawn-context.md once at startup (use offset:0, limit:200 and paginate — the bundle may exceed the 25,000-token Read cap on large PRs) and Read $TMP/rubric.md once. Scan $TMP/pr-$PR_NUMBER.diff for issues in your domain (the raw diff is often >256 KB — use the `## Diff map` section in spawn-context.md to pick a targeted offset+limit, or `Bash: grep -n "^diff --git"` to enumerate file sections; do not bare-Read the diff). Populate `suggested_fix` whenever the fix is a concrete code replacement; use `null` only for structural findings where no single-snippet replacement applies, and set `startLine` when the replacement spans more than one line. Then Write findings JSON to $TMP/findings/<role>.json per the rubric schema.
-
-  HEAD_SHA: <HEAD_SHA>
-  REPO_ROOT: <REPO_ROOT>
-  REVIEW_TMPDIR: <TMP>
-  PR: #<PR_NUMBER> in <OWNER>/<REPO>
-  ```
-
-  Substitute every `<placeholder>` with the actual value before issuing the call.
 
 After all Agent calls return, verify each role's findings file exists at `$TMP/findings/<role>.json`. Missing files are surfaced as `missing_roles` by the finalize step — don't retry them.
 

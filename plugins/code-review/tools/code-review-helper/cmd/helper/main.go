@@ -34,6 +34,10 @@ func main() {
 		if err := runBundleContext(args); err != nil {
 			fail(err)
 		}
+	case "spawn-manifest":
+		if err := runSpawnManifest(args); err != nil {
+			fail(err)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -51,6 +55,7 @@ Usage:
   code-review-helper roster          [flags]
   code-review-helper finalize        [flags]
   code-review-helper bundle-context  [flags]
+  code-review-helper spawn-manifest  [flags]
 
 Run "code-review-helper <subcommand> -h" for subcommand flags.
 `)
