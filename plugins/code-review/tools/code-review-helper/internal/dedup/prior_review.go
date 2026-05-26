@@ -8,11 +8,14 @@ import (
 // PriorIssue is the schema persisted by the skill's step 1c (prep agent for
 // prior-review fetching). Mirrors the rubric's `prior-issues.json` shape.
 type PriorIssue struct {
-	Path        string `json:"path"`
-	Line        int    `json:"line"`
-	StartLine   int    `json:"start_line"`
-	Snippet     string `json:"snippet"`
-	Description string `json:"description"`
+	Path            string `json:"path"`
+	Line            int    `json:"line"`
+	StartLine       int    `json:"start_line"`
+	Snippet         string `json:"snippet"`
+	Description     string `json:"description"`
+	IsResolved      bool   `json:"is_resolved"`
+	IsOutdated      bool   `json:"is_outdated"`
+	AuthorDismissed bool   `json:"author_dismissed"`
 }
 
 type PriorIssuesFile struct {
@@ -22,20 +25,24 @@ type PriorIssuesFile struct {
 }
 
 const (
-	priorLineWindow      = 5
-	priorSnippetOverlapN = 40
-	priorReviewKeptNote  = "\n\n_Note: This issue was flagged in a prior review but the code has since changed._"
+	priorLineWindow          = 5
+	priorSnippetOverlapN     = 40
+	priorDescriptionOverlapN = 60
+	priorReviewKeptNote      = "\n\n_Note: This issue was flagged in a prior review but the code has since changed._"
 )
 
 // addedLineLookup mirrors diff.Parsed.IsAddedLine; injected so this package
 // has no dependency on internal/diff.
 type addedLineLookup func(path string, line int) bool
 
-// PriorReview filters `in` against `prior`. Three buckets:
+// PriorReview filters `in` against `prior`. Four buckets:
 //
-//   - Findings matched + on a context (unchanged) line → DROPPED.
-//   - Findings matched + on an added line → KEPT with explanation note.
-//   - Findings unmatched → KEPT unchanged.
+//   - Matched + matched prior is dismissed/resolved/outdated → DROPPED (the
+//     author engaged with the prior thread, so re-posting is noise even when
+//     the new finding sits on an added line).
+//   - Matched + on a context (unchanged) line → DROPPED.
+//   - Matched + on an added line → KEPT with explanation note.
+//   - Unmatched → KEPT unchanged.
 //
 // Returns (kept, dropped). Dropped findings carry a `description` derived from
 // the prior issue, which the skill uses to render the "Skipped N issues"
@@ -46,8 +53,13 @@ func PriorReview(in []findings.Finding, prior PriorIssuesFile, isAdded addedLine
 		priorByPath[p.Path] = append(priorByPath[p.Path], p)
 	}
 	for _, finding := range in {
-		if !matchPrior(finding, priorByPath[finding.File]) {
+		match, ok := matchPrior(finding, priorByPath[finding.File])
+		if !ok {
 			kept = append(kept, finding)
+			continue
+		}
+		if match.AuthorDismissed || match.IsResolved || match.IsOutdated {
+			dropped = append(dropped, finding)
 			continue
 		}
 		if isAdded(finding.File, finding.Line) {
@@ -61,15 +73,25 @@ func PriorReview(in []findings.Finding, prior PriorIssuesFile, isAdded addedLine
 }
 
 // matchPrior reports whether finding overlaps any prior issue on the same file
-// (caller pre-filters by path).
-func matchPrior(finding findings.Finding, sameFile []PriorIssue) bool {
-	for _, priorIssue := range sameFile {
-		if intmath.Abs(priorIssue.Line-finding.Line) <= priorLineWindow {
-			return true
+// (caller pre-filters by path). When a match is found the matched PriorIssue
+// is returned so the caller can consult its dismissal flags.
+func matchPrior(finding findings.Finding, sameFile []PriorIssue) (*PriorIssue, bool) {
+	for i := range sameFile {
+		priorIssue := &sameFile[i]
+		if priorIssue.Line != 0 && intmath.Abs(priorIssue.Line-finding.Line) <= priorLineWindow {
+			return priorIssue, true
 		}
-		if longestCommonSubstringLen(priorIssue.Snippet, finding.Code) >= priorSnippetOverlapN {
-			return true
+		if priorIssue.Snippet != "" && longestCommonSubstringLen(priorIssue.Snippet, finding.Code) >= priorSnippetOverlapN {
+			return priorIssue, true
+		}
+		if priorIssue.Description != "" {
+			if longestCommonSubstringLen(priorIssue.Description, finding.Explanation) >= priorDescriptionOverlapN {
+				return priorIssue, true
+			}
+			if longestCommonSubstringLen(priorIssue.Description, finding.Rationale) >= priorDescriptionOverlapN {
+				return priorIssue, true
+			}
 		}
 	}
-	return false
+	return nil, false
 }

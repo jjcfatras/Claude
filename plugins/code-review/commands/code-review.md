@@ -52,29 +52,27 @@ OWNER=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").o' "
 REPO=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").r' "$TMP/pr-meta.json")
 ```
 
-Fetch prior Claude-Code reviews on this PR (used by the helper's prior-review dedup pass). Most recent Claude-Code review is the only one consulted; if none, write `{"comments": []}`:
+Fetch prior Claude-Code review threads on this PR (used by the helper's prior-review dedup pass). Uses GraphQL `reviewThreads` so we get thread-level state (`isResolved`, `isOutdated`) and every reply — needed to detect when the PR author has already dismissed a finding as a false positive. The REST `pulls/{n}/reviews/{rid}/comments` endpoint does not expose any of that.
+
+First capture the PR author login (used below to mark "author replied" threads):
 
 ```bash
-gh api --paginate "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" > "$TMP/reviews.json"
+gh pr view "$PR_NUMBER" --json author --jq '.author.login' > "$TMP/pr-author.txt"
 ```
 
-Then in a single jq pass, extract the most recent Claude-Code review and fetch its comments. If none, write the empty file:
+Then fetch all review threads in one GraphQL call. The first-page cap is 50 threads × 50 comments, which is well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. We embed the GraphQL variables via `-F` (typed) for `pr` and `-f` for strings:
 
 ```bash
-LATEST_CLAUDE_REVIEW_ID=$(jq -r '[.[] | select((.body // "") | test("Claude Code|claude-code|Generated with Claude"))] | (.[-1].id // empty)' "$TMP/reviews.json")
+gh api graphql -F owner="$OWNER" -F repo="$REPO" -F pr="$PR_NUMBER" -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:50){nodes{id isResolved isOutdated comments(first:50){nodes{databaseId author{login} body path line originalLine originalStartLine}}}}}}}' > "$TMP/review-threads.json"
 ```
 
-If `LATEST_CLAUDE_REVIEW_ID` is empty, write `{"comments": []}` to `$TMP/prior-issues.json` via the Write tool. Otherwise:
+Then project to the helper's `PriorIssuesFile` shape — only threads whose first comment is a `/code-review` finding count. The filter keys off the per-finding header format `... (Confidence: NN/100) - ...` emitted by `internal/render/issue.go` (which is unique to this plugin's output); the older "Claude Code" / "Generated with Claude" marker lives only on the review _summary_, not on inline-comment bodies. `author_dismissed` is true when any reply (comments after the first) is authored by the PR author. `line` falls back to `originalLine` when GitHub couldn't re-anchor:
 
 ```bash
-gh api --paginate "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews/$LATEST_CLAUDE_REVIEW_ID/comments" > "$TMP/prior-comments.json"
+jq --arg pr_author "$(cat "$TMP/pr-author.txt")" '{issues: [.data.repository.pullRequest.reviewThreads.nodes[] | . as $t | ($t.comments.nodes[0]) as $first | select(($first.body // "") | test("\\(Confidence: [0-9]+/100\\)")) | {path: ($first.path // ""), line: ($first.line // $first.originalLine // 0), start_line: ($first.originalStartLine // 0), snippet: "", description: $first.body, is_resolved: $t.isResolved, is_outdated: $t.isOutdated, author_dismissed: any($t.comments.nodes[1:][]?; .author.login == $pr_author)}]}' "$TMP/review-threads.json" > "$TMP/prior-issues.json"
 ```
 
-Then build the prior-issues file in the helper's expected shape (via jq into a file — do not echo inline JSON):
-
-```bash
-jq --argjson rid "$LATEST_CLAUDE_REVIEW_ID" '{review_id: $rid, comments: [.[] | {id, path, line: (.line // null), body}]}' "$TMP/prior-comments.json" > "$TMP/prior-issues.json"
-```
+If the PR has no prior Claude-Code reviews, the `select(...)` filter yields zero rows and the jq still emits `{"issues": []}` — no special-case branch needed.
 
 ---
 

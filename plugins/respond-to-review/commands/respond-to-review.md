@@ -6,7 +6,7 @@ model: opus
 effort: high
 ---
 
-Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix and reply confirming the change.
+Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix, **commit and push it before posting any reply**, and reply confirming the change — so reviewers never see a "Fixed" reply that points at code still sitting in the local working tree.
 
 **Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The surviving rules in `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops). The condensed version is included in every agent preamble below.
 
@@ -73,7 +73,7 @@ Discard "findings" that are purely summary, approval, or praise (e.g., "Overall 
 
 ### 1d — Dedup review-body findings against prior replies
 
-When the skill posts a reply for a review-body finding (Step 5), it embeds a stable HTML-comment marker of the form `<!-- respond-to-review:review-<reviewId>:finding-<N> -->`. Use this to detect previously-handled findings and skip them:
+When the skill posts a reply for a review-body finding (Step 6), it embeds a stable HTML-comment marker of the form `<!-- respond-to-review:review-<reviewId>:finding-<N> -->`. Use this to detect previously-handled findings and skip them:
 
 1. Fetch PR-level issue comments: `gh api --paginate repos/OWNER/REPO/issues/NUMBER/comments`. Save to `$TMPDIR/issue-comments.json` using the Write tool.
 2. Filter the list to comments authored by the current user.
@@ -99,7 +99,7 @@ For each pending item in `$TMPDIR/pending-items.json`, perform the following ana
 
 **CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
 
-> You are a review-response analysis agent. Use the Read/Grep/Write tools rather than `sed`/`awk`/`grep`/`du` — those aren't in this skill's `allowed-tools` and would be denied at the skill-permission layer regardless of permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 5.
+> You are a review-response analysis agent. Use the Read/Grep/Write tools rather than `sed`/`awk`/`grep`/`du` — those aren't in this skill's `allowed-tools` and would be denied at the skill-permission layer regardless of permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
 >
 > **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 
@@ -200,15 +200,41 @@ For each item triaged as **valid** (and approved by the user):
 3. Plan the minimal, targeted fix that addresses the reviewer's concern without unnecessary refactoring.
 4. Apply the fix using the Edit tool.
 5. After editing, re-read the modified section to verify the fix is correct and doesn't break surrounding code.
-6. Record what was changed (the file paths and a one-line description) for the reply in Step 5.
+6. Record what was changed (the file paths and a one-line description) for use in Step 5 (commit message) and Step 6 (reply body).
 
 If multiple valid issues exist in the same file, apply them carefully to avoid conflicts. Process them from bottom-to-top (highest line number first) so line numbers remain stable.
 
-**Verification — after the last Edit, before Step 5:** Run the project's affected-project type-check, lint, and test (or equivalents) to confirm the fixes compile and pass. The specific commands depend on the project's tooling — pick the right targets for what you changed (e.g., `npx nx run-many -t check-types -p <projects>` for Nx, `pnpm typecheck && pnpm lint && pnpm test` for plain pnpm, `go test ./...` for Go). Issue type-check, lint, and test as parallel Bash tool calls in a single assistant message — independent targets with no ordering dependency. If any fails, fix it before posting replies in Step 5; a posted "Fixed in this push" reply that turns out to break CI is worse than a slower run.
+**Verification — after the last Edit, before Step 5:** Run the project's affected-project type-check, lint, and test (or equivalents) to confirm the fixes compile and pass. The specific commands depend on the project's tooling — pick the right targets for what you changed (e.g., `npx nx run-many -t check-types -p <projects>` for Nx, `pnpm typecheck && pnpm lint && pnpm test` for plain pnpm, `go test ./...` for Go). Issue type-check, lint, and test as parallel Bash tool calls in a single assistant message — independent targets with no ordering dependency. If any fails, fix it before committing in Step 5; a commit pushed to the PR branch that turns out to break CI is worse than a slower run.
 
-**Vague valid findings** — some review-body findings are valid concerns but too abstract to fix mechanically (e.g., "consider whether this module is doing too much"). For any item whose Step 2 evidence field was marked as vague/non-mechanical, do **not** attempt a speculative edit. Mark it as `noted` (distinct from `fixed`) and surface it in the Step 5 reply as "noted — will address in a follow-up PR". Silently dropping these leaves the reviewer in the dark; an explicit acknowledgement keeps the conversation honest.
+**Vague valid findings** — some review-body findings are valid concerns but too abstract to fix mechanically (e.g., "consider whether this module is doing too much"). For any item whose Step 2 evidence field was marked as vague/non-mechanical, do **not** attempt a speculative edit. Mark it as `noted` (distinct from `fixed`) and surface it in the Step 6 reply as "noted — will address in a follow-up PR". Silently dropping these leaves the reviewer in the dark; an explicit acknowledgement keeps the conversation honest.
 
-## Step 5: Post replies to all items
+## Step 5: Commit and push fixes
+
+If Step 4 applied zero edits (all items were preexisting / false-positive / vague-noted), **skip this step entirely** — there is nothing to publish — and proceed to Step 6.
+
+Otherwise, every "Fixed — …" reply in Step 6 must point at code that is already on the remote PR branch. Commit and push _before_ posting any reply. A reviewer who reads "Good catch! Fixed in commit `abc1234`" must be able to see that commit on the PR.
+
+1. **Verify the local branch matches the PR's `headRefName`** from Step 0: `git rev-parse --abbrev-ref HEAD` must equal `headRefName`. If it does not, stop and surface the mismatch — do not switch branches automatically and do not post any reply. The user likely ran the skill from the wrong checkout.
+2. **Stage only the files Step 4 modified.** Use the file-path list recorded in Step 4 (not `git add -A` / `git add .`), so unrelated dirty working-tree changes are not swept into this commit. Pass each path explicitly: `git add -- PATH1 PATH2 …`.
+3. **Detect the repo's commit-message style** once: `git log --pretty=%s -n 10`. If the recent subjects look like Conventional Commits (`type(scope): …`), match that style; otherwise use a plain imperative subject.
+4. **Compose the commit message** via heredoc (so newlines survive). Default template (adapt the subject to the detected style):
+
+   ```
+   fix: address review feedback on PR #<NUMBER>
+
+   - <one-line per fix, mirroring the Step 4 record (file:line — what changed)>
+
+   Reviewers: @<reviewer1>, @<reviewer2>
+   ```
+
+   Do not skip pre-commit hooks (no `--no-verify`). Do not amend a previous commit — make a new commit, per the project's git rules.
+
+5. **Commit:** `git commit -m "$(cat <<'EOF' … EOF)"`. If the commit fails because a pre-commit hook rewrote files (e.g., a formatter), re-`git add` the same paths and create a _new_ commit — never `--amend` to silence the hook.
+6. **Push:** `git push`. On any normal PR checkout the branch already tracks `origin/<headRefName>`, so a bare `git push` is correct. If push fails with non-fast-forward, **stop and surface** — do not force-push, do not rebase silently. The user must resolve the divergence before the skill continues.
+7. **Verify the push landed:** local `git rev-parse HEAD` must match `gh api repos/OWNER/REPO/git/refs/heads/<headRefName> --jq .object.sha`. If they differ, stop and surface — do not proceed to Step 6.
+8. **Capture the short SHA** with `git rev-parse --short HEAD`. Step 6's "Fixed" template embeds this SHA so each reply points at a specific commit on the PR.
+
+## Step 6: Post replies to all items
 
 Inline comments get their own per-comment reply via the standard inline-reply endpoint. Review-body findings cannot be "replied to" in place — GitHub has no per-finding reply endpoint for review bodies — so they are **grouped by `review_id` and answered with one aggregated PR-level comment per review**. This matches the user intent of replying "in place where possible" (one response per external review) while keeping the PR conversation readable.
 
@@ -235,10 +261,12 @@ BRIEF_EXPLANATION of why the current code is correct.
 **For valid issues (fixed):**
 
 ```
-Good catch! Fixed — DESCRIPTION_OF_CHANGE.
+Good catch! Fixed in commit `<SHORT_SHA>` — DESCRIPTION_OF_CHANGE.
 
 BRIEF_EXPLANATION of what was changed and why it addresses the concern.
 ```
+
+`<SHORT_SHA>` is the value captured at the end of Step 5 (`git rev-parse --short HEAD` after the push). If Step 5 was skipped (no edits), this template is not used.
 
 **For valid issues (noted, not fixed — vague finding from Step 4):**
 
@@ -250,7 +278,7 @@ BRIEF_ACKNOWLEDGEMENT of the core concern so the reviewer knows we heard them.
 
 ### Batching the Write and POST phases
 
-By this point in Step 5, every reply body is composed. There is no ordering dependency between writing one reply file and another, or between posting one reply and another (each `gh api ... replies` POST targets a distinct comment-reply resource; the aggregated review-body POST targets the issue-comments endpoint). To avoid serializing the wall-clock:
+By this point in Step 6, every reply body is composed. There is no ordering dependency between writing one reply file and another, or between posting one reply and another (each `gh api ... replies` POST targets a distinct comment-reply resource; the aggregated review-body POST targets the issue-comments endpoint). To avoid serializing the wall-clock:
 
 1. **Write all reply files in one parallel assistant message** — emit every `Write` tool call simultaneously (one assistant turn containing as many `Write` blocks as there are reply files: one per inline-comment reply, plus one per review-body aggregated reply).
 2. **Then post all replies in one parallel assistant message** — emit every `gh api ... /comments/<id>/replies` POST and every `gh api ... /issues/<n>/comments` POST simultaneously. The per-call `--jq .id` check still localizes failures: a missing `id` in any one result identifies the failing call.
