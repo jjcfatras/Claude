@@ -58,6 +58,20 @@
       "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 5 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
       "version": "0.1.0",
       "category": "reasoning"
+    },
+    {
+      "name": "simplify",
+      "source": "./plugins/simplify",
+      "description": "Propose and apply targeted simplifications to recently modified code while preserving behavior",
+      "version": "0.1.0",
+      "category": "code-quality"
+    },
+    {
+      "name": "transcript",
+      "source": "./plugins/transcript",
+      "description": "Print the filepath of the current Claude Code session's .jsonl transcript with size and line count",
+      "version": "0.1.0",
+      "category": "session-tools"
     }
   ]
 }

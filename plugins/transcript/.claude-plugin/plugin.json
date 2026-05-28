@@ -1,0 +1,9 @@
+{
+  "name": "transcript",
+  "version": "0.1.0",
+  "description": "Print the filepath of the current Claude Code session's .jsonl transcript with size and line count",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": ["session", "transcript", "jsonl", "debug"]
+}

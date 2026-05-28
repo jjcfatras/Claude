@@ -1,0 +1,9 @@
+{
+  "name": "simplify",
+  "version": "0.1.0",
+  "description": "Propose and apply targeted simplifications to recently modified code while preserving behavior",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": ["refactor", "cleanup", "code-quality", "simplify"]
+}

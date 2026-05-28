@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping eight slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping ten slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -21,6 +21,8 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `code-review`       | `/code-review [pr-number]`                                | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.       |
 | `doc-audit`         | `/audit-docs`                                             | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes. |
 | `debate`            | `/debate <claim>`                                         | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.  |
+| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`               | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                 |
+| `transcript`        | `/transcript`                                             | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                              |
 
 Install only the plugins you want — each is independent.
 
@@ -137,6 +139,37 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 5. Reports findings grouped by source file with suggested fixes.
 6. Offers to apply fixes one at a time. **Read-only until you approve a specific fix.**
 
+### `/simplify`
+
+**Invoke:** `/simplify [path|--staged|--since=<ref>]` — no argument scopes to files modified in this session plus the working tree / staged set.
+
+**Prereqs:** Inside a git repo for `--staged` / `--since=` modes. The plugin's `PostToolUse` formatter hooks (Prettier, gofmt) handle reformatting after edits, so don't run formatters manually.
+
+**What happens:**
+
+1. Resolves scope per the argument (path/glob, `--staged`, `--since=<ref>`, or default session + working tree).
+2. Drops generated files, binaries, and whitespace-only changes from the candidate set; lists the survivors and asks you to confirm.
+3. Loads the root `CLAUDE.md`, nearest non-root `CLAUDE.md` ancestors per file, and the plugin's four-pillar `standards.md` rubric.
+4. Analyzes each file and proposes hunks — unified diff + one-sentence rationale citing the pillar. Hard guardrails drop hunks that change behavior, alter public API, or duplicate formatter work.
+5. For each file with surviving hunks: shows diffs and prompts `apply all` / `apply some` / `skip file` / `edit and apply`.
+6. Applies approved hunks via `Edit`. Never commits — that's your call.
+
+**Notes:** single-threaded by design (no subagents); no `--auto` mode — the propose-then-apply checkpoint is the whole point.
+
+### `/transcript`
+
+**Invoke:** `/transcript` (no arguments).
+
+**Prereqs:** `CLAUDE_CODE_SESSION_ID` must be set (Claude Code exports it automatically).
+
+**What happens:**
+
+1. Resolves the transcript path as `$HOME/.claude/projects/<encoded-cwd>/$CLAUDE_CODE_SESSION_ID.jsonl`, where `<encoded-cwd>` replaces every `/` and `.` in `$PWD` with `-`.
+2. If the expected file is missing but the encoded directory exists, falls back to the most-recently-modified `*.jsonl` in that directory and labels the output `path (fallback):`.
+3. Prints three lines: the path, size in MB, and line count. Nothing else.
+
+Use this to hand the file to `/plugin-session-auditor` or any other transcript-consuming workflow.
+
 ## `code-review-AT` — extras
 
 - Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
@@ -150,7 +183,7 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`) do not need this flag.
+The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`) do not need this flag.
 
 ### Building the helper from source
 

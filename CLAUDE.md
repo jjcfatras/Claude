@@ -32,9 +32,9 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping eight plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping ten plugins under `plugins/`:
 
-- `cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate` — single slash command each
+- `cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript` — single slash command each
 - `code-review-AT` — multi-agent review via Anthropic Agent SDK + agent teams; ships TypeScript source under `src/` (specialist agents at `src/agents/*.ts`), references, hooks, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`); builds to `dist/` via tsup
 - `code-review` — same multi-specialist review but native Claude Code only (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
 
