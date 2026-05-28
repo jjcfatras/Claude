@@ -19,7 +19,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -385,11 +384,11 @@ func stubSummary(changedFiles []string) string {
 	for d, c := range counts {
 		pairs = append(pairs, kv{d, c})
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].count != pairs[j].count {
-			return pairs[i].count > pairs[j].count
+	slices.SortFunc(pairs, func(a, b kv) int {
+		if a.count != b.count {
+			return b.count - a.count
 		}
-		return pairs[i].dir < pairs[j].dir
+		return strings.Compare(a.dir, b.dir)
 	})
 
 	top := pairs

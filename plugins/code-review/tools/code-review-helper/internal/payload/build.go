@@ -5,6 +5,7 @@ package payload
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
@@ -111,7 +112,7 @@ func Fallback(in BuildInput, apiErr string) string {
 	var b strings.Builder
 	b.WriteString("### Code review\n\n")
 
-	all := append(append([]findings.Finding(nil), in.InlineEligible...), in.SummaryOnly...)
+	all := slices.Concat(in.InlineEligible, in.SummaryOnly)
 	if len(all) == 0 {
 		b.WriteString("No issues found.\n\n")
 	} else {
