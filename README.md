@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping ten slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping eleven slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -23,6 +23,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `debate`            | `/debate <claim>`                                         | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.  |
 | `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`               | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                 |
 | `transcript`        | `/transcript`                                             | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                              |
+| `jira-ticket`       | `/jira-ticket`                                            | Generates a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and files it in JIRA after confirmation.         |
 
 Install only the plugins you want — each is independent.
 
@@ -132,7 +133,7 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 
 **What happens:**
 
-1. Locates every doc file matching `CLAUDE.md`, `README.md`, `.claude/commands/*.md`, `.claude/skills/**/*.md`, and `*[Aa]rchitecture*.md` (skipping `node_modules`, `dist`, etc.).
+1. Locates every doc file matching `CLAUDE.md`, `README.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, and `*[Aa]rchitecture*.md` (skipping `node_modules`, `dist`, etc.).
 2. If more than 50 files match, lists them and asks whether to proceed, narrow scope, or skip directories.
 3. Extracts only **concrete claims** from each file — file paths, versions, scripts, symbol names, cross-doc links — not subjective prose.
 4. Verifies each claim against the current codebase.
@@ -183,7 +184,7 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`) do not need this flag.
+The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`, `jira-ticket`) do not need this flag.
 
 ### Building the helper from source
 

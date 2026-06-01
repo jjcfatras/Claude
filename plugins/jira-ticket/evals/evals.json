@@ -1,0 +1,23 @@
+{
+  "skill_name": "jira-ticket",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "We're adding a 'Remember me' checkbox to our web app's login page. When a user ticks it and logs in, their session should stay alive for 30 days instead of the usual 8 hours. If they leave it unticked it behaves like today. Make me a JIRA ticket for this.",
+      "expected_output": "A ticket with a user-facing Summary, checkbox acceptance criteria covering both ticked/unticked behavior and the 30-day vs 8-hour session, and QA testing steps a tester with no code access can run (log in with the box ticked, confirm session persists; log in unticked, confirm it expires) — each step has an observable Expected result. No references to code symbols or DB columns.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Open a JIRA ticket for this PR: https://github.com/acme/payments-api/pull/482 — it changes the refund endpoint so refunds over $10,000 now require a second approver before they're processed.",
+      "expected_output": "A ticket summarizing the new dual-approval rule for refunds over $10k in user/API-facing terms. Acceptance criteria cover: refund under threshold processes as before, refund over threshold is held pending a second approver, and the second approver can approve/reject. QA steps are black-box (submit a refund via the UI/API, observe the held state and the approval flow) with observable Expected results, no code internals.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Make a JIRA ticket for the change on my current branch.",
+      "expected_output": "The command inspects the current branch's diff/log, summarizes the actual change in user-facing terms, and produces acceptance criteria + black-box QA steps grounded in that diff. Should not invent unrelated behavior; QA steps reference observable outcomes only.",
+      "files": []
+    }
+  ]
+}

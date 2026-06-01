@@ -15,6 +15,7 @@ CLAUDE.local.md
 
 # Skill-creator workspaces
 code-review-workspace/
+jira-ticket-workspace/
 
 # Miscellaneous
 .token-savior-cache.json

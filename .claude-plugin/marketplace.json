@@ -72,6 +72,13 @@
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript with size and line count",
       "version": "0.1.0",
       "category": "session-tools"
+    },
+    {
+      "name": "jira-ticket",
+      "source": "./plugins/jira-ticket",
+      "description": "Generate a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and file it in JIRA after confirmation",
+      "version": "0.1.0",
+      "category": "project-management"
     }
   ]
 }
