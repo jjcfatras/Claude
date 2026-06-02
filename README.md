@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping eleven slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping twelve slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -11,19 +11,20 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 ## Plugins
 
-| Plugin              | Slash command                                             | What it does                                                                                                                                                         |
-| ------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cherry-pick`       | `/cherry-pick <source-branch> [commit-sha or sha1..sha2]` | Cherry-picks one or more commits from a source branch into the current branch and resolves conflicts intelligently.                                                  |
-| `merge`             | `/merge <source-branch>`                                  | Merges a source branch into the current branch with conflict resolution.                                                                                             |
-| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                          | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                   |
-| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`             | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                   |
-| `code-review-AT`    | `/code-review-AT [pr-number]`                             | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.           |
-| `code-review`       | `/code-review [pr-number]`                                | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.       |
-| `doc-audit`         | `/audit-docs`                                             | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes. |
-| `debate`            | `/debate <claim>`                                         | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.  |
-| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`               | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                 |
-| `transcript`        | `/transcript`                                             | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                              |
-| `jira-ticket`       | `/jira-ticket`                                            | Generates a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and files it in JIRA after confirmation.         |
+| Plugin              | Slash command                                             | What it does                                                                                                                                                                  |
+| ------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cherry-pick`       | `/cherry-pick <source-branch> [commit-sha or sha1..sha2]` | Cherry-picks one or more commits from a source branch into the current branch and resolves conflicts intelligently.                                                           |
+| `merge`             | `/merge <source-branch>`                                  | Merges a source branch into the current branch with conflict resolution.                                                                                                      |
+| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                          | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                            |
+| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`             | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                            |
+| `code-review-AT`    | `/code-review-AT [pr-number]`                             | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.                    |
+| `code-review`       | `/code-review [pr-number]`                                | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.                |
+| `doc-audit`         | `/audit-docs`                                             | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes.          |
+| `debate`            | `/debate <claim>`                                         | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.           |
+| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`               | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                          |
+| `transcript`        | `/transcript`                                             | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                                       |
+| `jira-ticket`       | `/jira-ticket`                                            | Generates a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and files it in JIRA after confirmation.                  |
+| `jira-implement`    | `/jira-implement <JIRA-key>`                              | Picks up a JIRA ticket by key, verifies every claim it makes about the codebase, designs and reconciles an implementation plan, presents it for approval, then implements it. |
 
 Install only the plugins you want — each is independent.
 
@@ -171,6 +172,21 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 
 Use this to hand the file to `/plugin-session-auditor` or any other transcript-consuming workflow.
 
+### `/jira-implement`
+
+**Invoke:** `/jira-implement <JIRA-key>` (e.g. `/jira-implement PROJ-1234`).
+
+**Prereqs:** Authenticated Atlassian MCP access (the command resolves the site via `getAccessibleAtlassianResources` and fetches the ticket via `getJiraIssue`); run inside the repo the ticket targets.
+
+**What happens:**
+
+1. **Fetch** the ticket — description, comments, linked issues, and acceptance criteria (later comments weighted over the original description on conflict).
+2. **Understand intent** — distills the underlying goal and sorts the ticket into three buckets: goal/problem, claims about the codebase, and any proposed solution.
+3. **Verify every codebase claim** against the actual current code (Grep/Glob/Read/LSP), classifying each as confirmed / false / partial / unverifiable with `file:line` evidence. If a false claim knocks out the ticket's premise, it stops and surfaces the finding instead of building on a phantom.
+4. **Design a plan** independently from the goal and verified facts first, then reconciles it against the ticket's proposed solution (if any), recording where each approach won.
+5. **Present for approval** — intent, claim-verification table (false claims headlined), the synthesized plan, and reconciliation rationale. Gates with `AskUserQuestion`; edits no file before you approve.
+6. **Implement** the approved plan — test-first for testable changes, directly for config/docs — then runs the existing suite and reports results honestly.
+
 ## `code-review-AT` — extras
 
 - Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
@@ -184,7 +200,7 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`, `jira-ticket`) do not need this flag.
+The other plugins (`cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement`) do not need this flag.
 
 ### Building the helper from source
 

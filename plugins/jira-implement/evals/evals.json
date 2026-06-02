@@ -1,0 +1,95 @@
+{
+  "skill_name": "jira-implement",
+  "notes": "Live Atlassian MCP fetch is non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treated as already-fetched) plus a small fixture codebase to verify claims against. The approval gate means autonomous runs are expected to stop at phase 5 (present-for-approval) without editing — phases 2-4 (intent, claim verification, plan reconciliation) are the differentiated value being graded.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "false-claim-premise",
+      "prompt": "You're picking up JIRA ticket PORTAL-481. The Atlassian fetch has already been done — the full ticket content is in /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-1-false-claim/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable in this environment, so read the file instead). The working codebase is the single file /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-1-false-claim/codebase/auth.js (treat this as src/auth.js). Pick up and action this ticket.",
+      "expected_output": "Recognizes that input validation already exists in auth.js (validateLoginInput + the 400 short-circuit in login), classifies the ticket's 'no input validation at all' claim as FALSE with file:line evidence, identifies the false claim as load-bearing (the ticket's whole ask is to add validation that's already there), and stops to surface this to the user rather than implementing the proposed helper or editing auth.js.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-1-false-claim/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-1-false-claim/codebase/auth.js"
+      ],
+      "assertions": [
+        {
+          "text": "Identifies that input validation already exists in auth.js, citing validateLoginInput and/or the 400 short-circuit with file:line evidence"
+        },
+        {
+          "text": "Classifies the ticket's 'no input validation' claim as FALSE (not confirmed or partial)"
+        },
+        {
+          "text": "Treats the false claim as load-bearing and stops/surfaces it rather than proceeding to implement"
+        },
+        {
+          "text": "Does NOT edit auth.js or add a duplicate validateLoginInput function"
+        },
+        {
+          "text": "Asks the user how to proceed (premise invalidated) instead of silently closing or silently building"
+        },
+        {
+          "text": "Separates the ticket's goal from its codebase claims from its proposed solution"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "flawed-proposed-solution",
+      "prompt": "You're picking up JIRA ticket CHK-1190. The Atlassian fetch has already been done — the full ticket content is in /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-2-flawed-solution/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable, so read the file). The working codebase is the directory /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-2-flawed-solution/codebase/ (orders.js as src/orders.js, schema.sql as the orders migration). Pick up and action this ticket.",
+      "expected_output": "Verifies the ticket's claims as true (no uniqueness constraint beyond PK in schema.sql; submitOrder inserts unconditionally in orders.js) with evidence. Designs its own plan before adopting the ticket's in-memory Set approach. Catches that an in-memory Set is unsafe given the service runs as 4 PM2 cluster workers (the Set isn't shared across processes and is lost on restart), and instead recommends a durable mechanism (DB unique constraint / idempotency key). Reconciliation keeps the author's dedup intent/signature idea but rejects in-memory storage, naming per-dimension winners. Stops at the approval gate before editing.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-2-flawed-solution/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-2-flawed-solution/codebase/orders.js",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-2-flawed-solution/codebase/schema.sql"
+      ],
+      "assertions": [
+        {
+          "text": "Verifies the 'no uniqueness constraint' and 'unconditional insert' claims as true/confirmed with file:line evidence"
+        },
+        {
+          "text": "Designs an independent plan before adopting or endorsing the ticket's proposed in-memory Set"
+        },
+        {
+          "text": "Identifies that the in-memory Set is unsafe under multi-process/cluster execution (4 PM2 workers) and/or lost on restart"
+        },
+        {
+          "text": "Recommends a durable dedup mechanism (DB unique constraint or idempotency key) instead of the in-memory Set"
+        },
+        {
+          "text": "Reconciliation names per-dimension winners and mines the proposed solution for its useful parts (dedup goal / signature concept) rather than discarding or rubber-stamping it"
+        },
+        { "text": "Stops at an approval gate before editing any file" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "clean-no-proposed-solution",
+      "prompt": "You're picking up JIRA ticket INV-72. The Atlassian fetch has already been done — the full ticket content is in /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-3-clean/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable, so read the file). The working codebase is the single file /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-3-clean/codebase/currency.js (treat this as src/currency.js). Pick up and action this ticket.",
+      "expected_output": "Verifies both claims as confirmed with evidence (formatMoney uses toFixed(2) so always two decimals; SYMBOLS has no JPY entry). Does not manufacture any false positives. Produces a sound plan: add JPY with zero decimals and the ¥ symbol, preserve USD/EUR/GBP two-decimal behavior, and ideally notices that the ¥1,235 target needs thousands-separator grouping that toFixed doesn't provide (Intl.NumberFormat / toLocaleString). Recognizes there is no proposed solution and does not invent one. Stops at the approval gate before editing.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-3-clean/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-3-clean/codebase/currency.js"
+      ],
+      "assertions": [
+        {
+          "text": "Verifies both claims (always two decimals via toFixed(2); no JPY symbol mapping) as confirmed with file:line evidence"
+        },
+        {
+          "text": "Does NOT manufacture false positives — no accurate claim is wrongly marked false"
+        },
+        {
+          "text": "Plan adds JPY support with zero decimal places and the ¥ symbol"
+        },
+        {
+          "text": "Plan preserves existing USD/EUR/GBP two-decimal formatting"
+        },
+        {
+          "text": "Notices the ¥1,235 target requires thousands-separator grouping that toFixed does not produce"
+        },
+        {
+          "text": "Recognizes there is no proposed solution and does not invent a comparison; stops at an approval gate before editing"
+        }
+      ]
+    }
+  ]
+}
