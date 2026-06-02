@@ -9,6 +9,7 @@ plugins/code-review-AT/tools/code-review-helper/bin/
 # Claude
 CLAUDE.local.md
 .claude/settings.local.json
+.claude/worktrees
 
 # Husky managed dir
 .husky/_
@@ -16,6 +17,7 @@ CLAUDE.local.md
 # Skill-creator workspaces
 code-review-workspace/
 jira-ticket-workspace/
+jira-implement-workspace/
 
 # Miscellaneous
 .token-savior-cache.json
