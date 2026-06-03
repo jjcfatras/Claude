@@ -28,7 +28,7 @@ Locate every file matching these globs, all relative to `$REPO_ROOT`:
 
 Do not include files under `.claude/skills/*/agents/` or `.claude/skills/*/references/` — those are internal specialist prompts, not project documentation.
 
-Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`. Also exclude the plugin's own scratch workspace `doc-audit-workspace/` if present.
+Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`, and `.claude/worktrees/` (git-worktree copies of the repo — auditing them duplicates findings from the real working tree). Also exclude the plugin's own scratch workspace `doc-audit-workspace/` if present.
 
 Use exactly one `find` invocation or parallel `Glob` calls in a single message. Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files and ask the user whether to proceed with all of them, narrow the scope, or skip directories. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
 

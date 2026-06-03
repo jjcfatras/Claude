@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/block-node-modules.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/block-excluded-paths.sh"
           }
         ]
       }
