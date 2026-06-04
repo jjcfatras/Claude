@@ -28,6 +28,8 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 Install only the plugins you want — each is independent.
 
+Two additional hook-only plugins ship no slash command: `tool-discipline` (durable `PreToolUse` guardrails — no-cd-chaining, prefer-builtin-tools, prefer-LSP) and `grep-glob-fallback` (temporary ToolSearch shim for the Grep/Glob outage, deletable once those tools are restored).
+
 ## Using the plugins
 
 Each subsection below covers how to invoke the plugin, what to have ready first, and what to expect step by step. The full flow lives in each plugin's command file under `plugins/<name>/commands/`.

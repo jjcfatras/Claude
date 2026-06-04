@@ -86,6 +86,20 @@
       "description": "Take a JIRA ticket by key, understand its intent, verify every claim it makes about the codebase to catch false positives, design an implementation plan (reconciling any solution the ticket proposed with one designed independently), present it for approval, then implement.",
       "version": "0.1.0",
       "category": "project-management"
+    },
+    {
+      "name": "tool-discipline",
+      "source": "./plugins/tool-discipline",
+      "description": "PreToolUse guardrails: block cd-chaining, prefer built-in Read/Write/Edit over cat/head/tail/sed, and push Go/TS symbol searches to the LSP tool",
+      "version": "0.1.0",
+      "category": "guardrails"
+    },
+    {
+      "name": "grep-glob-fallback",
+      "source": "./plugins/grep-glob-fallback",
+      "description": "Temporary shim for the Grep/Glob outage (CC #52121/#61845): intercepts ToolSearch loads of Grep/Glob and redirects to the rg/find/ls Bash fallback",
+      "version": "0.1.0",
+      "category": "guardrails"
     }
   ]
 }

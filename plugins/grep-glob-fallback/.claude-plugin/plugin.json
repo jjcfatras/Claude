@@ -1,0 +1,9 @@
+{
+  "name": "grep-glob-fallback",
+  "version": "0.1.0",
+  "description": "Temporary shim for the Grep/Glob outage (Claude Code bugs #52121/#61845): intercepts ToolSearch attempts to load Grep/Glob and redirects to the rg/find/ls Bash fallback. Delete this plugin once Grep/Glob are restored.",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": ["hooks", "toolsearch", "grep", "glob", "fallback"]
+}

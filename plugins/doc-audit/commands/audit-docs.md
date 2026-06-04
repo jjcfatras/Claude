@@ -1,5 +1,6 @@
 ---
-description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding.
+description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob.
+argument-hint: "[file|dir|glob]"
 allowed-tools: Bash(find:*), Bash(ls:*), Bash(cat:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Bash(node:*), Bash(pnpm:*), Bash(npm:*), Bash(yarn:*), Bash(go:*), Bash(python:*), Bash(python3:*), Read, Edit, Write, Grep, Glob
 model: opus
 effort: high
@@ -16,9 +17,22 @@ This command is a one-shot read-and-report. Do not modify any files until the us
 
 Run `git rev-parse --show-toplevel` to capture the repo root as `$REPO_ROOT`. Resolve all globs and paths relative to it. If the command fails (not a git repo), use the current working directory and warn the user that path-relative claim verification may be less reliable.
 
+## Step 0.5: Determine audit scope
+
+Resolve the audit scope from `$1` (trimmed). This is an optional positional argument; when absent the command behaves exactly as before — a whole-repo audit.
+
+1. **`$1` is empty** — whole-repo audit. Use the default globs in Step 1 rooted at `$REPO_ROOT`, as today.
+2. **`$1` resolves to an existing file** (`test -f`, relative to `$REPO_ROOT` or the current working directory) — audit **only that file**, even if its name does not match the default doc globs (the user named it deliberately, so target `docs/setup.md`, `CONTRIBUTING.md`, etc.). The file set is just this one path; skip Step 1 discovery and skip the >50-file count guard.
+3. **`$1` resolves to an existing directory** (`test -d`) — run the Step 1 discovery globs **rooted at that directory** instead of `$REPO_ROOT`. Same documentation patterns, but only matches under the passed subtree.
+4. **`$1` is any other non-empty value** — treat it as a glob. Expand it with a single `find`/`Glob`, and audit the matches. If it expands to nothing, stop and report "no files match `<arg>`".
+
+The directory exclusions and the `.claude/skills/*/agents|references/` skip from Step 1 apply to every scope (cases 1, 3, 4). For an explicit single file (case 2), do not silently drop it for matching a default-skip pattern — but if it falls inside `node_modules/` or `.claude/worktrees/`, warn that the `block-excluded-paths.sh` hook will block reads and stop.
+
 ## Step 1: Discover documentation files
 
-Locate every file matching these globs, all relative to `$REPO_ROOT`:
+If Step 0.5 selected an explicit file (case 2) or a glob match set (case 4), use that file set directly and skip the discovery globs below. Otherwise — an empty argument (case 1) or a directory argument (case 3) — run the discovery globs, rooted at `$REPO_ROOT` for an empty argument or at the passed directory for a directory argument.
+
+Locate every file matching these globs, all relative to the scope root determined above:
 
 - `.claude/commands/*.md`
 - `.claude/skills/*/SKILL.md`
