@@ -211,7 +211,7 @@ After all attacks and defenses are merged for this round, walk every finding `F`
    - Set `F.status = "disputed"`. (Every attack landed has been countered — at least so far.)
 3. Otherwise (no attacks at all on `F`): leave `F.status = "standing"`.
 
-Then increment `state.round = current_round`. Use the **Write** tool to save the updated `$TMP/state.json`.
+Then increment `state.round = current_round`. Use the **Write** tool to save the updated `$TMP/state.json` — write the full in-context state object every time. Do **not** use `Edit` to patch `state.json`: surgical edits on the structured JSON risk silently corrupting `status`/`negated_by` fields without erroring, and a full `Write` is correct and expected even when the state has grown to tens of KB. This mirrors the [3/5] hard constraint above.
 
 ### [3d] Convergence check
 
@@ -230,10 +230,11 @@ Then update the streak counters initialized before the loop:
 
 Exit conditions (check in order, break on the first match):
 
-1. **Mutual convergence** — if `total_new == 0`, the debate has converged. Note "converged on round N" for the report.
-2. **One-sided exhaustion** — if `pro_zero_streak >= 2` or `con_zero_streak >= 2`, one side has been silent for two consecutive rounds and the structural outcome is decided. Note "converged on round N (one-sided exhaustion)" for the report.
+1. **Attack-drought convergence** — if `len(pro.new_attacks) == 0` AND `len(con.new_attacks) == 0` this round, neither side opened a new offensive vector. Any defenses filed this round are maintenance-only (answering the prior round's attacks) and have already been merged in [3b]/[3c], so the structural outcome is decided. Note "attack-drought convergence on round N" for the report. This check is **independent of defense counts** — it must fire even when `total_new > 0`, because the forced defenses on the previous round's attacks would otherwise keep `total_new` non-zero and mask convergence. The check is symmetric (both sides must independently file zero attacks), so a unilateral pause where one side still attacks does not trigger it.
+2. **Mutual convergence** — if `total_new == 0`, the debate has converged. Note "converged on round N" for the report.
+3. **One-sided exhaustion** — if `pro_zero_streak >= 2` or `con_zero_streak >= 2`, one side has been silent for two consecutive rounds and the structural outcome is decided. Note "converged on round N (one-sided exhaustion)" for the report.
 
-Otherwise, continue to the next round (up to 5 total). The 5-round hard cap remains a safety net; both convergence paths above are the expected exits.
+Otherwise, continue to the next round (up to 5 total). The 5-round hard cap remains a safety net; all three convergence paths above are the expected exits.
 
 ---
 
@@ -339,9 +340,10 @@ Discards are not surfaced to the user. They are normal artifacts of stateless su
 
 ### Convergence
 
-Two convergence signals trigger early exit (see step [3d] for the procedural form):
+Three convergence signals trigger early exit (see step [3d] for the procedural form):
 
-1. **Mutual convergence** — a full round produces zero new attacks and zero new defenses across both sides. Nothing more to say.
-2. **One-sided exhaustion** — one side produces zero attacks and zero defenses for two consecutive rounds. The other side may still be active, but the silent side has no live targets and no undefended attacks of its own to address, so the structural outcome is decided. The two-round threshold avoids false exits on a single tactical pause.
+1. **Attack-drought convergence** — a full round produces zero new attacks from **both** sides, regardless of defense count. Neither side has a new offensive vector; the only remaining activity is maintenance defenses on the prior round's attacks, which are merged before exiting. This is the common terminal state for a well-matched claim: attacks taper round over round until both sides run dry while still defending the last wave. Checked first because forced defenses keep `total_new > 0`, so mutual convergence (signal 2) would otherwise miss it.
+2. **Mutual convergence** — a full round produces zero new attacks and zero new defenses across both sides. Nothing more to say.
+3. **One-sided exhaustion** — one side produces zero attacks and zero defenses for two consecutive rounds. The other side may still be active, but the silent side has no live targets and no undefended attacks of its own to address, so the structural outcome is decided. The two-round threshold avoids false exits on a single tactical pause.
 
-The 5-round hard cap exists as a safety net; both convergence paths above are the expected exits.
+The 5-round hard cap exists as a safety net; all three convergence paths above are the expected exits.

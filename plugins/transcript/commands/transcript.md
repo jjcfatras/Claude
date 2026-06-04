@@ -28,7 +28,7 @@ label="path"
 file="$expected"
 if [ ! -f "$file" ]; then
   if [ -d "$dir" ]; then
-    fallback="$(ls -t "$dir"/*.jsonl 2> /dev/null | head -n1)"
+    fallback="$(ls -t "$dir"/*.jsonl 2> /dev/null | awk 'NR==1')"
     if [ -n "$fallback" ]; then
       file="$fallback"
       label="path (fallback)"
