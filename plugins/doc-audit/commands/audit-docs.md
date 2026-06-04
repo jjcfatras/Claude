@@ -1,7 +1,7 @@
 ---
 description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob.
 argument-hint: "[file|dir|glob]"
-allowed-tools: Bash(find:*), Bash(ls:*), Bash(cat:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Bash(node:*), Bash(pnpm:*), Bash(npm:*), Bash(yarn:*), Bash(go:*), Bash(python:*), Bash(python3:*), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob
 model: opus
 effort: high
 disable-model-invocation: true
@@ -44,13 +44,20 @@ Do not include files under `.claude/skills/*/agents/` or `.claude/skills/*/refer
 
 Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`, and `.claude/worktrees/` (git-worktree copies of the repo — auditing them duplicates findings from the real working tree). Also exclude the plugin's own scratch workspace `doc-audit-workspace/` if present.
 
-Use exactly one `find` invocation or parallel `Glob` calls in a single message. Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files and ask the user whether to proceed with all of them, narrow the scope, or skip directories. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
+Use exactly one `find` invocation. Prune excluded directories with `-name <dir> -prune`, **not** `-path './<dir>'` — `-name` matches the directory at any depth, while `-path './node_modules'` matches only the top-level one and leaks nested copies (e.g. `plugins/*/node_modules`). A correct template, rooted at the scope root `$ROOT` from Step 0.5:
+
+```bash
+find "$ROOT" \( -name node_modules -o -name .git -o -name dist -o -name build -o -name vendor -o -name .next -o -name target -o -name out -o -name coverage -o -name doc-audit-workspace -o -path '*/.claude/worktrees' \) -prune -o \
+  -type f \( -path '*/.claude/commands/*.md' -o -path '*/.claude/skills/*/SKILL.md' -o -name 'README.md' -o -name 'CLAUDE.md' -o -iname '*architecture*.md' \) -print
+```
+
+Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files and ask the user whether to proceed with all of them, narrow the scope, or skip directories. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
 
 Report the count and a summary list before continuing.
 
 ## Step 2: Extract concrete claims per file
 
-For each discovered file, read the full content and extract claims into one of these categories. **Concrete only** — you are verifying facts about the current codebase, not auditing taste, opinions, or aspirational guidance.
+Issue the `Read` calls for all discovered files in a single message — they are independent, so reading them sequentially wastes a round-trip per file. For each discovered file, read the full content and extract claims into one of these categories. **Concrete only** — you are verifying facts about the current codebase, not auditing taste, opinions, or aspirational guidance.
 
 | Category                        | What counts                                                                                             | Examples                                                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -76,7 +83,7 @@ Keep working notes in memory or a temp file — do not persist them to the repo.
 
 **Batch independent verifications.** Issue all verification calls for independent claims in the same message. Only serialize when a probe truly depends on a prior result (e.g., reading a file's contents after confirming it exists, or grepping a symbol inside a path the previous call located). A run that issues all probes one-at-a-time is doing it wrong — claim verification is embarrassingly parallel and the cheapest way to keep wall-clock down on repos with many docs.
 
-Verification depends on category. Use the cheapest tool that answers definitively:
+Verification depends on category. Use the cheapest tool that answers definitively. For plain text/config files (`.nvmrc`, `.tool-versions`, `.python-version`) use the `Read` tool, not `Bash` — `cat`/`head`/`tail` are blocked by the `enforce-builtin-tools.sh` hook. For JSON, use `Bash(jq:*)`.
 
 - **Tech stack / version** — read `.nvmrc`, `package.json` (`engines`, `packageManager`, dependency versions), `go.mod`, `pyproject.toml`, `Cargo.toml`, framework-specific config. Check whether the doc's claimed version matches.
 - **Paths / structure** — `test -e` / `ls` / `Read`. For a directory claim, also check it contains roughly what the doc says (e.g., "plugins/ holds plugins" — confirm subdirs match the description).
