@@ -86,6 +86,14 @@ lsp_lang_for_type() {
   esac
 }
 
+# lsp_lang_for_path <filename/path> -> echo "go"/"ts" by extension; else nothing.
+lsp_lang_for_path() {
+  case "$1" in
+    *.go) echo go ;;
+    *.ts | *.tsx | *.js | *.jsx | *.mts | *.cts | *.mjs | *.cjs) echo ts ;;
+  esac
+}
+
 # lsp_server_available <lang> -> 0 if the backing LSP server binary is present.
 # gopls commonly installs to ~/go/bin (or $GOBIN / $GOPATH/bin), which is often
 # absent from the hook's PATH, so check those locations explicitly too.
@@ -105,7 +113,7 @@ emit_decision() {
   echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"$1\",\"permissionDecisionReason\":\"$2\"}}"
 }
 
-LSP_REASON_TAIL="Use the LSP tool: workspaceSymbol to locate it, goToDefinition / findReferences / incomingCalls to navigate. If this is a string-literal / comment / config-key search rather than a symbol, search a non-LSP scope, or set TOOL_DISCIPLINE_BLOCK_LSP=0 to bypass."
+LSP_REASON_TAIL="Use the LSP tool. If you already know a file that references this symbol, prefer goToDefinition / hover there (most reliable; loads the project without needing the global index). Use workspaceSymbol for a blind global search — if it returns empty, the server may still be indexing, so retry once before concluding the symbol is absent. If this is a string-literal / comment / config-key search rather than a symbol, search a non-LSP scope, or set TOOL_DISCIPLINE_BLOCK_LSP=0 to bypass."
 
 # ---------------------------------------------------------------------------
 # Grep tool branch (structured inputs). Also the fallback when tool_name is
@@ -125,12 +133,7 @@ if [ "$TOOL" != "Bash" ]; then
   lang=""
   [ -n "$TYPE" ] && echo "$TYPE" | grep -Eqi "$lsp_type" && lang=$(lsp_lang_for_type "$TYPE")
   [ -z "$lang" ] && [ -n "$GLOB" ] && lang=$(lsp_lang_for_globs "$GLOB")
-  if [ -z "$lang" ] && [ -n "$PATH_ARG" ]; then
-    case "$PATH_ARG" in
-      *.go) lang=go ;;
-      *.ts | *.tsx | *.js | *.jsx | *.mts | *.cts | *.mjs | *.cjs) lang=ts ;;
-    esac
-  fi
+  [ -z "$lang" ] && [ -n "$PATH_ARG" ] && lang=$(lsp_lang_for_path "$PATH_ARG")
   [ -z "$lang" ] && exit 0
   lsp_server_available "$lang" || exit 0
 
@@ -151,7 +154,7 @@ while IFS= read -r segment; do
   # printf, not echo: echo interprets backslash escapes (e.g. \b -> backspace)
   # in some shells, corrupting word-boundary patterns before is_symbol can strip
   # the \b anchors. printf '%s' passes the bytes through verbatim.
-  seg=$(printf '%s' "$segment" | sed 's/^[[:space:]]*//' | sed 's/^[A-Za-z_][A-Za-z_0-9]*=[^ ]* //')
+  seg=$(printf '%s' "$segment" | sed 's/^[[:space:]]*//; s/^[A-Za-z_][A-Za-z_0-9]*=[^ ]* //')
   # Word-split (no glob/quote handling: a quoted multi-word pattern splits and
   # then fails the symbol gate, so it safely passes through).
   read -ra toks <<< "$seg"
@@ -202,16 +205,8 @@ while IFS= read -r segment; do
   [ -z "$lang" ] && [ -n "$gglob" ] && lang=$(lsp_lang_for_globs "$gglob")
   if [ -z "$lang" ] && [ "${#paths[@]}" -gt 0 ]; then
     for p in "${paths[@]}"; do
-      case "$p" in
-        *.go)
-          lang=go
-          break
-          ;;
-        *.ts | *.tsx | *.js | *.jsx | *.mts | *.cts | *.mjs | *.cjs)
-          lang=ts
-          break
-          ;;
-      esac
+      lang=$(lsp_lang_for_path "$p")
+      [ -n "$lang" ] && break
     done
   fi
   # No type/glob/path narrows to an LSP file -> ambiguous, pass through.
