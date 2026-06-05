@@ -1,6 +1,6 @@
 {
   "name": "tool-discipline",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PreToolUse guardrails that steer the agent toward the right tool: block cd-chaining in Bash (run with absolute paths), prefer built-in Read/Write/Edit over cat/head/tail/sed, and push Go/TS symbol searches to the LSP tool",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
