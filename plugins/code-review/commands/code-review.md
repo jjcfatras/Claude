@@ -37,30 +37,25 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 Run sequentially (each as a separate Bash call — don't chain with `&&`, per `references/shell-safety.md`). Independent calls (e.g., `gh pr view` and `gh pr diff` — both depend only on `PR_NUMBER` and `TMP`, not on each other's output) may be emitted in the same model turn; calls that read variables from a previous result (e.g., the jq `OWNER`/`REPO` extraction below, which needs `pr-meta.json` already on disk) must wait for the earlier call to complete:
 
 ```bash
-gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName > "$TMP/pr-meta.json"
+gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName,author > "$TMP/pr-meta.json"
 ```
 
 ```bash
 gh pr diff "$PR_NUMBER" > "$TMP/pr-$PR_NUMBER.diff"
 ```
 
-Extract `HEAD_SHA`, `OWNER`, `REPO`:
+Extract `HEAD_SHA`, `OWNER`, `REPO`, and the PR author login — all derived from the single `pr-meta.json` fetch above (no second `gh pr view` call). The author login is used further down to mark "author replied" threads in the prior-issues filter:
 
 ```bash
 HEAD_SHA=$(jq -r '.headRefOid' "$TMP/pr-meta.json")
 OWNER=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").o' "$TMP/pr-meta.json")
 REPO=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").r' "$TMP/pr-meta.json")
+jq -r '.author.login' "$TMP/pr-meta.json" > "$TMP/pr-author.txt"
 ```
 
 Fetch prior Claude-Code review threads on this PR (used by the helper's prior-review dedup pass). Uses GraphQL `reviewThreads` so we get thread-level state (`isResolved`, `isOutdated`) and every reply — needed to detect when the PR author has already dismissed a finding as a false positive. The REST `pulls/{n}/reviews/{rid}/comments` endpoint does not expose any of that.
 
-First capture the PR author login (used below to mark "author replied" threads):
-
-```bash
-gh pr view "$PR_NUMBER" --json author --jq '.author.login' > "$TMP/pr-author.txt"
-```
-
-Then fetch all review threads in one GraphQL call. The first-page cap is 50 threads × 50 comments, which is well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. We embed the GraphQL variables via `-F` (typed) for `pr` and `-f` for strings:
+Fetch all review threads in one GraphQL call. The first-page cap is 50 threads × 50 comments, which is well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. We embed the GraphQL variables via `-F` (typed) for `pr` and `-f` for strings:
 
 ```bash
 gh api graphql -F owner="$OWNER" -F repo="$REPO" -F pr="$PR_NUMBER" -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:50){nodes{id isResolved isOutdated comments(first:50){nodes{databaseId author{login} body path line originalLine originalStartLine}}}}}}}' > "$TMP/review-threads.json"
@@ -119,7 +114,7 @@ All three files must exist before specialists run.
 
 ## [3b/5] Spawn all roster specialists in ONE message
 
-Read `$TMP/spawn-manifest.json`. It contains one object per roster entry, each with three pre-rendered fields: `subagent_type`, `description`, `prompt`. Emit one `Agent` `tool_use` block per entry, **all as sibling blocks in this single assistant message**. Forward each object's three fields verbatim — do not modify, truncate, summarize, or skip any entry. The manifest is the ground truth; if it has N entries your message must contain N `Agent` blocks.
+Read `$TMP/spawn-manifest.json` in a **single** `Read` call (or, if you must use the shell, one `jq -c '.[]'` invocation). Do not inspect it field-by-field across multiple Bash calls — no per-entry `jq '.[N].prompt'`, no `subagent_type` listing, no `head` preview. The manifest is forwarded verbatim, so printing individual fields first buys nothing and adds a round-trip per entry. It contains one object per roster entry, each with three pre-rendered fields: `subagent_type`, `description`, `prompt`. Emit one `Agent` `tool_use` block per entry, **all as sibling blocks in this single assistant message**. Forward each object's three fields verbatim — do not modify, truncate, summarize, or skip any entry. The manifest is the ground truth; if it has N entries your message must contain N `Agent` blocks.
 
 Schematic — `N` here equals the manifest length, which equals the roster length:
 
