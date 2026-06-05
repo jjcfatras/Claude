@@ -3,11 +3,25 @@
 # Push symbol searches in Go/TS-family files toward the LSP tool.
 # Fires on the Grep tool AND on `grep`/`rg` run via Bash.
 # Fires ONLY on a high-confidence symbol search; everything else passes through.
+#
+# Fail-open / opt-out (all checked before any deny):
+#   TOOL_DISCIPLINE_BLOCK_LSP=0  -> disable this hook entirely.
+#   ENABLE_LSP_TOOL not "1"      -> the steered-to tool is off; do nothing.
+#   backing server binary absent -> no LSP to use for that scope; pass through.
+#   TOOL_DISCIPLINE_LSP_MODE=ask -> soft prompt instead of a hard deny.
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 
-# Go/TS-family (LSP-covered) scopes.
-lsp_ext='^(go|ts|tsx|js|jsx|mts|cts|mjs|cjs)$'
+# Opt-out switch (mirrors enforce-builtin-tools.sh TOOL_DISCIPLINE_BLOCK_GREP).
+[ "${TOOL_DISCIPLINE_BLOCK_LSP:-1}" = "0" ] && exit 0
+# The hook only makes sense when the LSP tool it steers toward is enabled.
+[ "${ENABLE_LSP_TOOL:-}" = "1" ] || exit 0
+
+# Decision mode: deny (default, hard block) or ask (soft permission prompt).
+LSP_MODE="${TOOL_DISCIPLINE_LSP_MODE:-deny}"
+[ "$LSP_MODE" = "ask" ] || LSP_MODE="deny"
+
+# Go/TS-family (LSP-covered) type filter.
 lsp_type='^(go|ts|typescript|tsx|js|javascript|jsx)$'
 
 # Symbol gate: echo the bare identifier (and return 0) if the candidate is a
@@ -26,20 +40,72 @@ is_symbol() {
   echo "$core" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$' && printf '%s' "$core"
 }
 
-# ext_matches_lsp <space-separated globs/exts> -> 0 if any names an LSP ext.
-ext_matches_lsp() {
+# Symbol-shape gate (deny decision only): a validated identifier looks like a
+# code symbol when it carries an uppercase letter or an underscore
+# (CamelCase / PascalCase / snake_case / SCREAMING_CASE). A bare all-lowercase
+# single word (enabled, error, status) is far more likely a string-literal or
+# config-key content search the LSP cannot serve, so it passes through.
+# \b anchoring is deliberately NOT treated as symbol intent — it is stripped by
+# is_symbol, then the inner token is judged purely by shape.
+is_symbol_shaped() {
+  # LC_ALL=C: under some locales (notably /bin/bash 3.2 + UTF-8) the [A-Z] glob
+  # collates to include lowercase, which would mis-classify plain words as
+  # shaped. Force byte ordering so [A-Z] means exactly A-Z.
+  local LC_ALL=C
+  case "$1" in
+    *[A-Z]* | *_*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# lsp_lang_for_globs <space-separated globs/exts> -> echo "go" or "ts" for the
+# first LSP-covered extension found; echo nothing (return 1) otherwise.
+lsp_lang_for_globs() {
   local ext
   for ext in $(echo "$1" | grep -oE '[A-Za-z0-9]+'); do
-    echo "$ext" | grep -Eqi "$lsp_ext" && return 0
+    case "$(echo "$ext" | tr 'A-Z' 'a-z')" in
+      go)
+        echo go
+        return 0
+        ;;
+      ts | tsx | js | jsx | mts | cts | mjs | cjs)
+        echo ts
+        return 0
+        ;;
+    esac
   done
   return 1
 }
 
-emit_deny() {
-  echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"
+# lsp_lang_for_type <rg/grep type> -> echo "go" or "ts" (caller has already
+# confirmed the type matches lsp_type).
+lsp_lang_for_type() {
+  case "$(echo "$1" | tr 'A-Z' 'a-z')" in
+    go) echo go ;;
+    *) echo ts ;;
+  esac
 }
 
-LSP_REASON_TAIL="Use the LSP tool: workspaceSymbol to locate it, goToDefinition / findReferences / incomingCalls to navigate. Use search only for non-symbol text (string literals, comments, config keys)."
+# lsp_server_available <lang> -> 0 if the backing LSP server binary is present.
+# gopls commonly installs to ~/go/bin (or $GOBIN / $GOPATH/bin), which is often
+# absent from the hook's PATH, so check those locations explicitly too.
+lsp_server_available() {
+  case "$1" in
+    go)
+      command -v gopls > /dev/null 2>&1 \
+        || [ -x "${GOBIN:-${GOPATH:-$HOME/go}/bin}/gopls" ] \
+        || [ -x "$HOME/go/bin/gopls" ]
+      ;;
+    ts) command -v typescript-language-server > /dev/null 2>&1 ;;
+    *) return 1 ;;
+  esac
+}
+
+emit_decision() {
+  echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"$1\",\"permissionDecisionReason\":\"$2\"}}"
+}
+
+LSP_REASON_TAIL="Use the LSP tool: workspaceSymbol to locate it, goToDefinition / findReferences / incomingCalls to navigate. If this is a string-literal / comment / config-key search rather than a symbol, search a non-LSP scope, or set TOOL_DISCIPLINE_BLOCK_LSP=0 to bypass."
 
 # ---------------------------------------------------------------------------
 # Grep tool branch (structured inputs). Also the fallback when tool_name is
@@ -54,16 +120,21 @@ if [ "$TOOL" != "Bash" ]; then
 
   core=$(is_symbol "$PATTERN")
   [ -z "$core" ] && exit 0
+  is_symbol_shaped "$core" || exit 0
 
-  matched=0
-  [ -n "$TYPE" ] && echo "$TYPE" | grep -Eqi "$lsp_type" && matched=1
-  [ "$matched" -eq 0 ] && [ -n "$GLOB" ] && ext_matches_lsp "$GLOB" && matched=1
-  if [ "$matched" -eq 0 ] && [ -n "$PATH_ARG" ]; then
-    echo "${PATH_ARG##*.}" | grep -Eqi "$lsp_ext" && matched=1
+  lang=""
+  [ -n "$TYPE" ] && echo "$TYPE" | grep -Eqi "$lsp_type" && lang=$(lsp_lang_for_type "$TYPE")
+  [ -z "$lang" ] && [ -n "$GLOB" ] && lang=$(lsp_lang_for_globs "$GLOB")
+  if [ -z "$lang" ] && [ -n "$PATH_ARG" ]; then
+    case "$PATH_ARG" in
+      *.go) lang=go ;;
+      *.ts | *.tsx | *.js | *.jsx | *.mts | *.cts | *.mjs | *.cjs) lang=ts ;;
+    esac
   fi
-  [ "$matched" -eq 0 ] && exit 0
+  [ -z "$lang" ] && exit 0
+  lsp_server_available "$lang" || exit 0
 
-  emit_deny "Symbol search '$core' in a Go/TS file. $LSP_REASON_TAIL"
+  emit_decision "$LSP_MODE" "Symbol search '$core' in a Go/TS file. $LSP_REASON_TAIL"
   exit 0
 fi
 
@@ -77,7 +148,10 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
 while IFS= read -r segment; do
   # Strip leading whitespace and a leading VAR=val assignment prefix.
-  seg=$(echo "$segment" | sed 's/^[[:space:]]*//' | sed 's/^[A-Za-z_][A-Za-z_0-9]*=[^ ]* //')
+  # printf, not echo: echo interprets backslash escapes (e.g. \b -> backspace)
+  # in some shells, corrupting word-boundary patterns before is_symbol can strip
+  # the \b anchors. printf '%s' passes the bytes through verbatim.
+  seg=$(printf '%s' "$segment" | sed 's/^[[:space:]]*//' | sed 's/^[A-Za-z_][A-Za-z_0-9]*=[^ ]* //')
   # Word-split (no glob/quote handling: a quoted multi-word pattern splits and
   # then fails the symbol gate, so it safely passes through).
   read -ra toks <<< "$seg"
@@ -121,24 +195,30 @@ while IFS= read -r segment; do
   [ -z "$pattern" ] && continue
   core=$(is_symbol "$pattern")
   [ -z "$core" ] && continue
+  is_symbol_shaped "$core" || continue
 
-  matched=0
-  [ -n "$gtype" ] && echo "$gtype" | grep -Eqi "$lsp_type" && matched=1
-  [ "$matched" -eq 0 ] && [ -n "$gglob" ] && ext_matches_lsp "$gglob" && matched=1
-  if [ "$matched" -eq 0 ] && [ "${#paths[@]}" -gt 0 ]; then
+  lang=""
+  [ -n "$gtype" ] && echo "$gtype" | grep -Eqi "$lsp_type" && lang=$(lsp_lang_for_type "$gtype")
+  [ -z "$lang" ] && [ -n "$gglob" ] && lang=$(lsp_lang_for_globs "$gglob")
+  if [ -z "$lang" ] && [ "${#paths[@]}" -gt 0 ]; then
     for p in "${paths[@]}"; do
       case "$p" in
-        *.*) echo "${p##*.}" | grep -Eqi "$lsp_ext" && {
-          matched=1
+        *.go)
+          lang=go
           break
-        } ;;
+          ;;
+        *.ts | *.tsx | *.js | *.jsx | *.mts | *.cts | *.mjs | *.cjs)
+          lang=ts
+          break
+          ;;
       esac
     done
   fi
   # No type/glob/path narrows to an LSP file -> ambiguous, pass through.
-  [ "$matched" -eq 0 ] && continue
+  [ -z "$lang" ] && continue
+  lsp_server_available "$lang" || continue
 
-  emit_deny "Symbol search '$core' via \`$base\` in Go/TS scope. $LSP_REASON_TAIL"
+  emit_decision "$LSP_MODE" "Symbol search '$core' via \`$base\` in Go/TS scope. $LSP_REASON_TAIL"
   exit 0
-done < <(echo "$COMMAND" | tr '|' '\n' | sed 's/[;&]\{1,2\}/\n/g')
+done < <(printf '%s\n' "$COMMAND" | tr '|' '\n' | sed 's/[;&]\{1,2\}/\n/g')
 exit 0
