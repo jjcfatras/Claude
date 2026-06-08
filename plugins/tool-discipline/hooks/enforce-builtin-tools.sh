@@ -180,7 +180,7 @@ seps+=("$prevsep")
 deny() { # $1 = reason text
   local rj
   rj=$(jq -Rn --arg m "$1" '$m')
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s},"systemMessage":%s}\n' "$rj" "$rj"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$rj"
   exit 0
 }
 
