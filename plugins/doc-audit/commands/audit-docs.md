@@ -26,7 +26,7 @@ Resolve the audit scope from `$1` (trimmed). This is an optional positional argu
 3. **`$1` resolves to an existing directory** (`test -d`) — run the Step 1 discovery globs **rooted at that directory** instead of `$REPO_ROOT`. Same documentation patterns, but only matches under the passed subtree.
 4. **`$1` is any other non-empty value** — treat it as a glob. Expand it with a single `find`/`Glob`, and audit the matches. If it expands to nothing, stop and report "no files match `<arg>`".
 
-The directory exclusions and the `.claude/skills/*/agents|references/` skip from Step 1 apply to every scope (cases 1, 3, 4). For an explicit single file (case 2), do not silently drop it for matching a default-skip pattern — but if it falls inside `node_modules/` or `.claude/worktrees/`, warn that the `block-excluded-paths.sh` hook will block reads and stop.
+The directory exclusions and the `.claude/skills/*/agents|references/` skip from Step 1 apply to every scope (cases 1, 3, 4). For an explicit single file (case 2), do not silently drop it for matching a default-skip pattern — but if it falls inside `node_modules/` or `.claude/worktrees/`, skip it, tell the user that path is out of scope, and stop.
 
 ## Step 1: Discover documentation files
 
