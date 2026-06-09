@@ -1,0 +1,16 @@
+{
+  "name": "tool-discipline-lsp",
+  "version": "0.1.0",
+  "description": "LSP navigation guardrails: a PreToolUse hook that pushes Go/TS symbol searches (grep/rg or the Grep tool) toward the LSP tool, plus a PostToolUse advisory that nudges a retry/pivot when workspaceSymbol returns empty (often just a cold index, not an absent symbol). Fail-open: inert unless ENABLE_LSP_TOOL=1 and the backing server binary is present",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "lsp",
+    "navigation",
+    "gopls",
+    "typescript",
+    "guardrails"
+  ]
+}

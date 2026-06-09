@@ -1,7 +1,7 @@
 ---
 description: Merge a source branch into the current branch with conflict resolution
 argument-hint: <source-branch>
-allowed-tools: Bash(git *), Read, Edit, Grep
+allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
 model: sonnet
 effort: high
 ---
@@ -33,7 +33,12 @@ Display:
 - Number of commits to be brought in
 - List of commits (short SHA + message) from Step 1
 
-Ask the user to confirm before proceeding.
+Then call the **AskUserQuestion** tool to get permission to proceed. Use a single question (`multiSelect: false`) with header `Proceed`, a question naming the merge type, number of commits, and the target branch (e.g. "Merge 3 commit(s) from `feature` into `main` (merge commit)?"), and two options:
+
+- `Proceed` — "Run the merge."
+- `Cancel` — "Abort without changing anything."
+
+If the user selects `Cancel` (or answers with their own equivalent), stop immediately without running `git merge`.
 
 ## Step 3: Run the merge
 
@@ -87,8 +92,8 @@ For each conflicting file:
 
 ### 4d: Handle special conflict types
 
-- **"deleted by us" or "deleted by them":** Ask the user whether to keep the deletion or restore the file with the source-branch changes.
-- **Binary file conflicts:** Do not attempt to merge. Ask the user which version to keep (`git checkout --ours <file>` or `git checkout --theirs <file>`), then `git add <file>`.
+- **"deleted by us" or "deleted by them":** Call **AskUserQuestion** (`multiSelect: false`) with header `Deletion`, naming the file in the question, and options `Keep deletion` ("Leave the file deleted") vs `Restore file` ("Restore it with the source-branch changes"). Act on the selection.
+- **Binary file conflicts:** Do not attempt to merge. Call **AskUserQuestion** (`multiSelect: false`) with header `Binary`, naming the file in the question, and options `Keep current` ("Keep the current-branch (HEAD) version via `git checkout --ours <file>`") vs `Take incoming` ("Use the source-branch version via `git checkout --theirs <file>`"). Act on the selection, then `git add <file>`.
 
 ### 4e: Continue the merge
 
@@ -111,6 +116,6 @@ After the merge has been applied:
 
 - If `git merge --continue` fails after resolution, run `git status` to diagnose remaining conflicts or unstaged changes.
 - If `git commit --no-edit` (or `git merge --continue`) is rejected by a pre-commit hook (husky, lint-staged, etc.), read the hook output, fix the reported issues (type errors, lint failures, failed tests, residual duplicate declarations from conflict resolution), re-stage the corrected files, and retry the commit. **Never pass `--no-verify`** — the hook is catching latent bugs the merge introduced.
-- If the user wants to abort, run `git merge --abort` to restore the original state.
-- If the merge fails for reasons other than conflicts (e.g., refusing because of unrelated histories), report the error and ask the user how to proceed — do not silently pass `--allow-unrelated-histories` or other overrides without confirmation.
+- If the merge cannot be completed, call **AskUserQuestion** (`multiSelect: false`) with header `On conflict` and options `Abort` ("Run `git merge --abort` to restore the original state") vs `Keep resolving` ("Continue manual conflict resolution"). On `Abort`, run `git merge --abort`.
+- If the merge fails for reasons other than conflicts, report the error. For the unrelated-histories case specifically, call **AskUserQuestion** (`multiSelect: false`) with header `On error` and options `Abort` ("Stop without merging") vs `Allow unrelated histories` ("Re-run with `git merge --allow-unrelated-histories <source-ref>`"). Never silently pass `--allow-unrelated-histories` or other overrides without confirmation.
 - If the source branch is identical to the current branch (already up to date), report this from Step 1 and exit cleanly — do not invoke `git merge`.

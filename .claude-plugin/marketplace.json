@@ -90,7 +90,14 @@
     {
       "name": "tool-discipline",
       "source": "./plugins/tool-discipline",
-      "description": "PreToolUse guardrails: block cd-chaining, prefer built-in Read/Write/Edit over cat/head/tail/sed, and push Go/TS symbol searches to the LSP tool",
+      "description": "PreToolUse guardrails: block cd-chaining and prefer built-in Read/Write/Edit over cat/head/tail/sed",
+      "version": "0.4.0",
+      "category": "guardrails"
+    },
+    {
+      "name": "tool-discipline-lsp",
+      "source": "./plugins/tool-discipline-lsp",
+      "description": "LSP navigation guardrails: push Go/TS symbol searches to the LSP tool (PreToolUse), plus a PostToolUse advisory nudging a retry when workspaceSymbol returns empty",
       "version": "0.1.0",
       "category": "guardrails"
     },

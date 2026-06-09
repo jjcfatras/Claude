@@ -1,7 +1,7 @@
 ---
 description: Cherry-pick commits from another branch with conflict resolution
 argument-hint: <source-branch> [commit-sha or sha1..sha2]
-allowed-tools: Bash(git *), Read, Edit, Grep
+allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
 model: sonnet
 effort: high
 ---
@@ -24,7 +24,7 @@ Cherry-pick one or more commits from a source branch into the current branch, au
 
 **If no specific commits are provided (only `$1` given):**
 
-- Run `git log --oneline -15 $1` to show the 15 most recent commits on the source branch.
+- Run `git log --oneline -20 $1` to show the 20 most recent commits on the source branch.
 - Present the list and ask which commits to cherry-pick. Accept commit SHAs, a range, or a count from the top (e.g., "the last 3").
 
 ## Step 2: Show summary before proceeding
@@ -38,7 +38,12 @@ Display:
 - Number of commits to apply
 - List of commits (short SHA + message)
 
-Ask the user to confirm before proceeding.
+Then call the **AskUserQuestion** tool to get permission to proceed. Use a single question (`multiSelect: false`) with header `Proceed`, a question naming the number of commits and the target branch (e.g. "Apply 3 commit(s) to `main`?"), and two options:
+
+- `Proceed` — "Apply the listed commit(s) to the current branch."
+- `Cancel` — "Abort without changing anything."
+
+If the user selects `Cancel` (or answers with their own equivalent), stop immediately without running any `git cherry-pick`.
 
 ## Step 3: Cherry-pick commits one by one
 
@@ -49,6 +54,8 @@ For each commit (in chronological order, oldest first):
 3. Check the exit code:
    - **If successful (exit 0):** Report success and move to next commit.
    - **If conflicts (exit non-zero):** Proceed to Step 4.
+
+> **Slow or verbose pre-commit hooks:** a clean cherry-pick auto-commits, which fires the target repo's pre-commit hook (the same applies to `git cherry-pick --continue` in Step 4e). If that hook is slow or noisy — e.g. a monorepo linting/testing across many projects — run the `git cherry-pick` / `--continue` command with `run_in_background: true`, then read its output file **incrementally** (`Read` with `limit`, or `tail`/`grep` the file). Never read the whole output: a verbose hook can exceed the Read size cap and the read will fail.
 
 ## Step 4: Resolve conflicts
 
@@ -63,6 +70,8 @@ Run `git status` and identify files marked as "both modified", "both added", "de
 Run `git log --format="%B" -1 <sha-being-cherry-picked>` to read the full commit message of the commit being applied — this explains the intent of the change.
 
 ### 4c: Resolve each conflicting file
+
+Resolve all conflict hunks in a given file in a single Read + Edit pass: read the full file once (not marker-by-marker) so you see every hunk before editing, rather than resolving one hunk and re-searching for the next.
 
 For each conflicting file:
 
@@ -90,15 +99,15 @@ For each conflicting file:
 
 ### 4d: Handle special conflict types
 
-- **"deleted by us" or "deleted by them":** Ask the user whether to keep the deletion or restore the file with the cherry-picked changes.
-- **Binary file conflicts:** Do not attempt to merge. Ask the user which version to keep.
+- **"deleted by us" or "deleted by them":** Call **AskUserQuestion** (`multiSelect: false`) with header `Deletion`, naming the file in the question, and options `Keep deletion` ("Leave the file deleted") vs `Restore file` ("Restore it with the cherry-picked changes"). Act on the selection.
+- **Binary file conflicts:** Do not attempt to merge. Call **AskUserQuestion** (`multiSelect: false`) with header `Binary`, naming the file in the question, and options `Keep current` ("Keep the current-branch (HEAD) version") vs `Take incoming` ("Use the cherry-picked version"). Act on the selection.
 
 ### 4e: Continue the cherry-pick
 
 After all conflicts in the current commit are resolved and staged:
 
-1. Use the Grep tool to search for `<<<<<<<` across the repository to verify no conflict markers remain.
-2. Run `git cherry-pick --continue` to finalize the commit.
+1. Run `git diff --check` to confirm no conflict markers remain — it prints `path:line: leftover conflict marker` for any it finds and exits non-zero. Run `git diff --name-only --diff-filter=U` to list any files git still considers unmerged.
+2. Run `git cherry-pick --continue` to finalize the commit. If the target repo's pre-commit hook is slow or verbose, run this in the background and read its output incrementally (see the note in Step 3).
 3. If this fails, check `git status` for remaining issues.
 
 ## Step 5: Verify the result
@@ -113,6 +122,6 @@ After all commits have been applied:
 ## Error handling
 
 - If `git cherry-pick --continue` fails after resolution, run `git status` to diagnose.
-- If the user wants to abort, run `git cherry-pick --abort` to restore the original state.
+- If a cherry-pick cannot be completed, call **AskUserQuestion** (`multiSelect: false`) with header `On conflict` and options `Abort` ("Run `git cherry-pick --abort` to restore the original state") vs `Keep resolving` ("Continue manual conflict resolution"). On `Abort`, run `git cherry-pick --abort`.
 - If a commit is empty after cherry-pick (already applied), run `git cherry-pick --skip` and inform the user.
-- If cherry-pick fails for reasons other than conflicts, report the error and ask whether to skip or abort.
+- If cherry-pick fails for reasons other than conflicts, report the error, then call **AskUserQuestion** (`multiSelect: false`) with header `On error` and options `Skip` ("Run `git cherry-pick --skip` to drop this commit and continue with the rest") vs `Abort` ("Run `git cherry-pick --abort` to restore the original state"). Act on the selection.

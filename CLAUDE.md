@@ -32,10 +32,10 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping fourteen plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping fifteen plugins under `plugins/`:
 
 - `cherry-pick`, `merge`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement` — single slash command each
-- `tool-discipline`, `grep-glob-fallback` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three durable `PreToolUse` guardrails (no-cd-chaining, prefer-builtin-tools, prefer-LSP); `grep-glob-fallback` is a temporary ToolSearch shim for the Grep/Glob outage (CC #52121/#61845), deletable once those tools are restored
+- `tool-discipline`, `tool-discipline-lsp`, `grep-glob-fallback` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles two durable `PreToolUse` guardrails (no-cd-chaining, prefer-builtin-tools); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty; `grep-glob-fallback` is a temporary ToolSearch shim for the Grep/Glob outage (CC #52121/#61845), deletable once those tools are restored
 - `code-review-AT` — multi-agent review via Anthropic Agent SDK + agent teams; ships TypeScript source under `src/` (specialist agents at `src/agents/*.ts`), references, hooks, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`); builds to `dist/` via tsup
 - `code-review` — same multi-specialist review but native Claude Code only (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
 

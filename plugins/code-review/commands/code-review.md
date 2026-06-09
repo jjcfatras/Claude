@@ -4,7 +4,7 @@ argument-hint: [pr-number]
 disable-model-invocation: false
 model: sonnet
 effort: high
-allowed-tools: Bash, Read, Write, Grep, Glob, Agent
+allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
 ---
 
 # /code-review — orchestrate a multi-specialist PR review
@@ -166,19 +166,24 @@ jq -r '
 
 The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). Without this, drops are silent.
 
-Then ask the user: `Post review? [Y]es/[n]o/[i]ds <csv>`.
+Then call the **AskUserQuestion** tool to get permission to post. Use a single question (`multiSelect: false`) with header `Post review`, a question naming the counts (e.g. "Post N inline + M summary-only finding(s) to PR #<PR_NUMBER>?"), and two options:
 
-- Empty or `y`/`yes` → post all.
-- `n`/`no` → skip posting, proceed to cleanup.
-- `ids <csv>` (e.g. `ids sec-1,perf-2`) → re-run finalize with `--include-finding-ids "<csv>"`, then post.
+- `Post all` — "Post every eligible finding as inline comments plus the review summary."
+- `Skip` — "Skip posting and proceed to cleanup."
 
-If the user chose `ids`, re-run finalize with the same flags plus `--include-finding-ids "<csv>"` — this rewrites `payload.json`, `payload-pending.json`, `payload-body.json` to the filtered subset while `consolidated.json` keeps the pre-filter audit log (the helper handles that distinction).
+Map the answer to one of three branches:
+
+- `Post all` (or an empty/affirmative reply) → post all.
+- `Skip` (or a negative reply) → skip posting, proceed to cleanup.
+- A comma-separated list of finding IDs typed into the tool's free-text "Other" field (e.g. `sec-1,perf-2`) → re-run finalize with `--include-finding-ids "<csv>"`, then post that subset.
+
+If the user supplied a finding-ID subset, re-run finalize with the same flags plus `--include-finding-ids "<csv>"` — this rewrites `payload.json`, `payload-pending.json`, `payload-body.json` to the filtered subset while `consolidated.json` keeps the pre-filter audit log (the helper handles that distinction).
 
 ---
 
 ## [5/5] Post review or skip
 
-If the user chose `no`, skip to cleanup. Otherwise post via `gh api` with a three-tier fallback (the same pattern `src/helpers/post-review.ts` implemented in code-review-AT).
+If the user chose `Skip`, skip to cleanup. Otherwise post via `gh api` with a three-tier fallback (the same pattern `src/helpers/post-review.ts` implemented in code-review-AT).
 
 **Tier 1 — single-shot review with batched comments:**
 
@@ -218,7 +223,7 @@ If tier 3 also fails, surface the full error and stop. Report `posted via tier 3
 
 ## Cleanup
 
-Cleanup always runs — after step [5/5] completes normally, after the user chose `no` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Skip it only if `$TMP` is unset (the stop happened before step 0 created the scratch dir).
+Cleanup always runs — after step [5/5] completes normally, after the user chose `Skip` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Skip it only if `$TMP` is unset (the stop happened before step 0 created the scratch dir).
 
 Defensive check: only `rm -rf` paths whose basename starts with `pr-review-` (the prefix we created in step 0):
 
