@@ -6,7 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/enforce-lsp-navigation.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/enforce-lsp-navigation-go.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/enforce-lsp-navigation-ts.sh"
           }
         ]
       }
