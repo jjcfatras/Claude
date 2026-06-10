@@ -255,7 +255,7 @@ Do not chain verifications. If a peer DMs you and you're unsure, give your best 
 These apply to every `code-review-*` specialist in addition to the workflow above.
 
 - **Don't post to GitHub.** The lead handles all posting. Your output is `$REVIEW_TMPDIR/findings/<role>.json` and your DM replies — nothing else.
-- **Bash usage is rare.** When you do shell out, follow `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` — auto mode handles common patterns; the surviving rules cover real concerns (allowed-tools gaps, destructive ops, RCE).
+- **Bash usage is rare.** When you do shell out: auto mode handles common patterns; the rules that still matter cover real concerns (allowed-tools gaps, destructive ops, RCE). Prefer the Read/Grep/jq tools over shell equivalents, keep each command a separate Bash call (no `&&` chaining, no leading `cd`), and never pipe to a shell interpreter.
 - **Build the findings JSON with the Write tool**, not `echo`/heredoc/redirection. Write is more reliable for embedding code snippets that contain quotes, backticks, and newlines (a quoting-fidelity concern, not a permission concern).
 - **Spawn-prompt context is authoritative.** The lead inlines the rubric, roster, prior-review issues, CLAUDE.md content, and changed-file list directly into your spawn prompt. Don't Read those files — they're already in your context.
 

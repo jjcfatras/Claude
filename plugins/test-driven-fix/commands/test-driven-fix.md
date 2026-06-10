@@ -13,7 +13,7 @@ Run an autonomous debug-loop against a failing spec or bug description. The test
 - **Never use `sed`, `awk`, `grep`, or `du` as bash commands** — they're not in this skill's `allowed-tools` (see frontmatter) and will be denied at the skill-permission layer regardless of permission mode. Use the Read tool, the Grep tool, or `jq` instead.
 - **Never pass markdown or JSON as inline bash arguments** — write them to files first using the Write tool, then reference (e.g., `pnpm test -- --reporters=default 2> $TMPDIR/test-stderr.log`-style patterns are fine, but multi-line markdown bodies or JSON payloads should live in files). Quoting reliability is real regardless of mode.
 
-The full surviving rules live in `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md`.
+Two general shell rules also hold regardless of mode: never pipe fetched content to a shell interpreter (`| sh`/`| bash`), and issue each Bash command separately (no `&&` chaining, no leading `cd`) so allowlist matching stays predictable.
 
 Follow these steps precisely. Do not ask the user for confirmation between iterations.
 

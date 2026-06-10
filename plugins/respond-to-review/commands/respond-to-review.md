@@ -8,11 +8,11 @@ effort: high
 
 Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix, **commit and push it before posting any reply**, and reply confirming the change — so reviewers never see a "Fixed" reply that points at code still sitting in the local working tree.
 
-**Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The surviving rules in `${CLAUDE_PLUGIN_ROOT}/references/shell-safety.md` cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops). The condensed version is included in every agent preamble below.
+**Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The rules that still matter cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops); the condensed version is included in every agent preamble below.
 
 **Tool discipline:** Three rules apply across every step. They are not stylistic — they keep the command working under stricter permission modes and cut wall time:
 
-- **Use the `Grep` tool, never Bash `grep`/`rg`.** The Grep tool is in `allowed-tools`; Bash `grep` is not. `shell-safety.md` rule 2 names this skill explicitly. Grep tool also sidesteps the zsh "no matches found" glob bug.
+- **Use the `Grep` tool, never Bash `grep`/`rg`.** The Grep tool is in `allowed-tools`; Bash `grep` is not. Grep tool also sidesteps the zsh "no matches found" glob bug.
 - **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. The GitHub-API JSON parsing in Step 1 is well within `jq`'s capabilities.
 - **Batch independent tool calls in parallel.** When a step says "for each X do Y" and the Y's have no ordering dependency (different file paths, different comment IDs, different verification targets), emit them as multiple tool calls in a single assistant message. Steps 1, 4, and 5 call this out explicitly where it matters.
 
