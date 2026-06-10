@@ -1,7 +1,7 @@
 ---
 description: Respond to every flagged issue on a PR — inline comments and review-body findings alike — dismissing false positives and preexisting issues, fixing valid ones
 argument-hint: <pr-number> [comment-id]
-allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob, mcp__*
+allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob, AskUserQuestion, mcp__*
 model: opus
 effort: high
 ---
@@ -183,13 +183,13 @@ Display a formatted summary of all items and their verdicts, split by source wit
 
 Omit a sub-section when it is empty (don't show an "Inline comments:" header with nothing under it). Omit the entire verdict category if its count is zero.
 
-Ask the user to confirm before proceeding. The user may:
+Then call the **AskUserQuestion** tool (`multiSelect: false`, header `Triage`) to confirm before proceeding, with three options:
 
-- Approve all verdicts
-- Override specific verdicts (e.g., "treat #3 as valid" or "skip #5")
-- Cancel entirely
+- `Approve all` — "Proceed with every verdict as shown."
+- `Override some` — "Change specific verdicts first — I'll ask which."
+- `Cancel` — "Stop without replying to or fixing anything."
 
-Wait for confirmation before continuing.
+On `Approve all`, continue to Step 4. On `Override some` (or the user's Other-field reply), collect the overrides as free-text — e.g. "treat #3 as valid", "skip #5" — apply them to the verdict set, then continue. On `Cancel`, stop immediately. Wait for the response before continuing.
 
 ## Step 4: Implement fixes for valid issues
 

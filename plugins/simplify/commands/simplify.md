@@ -1,7 +1,7 @@
 ---
 description: Propose targeted simplifications to recently modified code and apply on approval
 argument-hint: "[path|--staged|--since=<ref>]"
-allowed-tools: Bash(git *), Read, Edit, Grep, Glob
+allowed-tools: Bash(git *), Read, Edit, Grep, Glob, AskUserQuestion
 model: opus
 effort: xhigh
 ---
@@ -27,7 +27,12 @@ After collecting candidates, drop anything that is obviously out of scope:
 
 If no candidates remain, stop and tell the user "no candidate files in scope" — do not invent work.
 
-Otherwise list the candidate files and ask the user to confirm before continuing (one prompt for the whole set, not per file).
+Otherwise list the candidate files, then call the **AskUserQuestion** tool (`multiSelect: false`, header `Proceed`) — one prompt for the whole set, not per file. The question names the count (e.g. "Analyze 4 candidate file(s) for simplifications?") with two options:
+
+- `Proceed` — "Analyze the listed files for simplifications."
+- `Cancel` — "Stop without analyzing anything."
+
+If the user selects `Cancel` (or answers with their own equivalent), stop without reading any file.
 
 ## Step 1: Load standards
 
@@ -63,11 +68,13 @@ For each file that has surviving hunks, in alphabetical order:
 
 1. Print the file path as a header.
 2. Print each hunk's unified diff followed by its one-sentence rationale.
-3. Ask the user to choose: `apply all` / `apply some` / `skip file` / `edit and apply`.
-   - **`apply all`**: every hunk in this file is approved.
-   - **`apply some`**: ask which hunk numbers to apply.
-   - **`skip file`**: drop every hunk for this file.
-   - **`edit and apply`**: let the user paste back an edited version of any hunk's new-side text.
+3. Call the **AskUserQuestion** tool (`multiSelect: false`, header `Hunks`) with a question naming the file and its surviving-hunk count (e.g. "`src/foo.ts` — 3 hunk(s). How should I apply them?") and four options:
+   - **`Apply all`** — every hunk in this file is approved.
+   - **`Apply some`** — only some hunks; follow up (free-text) for which hunk numbers.
+   - **`Skip file`** — drop every hunk for this file.
+   - **`Edit and apply`** — the user edits before applying; follow up (free-text) for the edited new-side text.
+
+   Act on the selected option (or the user's Other-field equivalent). The follow-up for `Apply some` (hunk numbers like "1 3 5") and `Edit and apply` (pasted code) stays free-text — those answers are unbounded and don't fit predefined options.
 
 Do not coalesce prompts across files — one prompt per file keeps the review focused.
 

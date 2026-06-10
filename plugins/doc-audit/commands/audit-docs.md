@@ -1,7 +1,7 @@
 ---
 description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob.
 argument-hint: "[file|dir|glob]"
-allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob, AskUserQuestion
 model: opus
 effort: high
 disable-model-invocation: true
@@ -51,7 +51,13 @@ find "$ROOT" \( -name node_modules -o -name .git -o -name dist -o -name build -o
   -type f \( -path '*/.claude/commands/*.md' -o -path '*/.claude/skills/*/SKILL.md' -o -name 'README.md' -o -name 'CLAUDE.md' -o -iname '*architecture*.md' \) -print
 ```
 
-Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files and ask the user whether to proceed with all of them, narrow the scope, or skip directories. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
+Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files, then call the **AskUserQuestion** tool (`multiSelect: false`, header `Scope`) naming the count (e.g. "Audit 73 documentation files?") with three options:
+
+- `Proceed (all)` — "Audit every listed file."
+- `Narrow scope` — "Re-run against a narrower file/dir/glob — I'll ask which."
+- `Skip directories` — "Exclude some directories — I'll ask which."
+
+For the latter two, collect the specifics from the user's reply (or the Other field) and re-resolve the scope. Large doc sets become noisy and slow — confirming early is cheaper than auditing 200 files and overwhelming the user.
 
 Report the count and a summary list before continuing.
 
@@ -147,9 +153,9 @@ If there are zero findings across the repo, say so plainly and stop.
 
 ## Step 5: Offer fixes per finding
 
-After presenting the report, for each `error` and `warning` finding (skip `info` — those are advisory), ask the user one at a time whether to apply the suggested fix.
+After presenting the report, offer fixes for each `error` and `warning` finding (skip `info` — those are advisory) via the **AskUserQuestion** tool.
 
-Use `AskUserQuestion` for batched questions when the findings are short and similar; otherwise prompt inline. Apply approved fixes via `Edit`. Do not batch-apply — the user picked "report + offer to fix" explicitly to keep a human checkpoint between detection and mutation.
+Batch the findings into `AskUserQuestion` calls of up to four single-select questions (one per finding, `multiSelect: false`), each with a short header derived from the finding (e.g. `CLAUDE.md:42`) and two options — `Apply fix` ("Apply the suggested fix via Edit") and `Skip` ("Leave the claim unchanged"). Apply approved fixes via `Edit`. Batching the _questions_ is encouraged; do **not** batch-_apply_ — each finding keeps its own decision so the human checkpoint between detection and mutation stays intact.
 
 Skip findings the user declines. After the last decision, summarize what was applied and what was deferred.
 

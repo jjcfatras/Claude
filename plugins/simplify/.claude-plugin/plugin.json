@@ -1,6 +1,6 @@
 {
   "name": "simplify",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Propose and apply targeted simplifications to recently modified code while preserving behavior",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

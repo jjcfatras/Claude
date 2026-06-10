@@ -13,7 +13,7 @@ Work through the phases in order. Don't skip the verification phase even when th
 ## Variables to derive at startup
 
 - **Ticket key** — from `$ARGUMENTS` (e.g. `PROJ-1234`). If it's missing or doesn't look like a JIRA key, ask the user for it before doing anything else.
-- **cloudId** — `getAccessibleAtlassianResources` returns the Atlassian site(s). If there's exactly one, use it; if more than one, ask which site the ticket lives on.
+- **cloudId** — `getAccessibleAtlassianResources` returns the Atlassian site(s). If there's exactly one, use it; if more than one, call the **AskUserQuestion** tool (`multiSelect: false`, header `Site`) populated with one option per site (name/URL) and use the chosen site's `cloudId`.
 - **Scratch dir** — `${TMPDIR:-/tmp}/jira-implement-$EPOCH` (one `date +%s` call). Use it only if you need to spawn investigator subagents that write findings to files; otherwise you may not need it at all.
 
 ## [1/6] Fetch the ticket
@@ -52,7 +52,13 @@ Classify each claim, and require concrete `file:line` evidence for the verdict:
 
 When there are many independent claims, spawn parallel investigator subagents (one `Agent` message, several calls) so verification doesn't serialize — give each a cluster of claims and a findings file to write to, then merge their verdicts. When there are only a few, just verify inline.
 
-**If a false claim knocks out the ticket's premise, stop here.** If the ticket asks you to "add the missing validation" and the validation already exists, building anything is wrong — surface the finding, show the user the evidence, and ask how they want to proceed (the bug may be elsewhere, or the ticket may be stale and closeable). Don't plan around a phantom. See `${CLAUDE_PLUGIN_ROOT}/references/claim-verification.md` for how to extract atomic claims and handle the premise-invalidation case.
+**If a false claim knocks out the ticket's premise, stop here.** If the ticket asks you to "add the missing validation" and the validation already exists, building anything is wrong — surface the finding and show the user the evidence, then call the **AskUserQuestion** tool (`multiSelect: false`, header `Premise`) with three options:
+
+- `Bug is elsewhere` — "Validation exists but is buggy; the real bug is in a different spot."
+- `Stale — close it` — "The ticket is stale and closeable; stop here."
+- `Different path` — "The ticket meant a different code path — I'll point you to it."
+
+Act on the selection, or take the user's redirect from the Other field — don't pick one and plow ahead. Don't plan around a phantom. See `${CLAUDE_PLUGIN_ROOT}/references/claim-verification.md` for how to extract atomic claims and handle the premise-invalidation case.
 
 ## [4/6] Design the plan
 

@@ -16,7 +16,7 @@ Look at `$ARGUMENTS` and the surrounding context to decide the input source. You
 - **Branch / working tree** — `$ARGUMENTS` names a branch, or it's empty and the current branch is ahead of its base or has uncommitted work. Use `git log` and `git diff` to see what changed. `git diff <base>...HEAD` against the likely base branch (`main`) usually captures the intent; fall back to `git diff` for uncommitted work.
 - **Freeform description** — `$ARGUMENTS` reads like prose describing a change, with no code to inspect. This is the no-codebase-access path: build the ticket from what the user told you and ask for anything you genuinely need (see Step 1).
 
-If it's genuinely ambiguous (e.g. a bare word that could be a branch or a topic), ask the user which source they mean rather than guessing wrong and summarizing the wrong thing.
+If it's genuinely ambiguous (e.g. a bare word that could be a branch or a topic), call the **AskUserQuestion** tool (`multiSelect: false`, header `Source`) with options `Pull request`, `Branch`, and `Freeform description` rather than guessing wrong and summarizing the wrong thing. Only ask when it's actually ambiguous — when the source is obvious, proceed without prompting.
 
 ## Step 1: Understand the change in user-facing terms
 
@@ -55,7 +55,7 @@ Reference internal names (functions, tables, columns, env vars) only inside _pre
 
 Don't hardcode or assume a project. Discover it at runtime:
 
-1. `getAccessibleAtlassianResources` → the `cloudId` (if more than one site, ask which).
+1. `getAccessibleAtlassianResources` → the `cloudId`. If more than one site is returned, call the **AskUserQuestion** tool (`multiSelect: false`, header `Site`) populated with one option per site (name/URL) and use the chosen site's `cloudId`.
 2. `getVisibleJiraProjects` → the projects the user can file into.
 3. `getJiraProjectIssueTypesMetadata` for the chosen project → its issue types and any required fields.
 
@@ -63,7 +63,14 @@ Present the project and issue-type choices with `AskUserQuestion` (recommend the
 
 ## Step 4: File it, only after explicit approval
 
-Filing a ticket is an outward-facing action that other people will see, so confirm before doing it — both the ticket text and the target project/issue type. Once the user approves:
+Filing a ticket is an outward-facing action that other people will see, so confirm before doing it — both the ticket text and the target project/issue type. Call the **AskUserQuestion** tool (`multiSelect: false`, header `File ticket`) with four options:
+
+- `Approve & file` — "File the ticket as shown in the chosen project."
+- `Edit text` — "Change the ticket wording first — I'll ask what to change."
+- `Change destination` — "Pick a different project or issue type first."
+- `Cancel` — "Don't file anything."
+
+On `Edit text` or `Change destination` (or the user's Other-field reply), apply the requested change and re-confirm. On `Cancel`, stop without filing. Once the user approves (`Approve & file`):
 
 - Call `createJiraIssue` with the summary line (the `## Summary` distilled to one line if needed) and the full template as the description.
 - Report back the created issue key and its URL. Use `getJiraIssue` to confirm/fetch the link if the create response doesn't include it.

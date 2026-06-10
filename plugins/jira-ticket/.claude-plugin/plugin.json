@@ -1,6 +1,6 @@
 {
   "name": "jira-ticket",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Generate a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and file it in JIRA after confirmation",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
