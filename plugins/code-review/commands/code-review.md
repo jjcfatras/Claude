@@ -34,7 +34,7 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 
 ## [1/5] Fetch PR metadata, diff, and prior issues
 
-Run sequentially (each as a separate Bash call — don't chain with `&&`, per `references/shell-safety.md`). Independent calls (e.g., `gh pr view` and `gh pr diff` — both depend only on `PR_NUMBER` and `TMP`, not on each other's output) may be emitted in the same model turn; calls that read variables from a previous result (e.g., the jq `OWNER`/`REPO` extraction below, which needs `pr-meta.json` already on disk) must wait for the earlier call to complete:
+Run sequentially (each as a separate Bash call — don't chain with `&&`). Independent calls (e.g., `gh pr view` and `gh pr diff` — both depend only on `PR_NUMBER` and `TMP`, not on each other's output) may be emitted in the same model turn; calls that read variables from a previous result (e.g., the jq `OWNER`/`REPO` extraction below, which needs `pr-meta.json` already on disk) must wait for the earlier call to complete:
 
 ```bash
 gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName,author > "$TMP/pr-meta.json"

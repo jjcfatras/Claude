@@ -1,7 +1,7 @@
 {
   "name": "grep-glob-fallback",
-  "version": "0.1.0",
-  "description": "Temporary shim for the Grep/Glob outage (Claude Code bugs #52121/#61845): intercepts ToolSearch attempts to load Grep/Glob and redirects to the rg/find/ls Bash fallback. Delete this plugin once Grep/Glob are restored.",
+  "version": "0.2.0",
+  "description": "Redirects ToolSearch attempts to load Grep/Glob to the embedded ripgrep/ugrep/bfs Bash search that replaced them on native builds (Claude Code 2.1.117+); ToolSearch still can't load them there (#52121/#61845). Self-disables on builds that still ship Grep/Glob (npm, Windows).",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",

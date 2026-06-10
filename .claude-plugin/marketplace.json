@@ -18,6 +18,13 @@
       "category": "git"
     },
     {
+      "name": "git",
+      "source": "./plugins/git",
+      "description": "Git workflow commands: commit, commit-push, commit-push-pr, and clean-gone",
+      "version": "0.1.1",
+      "category": "git"
+    },
+    {
       "name": "test-driven-fix",
       "source": "./plugins/test-driven-fix",
       "description": "Autonomously fix failing tests by iterating patch → test → revert-on-regression, with a 10-iteration cap",
@@ -104,8 +111,8 @@
     {
       "name": "grep-glob-fallback",
       "source": "./plugins/grep-glob-fallback",
-      "description": "Temporary shim for the Grep/Glob outage (CC #52121/#61845): intercepts ToolSearch loads of Grep/Glob and redirects to the rg/find/ls Bash fallback",
-      "version": "0.1.0",
+      "description": "Redirects ToolSearch loads of Grep/Glob to the embedded ripgrep/ugrep/bfs Bash search that replaced them on native builds (CC 2.1.117+, ToolSearch catalog gap #52121/#61845); self-disables on builds that still ship the tools",
+      "version": "0.2.0",
       "category": "guardrails"
     }
   ]

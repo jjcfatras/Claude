@@ -1,0 +1,9 @@
+{
+  "name": "git",
+  "version": "0.2.0",
+  "description": "Git workflow commands: commit, commit-push, commit-push-pr, and clean-gone (prune stale local branches)",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": ["git", "commit", "push", "pull-request", "branch-cleanup"]
+}
