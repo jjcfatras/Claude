@@ -61,7 +61,12 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `description` — what the command does (shown in `/` menu)
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — `haiku` / `sonnet` / `opus` (simple → moderate → multi-agent orchestration)
-- `effort` — `low` / `high` (controls how thoroughly the model executes the command)
+- `effort` — how thoroughly the model reasons through the command. Five levels (availability varies by model; an unsupported level falls back to the nearest supported one; if unset, inherits the session effort):
+  - `low` — minimal thinking, fastest, biggest token savings. For mechanical / deterministic commands.
+  - `medium` — moderate thinking; balances cost/latency vs. depth. For light reasoning without deep multi-step planning. (Unused in this repo.)
+  - `high` — deep reasoning; the practical default for substantive commands. For multi-step workflows, conflict resolution, design judgment.
+  - `xhigh` — extended reasoning; Opus-only (4.7+), falls back to `high` elsewhere, so pair with `model: opus`. For the hardest analysis / refactor judgment.
+  - `max` — maximum reasoning budget; highest cost/latency. Reserve for the most demanding tasks. (Unused in this repo.)
 - `argument-hint` — usage hint (optional)
 - `disable-model-invocation` — `true` = user-only trigger (optional)
 
