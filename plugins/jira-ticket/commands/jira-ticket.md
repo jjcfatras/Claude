@@ -3,7 +3,7 @@ description: Generate a structured JIRA ticket (summary, acceptance criteria, QA
 argument-hint: "[PR url/number | branch | freeform description] (optional — infers from context if omitted)"
 allowed-tools: Bash(git *), Read, Grep, Glob, mcp__plugin_github_github__pull_request_read, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__claude_ai_Atlassian_Rovo__getVisibleJiraProjects, mcp__claude_ai_Atlassian_Rovo__getJiraProjectIssueTypesMetadata, mcp__claude_ai_Atlassian_Rovo__createJiraIssue, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, AskUserQuestion
 model: sonnet
-effort: high
+effort: medium
 ---
 
 Turn a change — a git diff, a pull request, or a plain description — into a well-structured JIRA ticket, then file it in JIRA once the user approves. A good ticket here is one a developer can pick up and a QA tester can verify **without ever reading the code**, so the whole point of this command is to translate "what changed in the code" into "what someone can observe from the outside."

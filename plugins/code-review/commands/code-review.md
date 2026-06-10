@@ -3,7 +3,7 @@ description: Multi-specialist code review of a pull request. Spawns parallel sub
 argument-hint: [pr-number]
 disable-model-invocation: false
 model: sonnet
-effort: high
+effort: medium
 allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
 ---
 
