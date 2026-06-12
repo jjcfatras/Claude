@@ -1,6 +1,6 @@
 {
   "skill_name": "jira-implement",
-  "notes": "Live Atlassian MCP fetch is non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treated as already-fetched) plus a small fixture codebase to verify claims against. The approval gate means autonomous runs are expected to stop at phase 5 (present-for-approval) without editing — phases 2-4 (intent, claim verification, plan reconciliation) are the differentiated value being graded.",
+  "notes": "Live Atlassian MCP fetch is non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treated as already-fetched) plus a small fixture codebase to verify claims against. Evals 1-3 leave the approval gate intact, so autonomous runs stop at phase 5 (present-for-approval) without editing — phases 2-4 (intent, claim verification, plan reconciliation) are the differentiated value being graded there. Eval 4 is the exception: it pre-grants approval in the prompt so the run proceeds into phase 6 (implement) and works against a copy of the fixture, to exercise and grade the red/green TDD discipline that the other evals never reach.",
   "evals": [
     {
       "id": 1,
@@ -88,6 +88,41 @@
         },
         {
           "text": "Recognizes there is no proposed solution and does not invent a comparison; stops at an approval gate before editing"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "tdd-happy-path",
+      "prompt": "You're picking up JIRA ticket STR-310. The Atlassian fetch has already been done — the full ticket content is in /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-4-tdd/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable in this environment, so read the file instead). The working codebase is the directory /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-4-tdd/codebase/ (pluralize.js is src/pluralize.js, pluralize.test.js is its test file). It is a zero-dependency Node 24 project; run the tests with `node --test pluralize.test.js` (or `npm test`) from inside the codebase directory. IMPORTANT: do not edit the original fixture — copy the entire codebase/ directory into your designated output directory and make every change there, leaving the original pristine. You have approval to proceed all the way through implementation without pausing at the approval gate: treat the plan as pre-approved, briefly state it, then implement it. Pick up and action this ticket.",
+      "expected_output": "Verifies the ticket's claim that pluralize has no consonant+y handling as TRUE with file:line evidence from pluralize.js (the regex only covers sibilants; no -y branch). Premise is sound, so it proceeds. In the implement phase it works test-first: writes a NEW failing test for the consonant+y cases (category→categories, city→cities) and runs it to observe RED before touching pluralize.js, then adds the minimal consonant+y → -ies rule (preserving vowel+y like day→days and all existing behavior), then re-runs the suite to observe GREEN with the pre-existing tests still passing. Reports the actual test output honestly. Final code passes node --test.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-4-tdd/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-4-tdd/codebase/pluralize.js",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-4-tdd/codebase/pluralize.test.js",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-4-tdd/codebase/package.json"
+      ],
+      "assertions": [
+        {
+          "text": "Verifies the 'no consonant+y handling' claim as confirmed/true with file:line evidence from pluralize.js (sibilant-only regex, no -y branch)"
+        },
+        {
+          "text": "Treats the premise as sound and proceeds to implement (does not manufacture a false positive or stall)"
+        },
+        {
+          "text": "Writes a NEW failing test for the consonant+y cases (category→categories and/or city→cities) BEFORE editing pluralize.js"
+        },
+        {
+          "text": "Runs the test and observes it FAIL (RED) before writing the implementation, rather than implementing first"
+        },
+        {
+          "text": "Implements the minimal consonant+y → -ies rule, preserving vowel+y (day→days, boy→boys) and all existing cases"
+        },
+        {
+          "text": "Re-runs the suite and observes it PASS (GREEN) with the pre-existing tests still passing"
+        },
+        {
+          "text": "Reports actual test-run output honestly (quotes the real red and green runs) rather than asserting an unobserved green"
         }
       ]
     }
