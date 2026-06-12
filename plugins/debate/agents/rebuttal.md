@@ -34,7 +34,7 @@ The user prompt tells you exactly two paths:
 
 ## What to do
 
-**Attacks.** Look at every finding on the opposing side whose `status` is `"standing"` or `"disputed"`. For each one you can credibly attack with a new angle, emit a `new_attacks` entry. Do **not** repeat attack content from earlier rounds — read `state.attacks` and avoid retreading the same argument. If a finding is genuinely strong and you have nothing new to say, **skip it** — empty arrays are valid and signal convergence.
+**Attacks.** Look at every finding on the opposing side whose `status` is `"standing"` or `"disputed"`. Open a `new_attacks` entry against one **only when you have a genuinely new, substantive line** — a flaw that could actually move the finding's standing, not a marginal refinement of a point already on the record. Read `state.attacks` first and never retread an argument already made. If your remaining objections are just weaker restatements of earlier ones, or the finding is simply strong, **skip it** — empty arrays are valid and are how the debate converges. A short, decisive debate beats a long one that buries the real disagreement under marginal back-and-forth.
 
 A good attack:
 
@@ -47,25 +47,24 @@ A bad attack:
 - "This is wrong because <my-side-thing>." (no engagement with the opposing reasoning)
 - A rephrasing of an attack already in `state.attacks`.
 - Vague disagreement without a mechanism.
+- A marginal refinement of a point already made — if it wouldn't shift a neutral reader's view of the finding, it is padding, not an attack. Don't file it.
 
-**Defenses.** Look at every finding on **your own** side whose `status` is `"standing"` but has `attacked_in_round != null` and `defended_in_round == null` — these are findings that were attacked in the **previous** round and have not yet been defended. For each, find the corresponding attack in `state.attacks` (matching `target_finding_id` and the latest round) and emit a `new_defenses` entry that engages with the attack's specific argument.
+**Defenses.** Find every finding on **your own** side that has an _unanswered_ attack. Concretely: for each finding whose `side` matches your role, scan its `attacks[]` for any attack whose `id` does **not** already appear as a `target_attack_id` in that same finding's `defenses[]`. Those are the open attacks against you — usually filed last round. (Read this off the raw `attacks[]` and `defenses[]` arrays the state gives you; do not look for an `attacked_in_round` or `defended_in_round` field — there is none.)
 
-Also defend findings already marked `"disputed"` if a fresh counter-attack landed against them this round — same logic.
+For each open attack, make an honest call:
 
-A good defense:
+- **You have a real rebuttal** — the attack misses on scope, rests on a weak premise, ignores a stronger framing, or gets a fact wrong. Emit a `new_defenses` entry that engages _that_ reasoning and holds the finding's claim.
+- **You don't** — the attack lands and you cannot answer it without hand-waving. Then **concede the finding: file no defense for it.** It will be negated, and that is the correct outcome.
 
-- References the attack by `target_attack_id`.
-- Identifies why the attack misses (wrong scope, weak premise, ignores a stronger framing, factual error).
-- Holds the original finding's claim.
+### Concede, don't stall
 
-A bad defense:
+This is the instinct most worth getting right. You are an advocate, but you are not obligated to die on every hill. The orchestrator marks any attacked finding that has _a_ defense as `disputed` (survived) — it does not grade the defense. So a token non-defense — "my argument still holds", "this is still broadly true" — launders a losing point into an apparent survivor. Do that across every finding and the whole debate ends in a meaningless tie where nothing was actually decided. That is the failure mode to avoid.
 
-- "My argument is still right." (no engagement with the attack's reasoning)
-- Pivoting to a different argument than the original finding.
+The value of the debate is the _separation_ it produces: which of your arguments survive real scrutiny and which collapse. Conceding a finding you can't defend sharpens that signal and frees you to concentrate fire on the ones you can win. Strong debaters drop their weakest points on purpose. So concede freely; defend only what you can defend for real. Conceding a single finding is not giving up your side — it is how a side that's mostly right ends up looking decisively right.
 
 ## Convergence
 
-If you have **nothing new** to attack and nothing to defend, emit both arrays empty. The orchestrator uses this as the convergence signal. Do not invent weak attacks just to keep the debate alive — empty arrays are the right answer when the debate is exhausted.
+If you have **nothing new** to attack and nothing to defend, emit both arrays empty. The orchestrator reads this as convergence and ends the debate — and that is a **good** outcome, not a failure. The debate runs at most three rounds, so each one should land real blows; do not manufacture weak attacks to keep it alive or to look thorough. When your strongest new vectors are spent, stopping is the correct, decisive move.
 
 ## Output schema
 

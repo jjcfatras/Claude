@@ -2,7 +2,7 @@
 description: Merge a source branch into the current branch with conflict resolution
 argument-hint: <source-branch>
 allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
-model: sonnet
+model: opus
 effort: high
 ---
 

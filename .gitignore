@@ -18,6 +18,7 @@ CLAUDE.local.md
 code-review-workspace/
 jira-ticket-workspace/
 jira-implement-workspace/
+debate-workspace/
 
 # Miscellaneous
 .token-savior-cache.json

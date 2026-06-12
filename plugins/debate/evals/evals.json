@@ -3,21 +3,49 @@
   "evals": [
     {
       "id": 1,
+      "eval_name": "remote-work-balanced-claim",
       "prompt": "/debate Remote work is better than office work for software engineers",
-      "expected_output": "Report has both Pro and Con sections populated with at least 3 findings each. Debate runs at least 1 rebuttal round. Summary counts are non-zero. Trace section shows specific attacks and responses (not generic).",
-      "files": []
+      "expected_output": "Report has both Pro and Con sections populated with at least 3 findings each. A Verdict section declares a winner or a justified toss-up with a crux. Debate runs at least 1 rebuttal round and converges before the 5-round cap. Trace shows specific attacks and responses (not generic).",
+      "files": [],
+      "expectations": [
+        "The report contains a `## Verdict` section that explicitly states 'Pro wins', 'Con wins', or 'Genuine toss-up' — not merely a restatement of surviving counts.",
+        "The Verdict includes a non-empty Crux line naming the single disagreement the debate hinges on.",
+        "The Verdict includes a non-empty 'What would settle it' line.",
+        "The outcome is not an undifferentiated tie: either at least one finding ended `negated`, or the verdict names a winner (margin decisive or narrow) with reasoning grounded in which arguments survived.",
+        "Both the Pro and Con opening sides produced at least 3 findings each.",
+        "The Debate Trace cites specific attacks against finding ids, not generic disagreement.",
+        "The debate ran in 3 rounds or fewer and ideally converged via an early-exit path — it did not drag to a high round count."
+      ]
     },
     {
       "id": 2,
+      "eval_name": "graphql-universal-claim-should-negate",
       "prompt": "/debate GraphQL should replace REST for all new APIs",
-      "expected_output": "Pro covers type-safety, single-fetch, or schema-driven tooling. Con covers caching, operational complexity, or N+1 risk. At least one finding reaches 'negated' status across rounds. Trace shows the negating attack explicitly.",
-      "files": []
+      "expected_output": "Pro covers type-safety, single-fetch, or schema-driven tooling. Con covers caching, operational complexity, or N+1 risk. At least one finding reaches 'negated' status across rounds. The Verdict weighs the absolute 'all new APIs' scope and declares a winner. Trace shows the negating attack explicitly.",
+      "files": [],
+      "expectations": [
+        "The report contains a `## Verdict` section that explicitly states 'Pro wins', 'Con wins', or 'Genuine toss-up'.",
+        "The Verdict includes a non-empty Crux line and a non-empty 'What would settle it' line.",
+        "At least one finding reached `negated` status and appears in the Negated Arguments table with the negating attack identified.",
+        "Con surfaces at least one of: caching difficulty, operational complexity, or N+1 / over-fetching risk.",
+        "Because the claim is absolute ('all new APIs'), the verdict rationale engages the universal scope — it does not award Pro purely on common-case strength while ignoring counterexamples.",
+        "The debate ran in 3 rounds or fewer and ideally converged via an early-exit path — it did not drag to a high round count."
+      ]
     },
     {
       "id": 3,
+      "eval_name": "unit-vs-integration-tests-disputed",
       "prompt": "/debate Unit tests are more valuable than integration tests for catching regressions",
-      "expected_output": "Debate runs at least 2 rebuttal rounds with non-trivial back-and-forth. At least one finding is marked 'disputed' (attacked then successfully defended). Report renders all four sections (Summary, Pro, Con, Negated/Disputed, Trace).",
-      "files": []
+      "expected_output": "Debate runs at least 2 rebuttal rounds with non-trivial back-and-forth. At least one finding is marked 'disputed' (attacked then successfully defended) and at least one is negated or conceded. Report renders Verdict, Summary, Pro, Con, Negated/Disputed, and Trace sections. The Verdict commits to a side or a justified toss-up.",
+      "files": [],
+      "expectations": [
+        "The report contains a `## Verdict` section that explicitly states 'Pro wins', 'Con wins', or 'Genuine toss-up', with a non-empty Crux and 'What would settle it' line.",
+        "The debate ran at least 2 rebuttal rounds, and the trace shows attacks answered by defenses across rounds (substantive back-and-forth, not one exchange).",
+        "At least one finding is marked `disputed` (attacked, then successfully defended).",
+        "At least one finding ended `negated` OR the verdict names a winner with a decisive/narrow margin — the report is not an all-`disputed` stalemate.",
+        "All required sections render: Verdict, Summary, Pro, Con, Negated Arguments (or `_(none)_`), and Debate Trace.",
+        "The debate ran in 3 rounds or fewer and ideally converged via an early-exit path — it did not drag to a high round count."
+      ]
     }
   ]
 }

@@ -2,7 +2,7 @@
 description: Cherry-pick commits from another branch with conflict resolution
 argument-hint: <source-branch> [commit-sha or sha1..sha2]
 allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
-model: sonnet
+model: opus
 effort: high
 ---
 

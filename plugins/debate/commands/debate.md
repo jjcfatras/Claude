@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Write, Agent
 
 # /debate — adversarial pro/con debate on a user claim
 
-You are the orchestrator for /debate. Execute the numbered steps in order. Report progress with one short line per step (e.g. `[1/5] Spawning opening arguments…`). Surface every command failure verbatim and stop — do not invent workarounds.
+You are the orchestrator for /debate. Execute the numbered steps in order. Report progress with one short line per step (e.g. `[1/6] Spawning opening arguments…`). Surface every command failure verbatim and stop — do not invent workarounds.
 
 The user passes the claim or question as `$ARGUMENTS`. If it is empty or whitespace-only, report the error and stop.
 
@@ -26,7 +26,7 @@ The state model and round semantics are summarized at the bottom of this file un
 
 ---
 
-## [1/5] Spawn opening arguments (parallel)
+## [1/6] Spawn opening arguments (parallel)
 
 Use the **Write** tool to create the two opening-input files at `$TMP/opening-pro.json` and `$TMP/opening-con.json`. Each file contains:
 
@@ -60,7 +60,7 @@ After both Agent calls return, Read both output files. Each should contain `{ "r
 
 ---
 
-## [2/5] Build initial state
+## [2/6] Build initial state
 
 Re-prefix IDs so they cannot collide across the two parallel openings: the pro side keeps `pro-1`, `pro-2`, … in original order; the con side keeps `con-1`, `con-2`, …. (The subagents already follow this convention but you must verify — if either side emitted any non-conforming id, rewrite it to the correct `<role>-<n>` form during this step.)
 
@@ -91,17 +91,19 @@ Notes:
 - `attacks` on the **finding** is the per-finding list of attack records targeting that finding. `attacks` at the top level is the flat list of all attack records across the debate (same records, indexed both ways for convenience).
 - Every opening finding starts `status: "standing"`, `attacks: []`, `defenses: []`, `negated_by: null`.
 
-**Edge case — zero opening findings on either side.** If `opening-pro-out.json` or `opening-con-out.json` contains an empty `findings` array, skip the debate loop entirely. Go straight to step [4/5] and render a one-sided report with an explicit warning at the top: `"⚠️ <role> produced no opening arguments — debate short-circuited."`. Do not error out.
+**Edge case — zero opening findings on either side.** If `opening-pro-out.json` or `opening-con-out.json` contains an empty `findings` array, skip the debate loop **and the judge** entirely. Go straight to step [5/6], render a one-sided report with an explicit warning at the top: `"⚠️ <role> produced no opening arguments — debate short-circuited."`, and set the Verdict to a walkover — the side that _did_ produce findings wins by default (`margin: decisive`), with the crux noted as "opponent forfeited". Do not error out.
 
 ---
 
-## [3/5] Debate loop (max 5 rounds, early exit on convergence)
+## [3/6] Debate loop (max 3 rounds, early exit on convergence)
 
-> **Hard constraint for everything inside `[3/5]`.** Never invoke a subprocess to read, transform, or write `state.json` — no `Bash`, `jq`, `cat`, `awk`, `sed`, `python -c`, `node -e`, or any shell pipeline. The canonical state lives in your context window: you `Write` it in `[2/5]` and re-`Write` it at the end of each round's `[3c]`. The urge to re-read it from disk is **context drift, not safety** — if you feel it, re-examine the last `Write` payload in context rather than shelling out. The only `Bash` call permitted anywhere in this section is **none**; the `rm -rf` cleanup lives in `[5/5]`, after the loop has exited. Past versions allowed this and produced stale state. A `Write` of any size — including tens of KB of JSON — is correct and expected.
+> **Hard constraint for everything inside `[3/6]`.** Never invoke a subprocess to read, transform, or write `state.json` — no `Bash`, `jq`, `cat`, `awk`, `sed`, `python -c`, `node -e`, or any shell pipeline. The canonical state lives in your context window: you `Write` it in `[2/6]` and re-`Write` it at the end of each round's `[3c]`. The urge to re-read it from disk is **context drift, not safety** — if you feel it, re-examine the last `Write` payload in context rather than shelling out. The only `Bash` call permitted anywhere in this section is **none**; the `rm -rf` cleanup lives in `[6/6]`, after the loop has exited. Past versions allowed this and produced stale state. A `Write` of any size — including tens of KB of JSON — is correct and expected.
 
 Before entering the loop, initialize `pro_zero_streak = 0` and `con_zero_streak = 0`. These track consecutive rounds where one side filed no attacks and no defenses, and feed the convergence check in step [3d].
 
-For `round = 1` to `5`:
+A well-matched debate usually resolves in **one or two** rounds: each side lands its strongest attacks, the other defends or concedes, and the offensive vectors run dry. Running to the cap is the exception, not the goal — it almost always means the rebuttal agents kept manufacturing marginal attacks rather than recognizing the debate was decided. Let convergence end the loop early whenever it fires; the cap is a backstop.
+
+For `round = 1` to `3`:
 
 ### [3a] Spawn rebuttal pair in parallel
 
@@ -168,7 +170,7 @@ After both return, Read both output files.
 
 You own the merge. Subagents never set `status`; you do, by following these rules **exactly** (re-read **State machine reference** below if anything is unclear). All work happens in-context against the canonical state object you already hold. Apply the rules directly in your reasoning and emit the updated state to disk via the **Write** tool at the end of [3c]. There is no need to `Read` `state.json` back after writing it; the file you just wrote is the file you already have in context.
 
-The `[3/5]` hard constraint applies here too: do not shell out to merge state (e.g. `jq '.findings[…] |= ...' state.json > new && mv new state.json`). The merge logic below is easier to apply by reasoning than by transliterating into `jq`, and reading `state.json` back from disk drops any in-context update not yet persisted.
+The `[3/6]` hard constraint applies here too: do not shell out to merge state (e.g. `jq '.findings[…] |= ...' state.json > new && mv new state.json`). The merge logic below is easier to apply by reasoning than by transliterating into `jq`, and reading `state.json` back from disk drops any in-context update not yet persisted.
 
 For each `new_attacks` entry across both rebuttal outputs (process pro's attacks first, then con's — order does not matter semantically, just be consistent):
 
@@ -211,7 +213,7 @@ After all attacks and defenses are merged for this round, walk every finding `F`
    - Set `F.status = "disputed"`. (Every attack landed has been countered — at least so far.)
 3. Otherwise (no attacks at all on `F`): leave `F.status = "standing"`.
 
-Then increment `state.round = current_round`. Use the **Write** tool to save the updated `$TMP/state.json` — write the full in-context state object every time. Do **not** use `Edit` to patch `state.json`: surgical edits on the structured JSON risk silently corrupting `status`/`negated_by` fields without erroring, and a full `Write` is correct and expected even when the state has grown to tens of KB. This mirrors the [3/5] hard constraint above.
+Then increment `state.round = current_round`. Use the **Write** tool to save the updated `$TMP/state.json` — write the full in-context state object every time. Do **not** use `Edit` to patch `state.json`: surgical edits on the structured JSON risk silently corrupting `status`/`negated_by` fields without erroring, and a full `Write` is correct and expected even when the state has grown to tens of KB. This mirrors the [3/6] hard constraint above.
 
 ### [3d] Convergence check
 
@@ -234,18 +236,62 @@ Exit conditions (check in order, break on the first match):
 2. **Mutual convergence** — if `total_new == 0`, the debate has converged. Note "converged on round N" for the report.
 3. **One-sided exhaustion** — if `pro_zero_streak >= 2` or `con_zero_streak >= 2`, one side has been silent for two consecutive rounds and the structural outcome is decided. Note "converged on round N (one-sided exhaustion)" for the report.
 
-Otherwise, continue to the next round (up to 5 total). The 5-round hard cap remains a safety net; all three convergence paths above are the expected exits.
+Otherwise, continue to the next round (up to 3 total). The 3-round hard cap is a backstop, not a target — all three convergence paths above are the expected exits, and most debates should hit one of them on round 1 or 2.
 
 ---
 
-## [4/5] Render the report (inline, no file write)
+## [4/6] Adjudicate — spawn the neutral judge
 
-Read the final `$TMP/state.json`. Render the report to chat in this exact shape (markdown). Omit empty tables — if a section has no entries, write `_(none)_` instead of an empty table.
+The loop has converged (or hit the cap). The state now records which findings survived, which were negated, and the full attack/defense history — but it does **not** say who _won_. A report that only lists surviving counts reads as a tie even when one side clearly argued better, which is the single biggest complaint about debate output. The judge fixes that: a neutral agent that reads the whole debate with fresh eyes and commits to a verdict.
+
+Use the **Write** tool to create `$TMP/judge-in.json` from the final in-context state. Pass the **full** state here — unlike the rebuttal inputs, do **not** prune negated findings; the judge needs to see what died and how decisively, not just the survivors:
+
+```json
+{
+  "claim": "<CLAIM>",
+  "rounds_run": "<state.round>",
+  "convergence": "<the convergence note recorded in [3d], e.g. 'attack-drought convergence on round 2' or 'hit max rounds (3)'>",
+  "state": {
+    "findings": "<full state.findings — every entry, all statuses included>",
+    "attacks": "<full state.attacks>"
+  }
+}
+```
+
+Then spawn the judge — a **single** `Agent` call (not parallel; there is exactly one judge):
+
+- `subagent_type: "judge"`
+- `description: "Adjudicate debate"`
+- `prompt`:
+
+  ```
+  Read the input JSON at <INPUT_PATH> and follow your instructions. Write your verdict JSON to <OUTPUT_PATH>.
+
+  INPUT_PATH:  <TMP>/judge-in.json
+  OUTPUT_PATH: <TMP>/verdict.json
+  ```
+
+  Substitute `<TMP>` with the actual value before issuing the call.
+
+After the call returns, Read `$TMP/verdict.json`. It contains `{ "winner", "margin", "rationale", "crux", "decider" }` — hold it in context for the report. If the file is missing or malformed, render the report without a verdict block and note `_Verdict unavailable — judge did not return._` in its place rather than erroring out.
+
+---
+
+## [5/6] Render the report (inline, no file write)
+
+Read the final `$TMP/state.json` and the verdict at `$TMP/verdict.json`. Render the report to chat in this exact shape (markdown). Omit empty tables — if a section has no entries, write `_(none)_` instead of an empty table.
 
 ```markdown
 # Debate: <CLAIM>
 
-_<N rounds run> — <converged on round R | hit max rounds (5)>_
+_<N rounds run> — <converged on round R | hit max rounds (3)>_
+
+## Verdict
+
+**<Pro wins | Con wins | Genuine toss-up> (<margin>)** — <rationale>
+
+- **Crux:** <crux>
+- **What would settle it:** <decider>
 
 ## Summary
 
@@ -284,6 +330,12 @@ Pro surviving: **<A>** · Con surviving: **<B>** · Negated: **<K>** · Disputed
 - ...
 ```
 
+Notes on the verdict:
+
+- Map `winner` to the label: `pro` → `Pro wins`, `con` → `Con wins`, `toss-up` → `Genuine toss-up`.
+- For a `toss-up` winner, render just `**Genuine toss-up** — <rationale>` (drop the `(<margin>)` suffix); the margin field will also read `toss-up` and is redundant in the heading.
+- The Verdict is the answer the user came for — render it verbatim from `verdict.json`, do not soften a decisive call into a hedge or invent a tie the judge did not return. `Crux` and `What would settle it` are always present.
+
 Notes on the trace:
 
 - Group bullets by the round the **attack** landed (not the round the response was filed). One bullet per attack.
@@ -295,7 +347,7 @@ End the orchestrator's chat output with the report. Do not narrate the merge log
 
 ---
 
-## [5/5] Cleanup
+## [6/6] Cleanup
 
 After the report is rendered, remove the scratch dir. Defensive check: only `rm -rf` paths whose basename starts with `debate-` (the prefix you created):
 
@@ -346,4 +398,4 @@ Three convergence signals trigger early exit (see step [3d] for the procedural f
 2. **Mutual convergence** — a full round produces zero new attacks and zero new defenses across both sides. Nothing more to say.
 3. **One-sided exhaustion** — one side produces zero attacks and zero defenses for two consecutive rounds. The other side may still be active, but the silent side has no live targets and no undefended attacks of its own to address, so the structural outcome is decided. The two-round threshold avoids false exits on a single tactical pause.
 
-The 5-round hard cap exists as a safety net; all three convergence paths above are the expected exits.
+The 3-round hard cap exists as a safety net; all three convergence paths above are the expected exits, and a well-matched debate typically converges on round 1 or 2.
