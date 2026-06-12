@@ -29,7 +29,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 Install only the plugins you want — each is independent.
 
-Three additional hook-only plugins ship no slash command: `tool-discipline` (durable `PreToolUse` guardrails — no-cd-chaining, prefer-builtin-tools), `tool-discipline-lsp` (the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry when `workspaceSymbol` returns empty), and `grep-glob-fallback` (temporary ToolSearch shim for the Grep/Glob outage, deletable once those tools are restored).
+Two additional hook-only plugins ship no slash command: `tool-discipline` (`PreToolUse` guardrails — no-cd-chaining, prefer-builtin-tools, plus a conditional ToolSearch shim that redirects Grep/Glob loads to the embedded Bash search on native builds that dropped those tools and self-disables elsewhere) and `tool-discipline-lsp` (the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry when `workspaceSymbol` returns empty).
 
 ## Using the plugins
 

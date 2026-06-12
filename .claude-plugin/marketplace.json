@@ -97,8 +97,8 @@
     {
       "name": "tool-discipline",
       "source": "./plugins/tool-discipline",
-      "description": "PreToolUse guardrails: block cd-chaining and prefer built-in Read/Write/Edit over cat/head/tail/sed",
-      "version": "0.4.0",
+      "description": "PreToolUse guardrails: block cd-chaining, prefer built-in Read/Write/Edit over cat/head/tail/sed, and conditionally redirect ToolSearch loads of Grep/Glob to the embedded ripgrep/ugrep/bfs Bash search on native builds that dropped them (self-disabling elsewhere)",
+      "version": "0.5.0",
       "category": "guardrails"
     },
     {
@@ -106,13 +106,6 @@
       "source": "./plugins/tool-discipline-lsp",
       "description": "LSP navigation guardrails: push Go/TS symbol searches to the LSP tool (PreToolUse), plus a PostToolUse advisory nudging a retry when workspaceSymbol returns empty",
       "version": "0.1.0",
-      "category": "guardrails"
-    },
-    {
-      "name": "grep-glob-fallback",
-      "source": "./plugins/grep-glob-fallback",
-      "description": "Redirects ToolSearch loads of Grep/Glob to the embedded ripgrep/ugrep/bfs Bash search that replaced them on native builds (CC 2.1.117+, ToolSearch catalog gap #52121/#61845); self-disables on builds that still ship the tools",
-      "version": "0.2.0",
       "category": "guardrails"
     }
   ]

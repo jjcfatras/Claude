@@ -13,6 +13,15 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/enforce-builtin-tools.sh"
           }
         ]
+      },
+      {
+        "matcher": "ToolSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/toolsearch-grep-glob.sh"
+          }
+        ]
       }
     ]
   }

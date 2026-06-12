@@ -1,5 +1,5 @@
 #!/bin/bash
-# plugins/grep-glob-fallback/hooks/toolsearch-grep-glob.sh
+# plugins/tool-discipline/hooks/toolsearch-grep-glob.sh
 # Since Claude Code 2.1.117, native macOS/Linux builds remove the Grep/Glob
 # tools by design: their engines are embedded in the claude multi-call binary
 # and exposed in the Bash tool as shell functions — rg → embedded ripgrep,

@@ -1,9 +1,17 @@
 {
   "name": "tool-discipline",
-  "version": "0.4.0",
-  "description": "PreToolUse guardrails that steer the agent toward the right tool: block cd-chaining in Bash (run with absolute paths) and prefer built-in Read/Write/Edit over cat/head/tail/sed",
+  "version": "0.5.0",
+  "description": "PreToolUse guardrails that steer the agent toward the right tool: block cd-chaining in Bash (run with absolute paths), prefer built-in Read/Write/Edit over cat/head/tail/sed, and (conditionally) redirect ToolSearch loads of Grep/Glob to the embedded ripgrep/ugrep/bfs Bash search on native builds that dropped those tools — self-disabling where Grep/Glob still ship",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",
-  "keywords": ["hooks", "tool-use", "bash", "guardrails"]
+  "keywords": [
+    "hooks",
+    "tool-use",
+    "bash",
+    "guardrails",
+    "toolsearch",
+    "grep",
+    "glob"
+  ]
 }
