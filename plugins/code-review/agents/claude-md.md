@@ -1,7 +1,7 @@
 ---
 name: claude-md
 description: CLAUDE.md compliance specialist for /code-review. Verifies the diff follows project-specific guidance documented in CLAUDE.md files (root and nested). Conditional specialist; spawned by the /code-review orchestrator when any changed file has a CLAUDE.md ancestor.
-tools: Read, Grep, Glob, Bash, Write, mcp__plugin_github_github__get_file_contents, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Bash, Write
 model: sonnet
 color: pink
 ---
@@ -44,7 +44,7 @@ CLAUDE.md is guidance for _writing_ code. Most rules apply at code-review time, 
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/claude-md.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-Schema is in the rubric. Required: `specialist: "claude-md"`, `scan_status` (`"complete"` or `"timed_out"`), `findings` (array, may be empty). Each finding requires `id`, `category`, `file`, `line`, `confidence`, `severity` (`"Critical"`/`"Medium"`/`"Minor"`), `rationale`, `explanation`, `code`, `language`, and `suggested_fix` (string with the replacement code when the finding has a concrete code-level fix; `null` only for structural/conceptual findings where no single-snippet replacement applies). When `suggested_fix` spans multiple lines, also set `startLine` to the first line of the replaced range — `line` must remain the last line. Every finding's `explanation` must include the verbatim CLAUDE.md sentence and the file path it came from.
+The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "claude-md"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty. Every finding's `explanation` must include the verbatim CLAUDE.md sentence and the file path it came from.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line in the CLAUDE.md-touched file, `Read` the file at HEAD_SHA to locate the relevant line, or omit the finding entirely.
 

@@ -16,6 +16,11 @@ type PriorIssue struct {
 	IsResolved      bool   `json:"is_resolved"`
 	IsOutdated      bool   `json:"is_outdated"`
 	AuthorDismissed bool   `json:"author_dismissed"`
+	// Fingerprint is the 12-hex id extracted from this plugin's hidden
+	// `<!-- cr-finding id="…" -->` marker (skill step 1c). When present it is
+	// the highest-precision match signal: it pins identity to file+line+category
+	// exactly, so two distinct findings within the ±5 line window don't false-match.
+	Fingerprint string `json:"fingerprint"`
 }
 
 type PriorIssuesFile struct {
@@ -76,8 +81,12 @@ func PriorReview(in []findings.Finding, prior PriorIssuesFile, isAdded addedLine
 // (caller pre-filters by path). When a match is found the matched PriorIssue
 // is returned so the caller can consult its dismissal flags.
 func matchPrior(finding findings.Finding, sameFile []PriorIssue) (*PriorIssue, bool) {
+	findingFP := findings.Fingerprint(finding.File, finding.Line, finding.Category)
 	for i := range sameFile {
 		priorIssue := &sameFile[i]
+		if priorIssue.Fingerprint != "" && priorIssue.Fingerprint == findingFP {
+			return priorIssue, true
+		}
 		if priorIssue.Line != 0 && intmath.Abs(priorIssue.Line-finding.Line) <= priorLineWindow {
 			return priorIssue, true
 		}

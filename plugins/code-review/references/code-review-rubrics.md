@@ -28,6 +28,8 @@ Calibrate every finding by working through these questions. They drive the score
 
 When unsure between two levels, pick the lower one.
 
+> **Gate note:** the post-processing gate (`internal/gates/filter.go`) keeps everything with confidence ≥ 75, keeps confidence 50–74 only when severity is Critical or Medium, and drops everything below 50. A **Minor** finding scored 50–74 is therefore dropped before posting — don't spend budget emitting Minor findings below 75; they never reach the reviewer.
+
 ## Severity scale
 
 - 🔴 **Critical** — Security vulnerabilities, authorization bypasses, data loss risks, crashes in common paths
@@ -176,6 +178,6 @@ These apply to every `code-review-*` specialist in addition to the workflow abov
 
 ## Verifying claims with Context7
 
-When a finding's validity hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before finalizing. Call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs`. If docs contradict or don't support the flagged behavior, drop the finding or score it low.
+Context7 is granted only to the `security`, `perf`, `typescript`, and `react` specialists — the roles whose findings most often hinge on external library behavior. If you are one of those and a finding's validity hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before finalizing. Call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs`. If docs contradict or don't support the flagged behavior, drop the finding or score it low. If you are a specialist **without** the Context7 tools and a finding hinges on library behavior you can't otherwise verify, lower its confidence rather than asserting — don't attempt the call.
 
 Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.

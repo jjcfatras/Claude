@@ -110,6 +110,44 @@ func TestPriorReview_Resolved_DropsEvenOnAddedLine(t *testing.T) {
 	}
 }
 
+func TestPriorReview_FingerprintMatch(t *testing.T) {
+	// The fingerprint arm matches on exact file+line+category identity (recovered
+	// from the hidden marker) even when the line is far off and neither snippet
+	// nor description overlaps — the highest-precision dedup signal.
+	in := []findings.Finding{
+		mkFinding("a", "security", "security", "src/x.ts", 900, 80, findings.SeverityMedium, "fresh wording", "fresh code"),
+	}
+	fp := findings.Fingerprint("src/x.ts", 900, "security")
+	prior := PriorIssuesFile{
+		Issues: []PriorIssue{
+			{Path: "src/x.ts", Line: 12, Snippet: "nothing alike", Description: "totally unrelated", Fingerprint: fp},
+		},
+	}
+	isAdded := func(_ string, _ int) bool { return false }
+	kept, dropped := PriorReview(in, prior, isAdded)
+	if len(kept) != 0 || len(dropped) != 1 {
+		t.Fatalf("kept=%d dropped=%d (fingerprint should match)", len(kept), len(dropped))
+	}
+}
+
+func TestPriorReview_FingerprintMismatch_NoFalseMatch(t *testing.T) {
+	// A non-empty but different fingerprint must not match when line is far off
+	// and there is no snippet/description overlap.
+	in := []findings.Finding{
+		mkFinding("a", "security", "security", "src/x.ts", 900, 80, findings.SeverityMedium, "fresh wording", "fresh code"),
+	}
+	prior := PriorIssuesFile{
+		Issues: []PriorIssue{
+			{Path: "src/x.ts", Line: 12, Snippet: "nothing alike", Description: "totally unrelated", Fingerprint: "deadbeef0000"},
+		},
+	}
+	isAdded := func(_ string, _ int) bool { return false }
+	kept, dropped := PriorReview(in, prior, isAdded)
+	if len(kept) != 1 || len(dropped) != 0 {
+		t.Fatalf("kept=%d dropped=%d (different fingerprint, far line, no overlap — should keep)", len(kept), len(dropped))
+	}
+}
+
 func TestPriorReview_NoMatch_KeepsAll(t *testing.T) {
 	in := []findings.Finding{
 		mkFinding("a", "security", "security", "src/x.ts", 50, 80, findings.SeverityMedium, "totally different topic", "code"),

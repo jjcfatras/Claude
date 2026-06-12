@@ -1,6 +1,6 @@
 ---
 description: Multi-specialist code review of a pull request. Spawns parallel subagents (security, quality, errors, perf, plus conditional typescript/react/infra), consolidates findings via the bundled Go helper, and posts inline review comments via gh.
-argument-hint: [pr-number]
+argument-hint: [pr-number] [--auto|--dry-run]
 disable-model-invocation: false
 model: sonnet
 effort: medium
@@ -15,13 +15,17 @@ A "stop" includes harness-side Agent rejections. If any `Agent` call returns a m
 
 All agents in this plugin are namespaced under `code-review:` — use the fully-qualified form for every `subagent_type` value (`code-review:security`, `code-review:quality`, etc.). The unqualified bare names are not registered and will fail with "Agent type not found".
 
-The user passes the PR number as `$ARGUMENTS`. If it is empty or not a positive integer, report the error and stop.
+The user passes the PR number as `$ARGUMENTS`, optionally followed by a posting-mode flag. Parse `$ARGUMENTS` as whitespace-separated tokens:
+
+- The first positive-integer token is `PR_NUMBER`. If no such token exists, report the error and stop.
+- `POST_MODE` — `auto` if a `--auto` token is present (post all eligible findings without prompting; for CI / unattended runs), `dry-run` if `--dry-run` is present (run the full review but never post), otherwise `interactive` (the default — prompt before posting). If both flags are present, `--dry-run` wins.
 
 ## Variables to derive at startup
 
 Resolve once and reuse:
 
-- `PR_NUMBER` — from `$ARGUMENTS`.
+- `PR_NUMBER` — from `$ARGUMENTS` (first positive-integer token, per the parse rule above).
+- `POST_MODE` — `auto` / `dry-run` / `interactive`, per the parse rule above.
 - `EPOCH` — `date +%s`.
 - `TMP` — scratch dir at `${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-${EPOCH}`. Create with `mkdir -p "$TMP/findings"`.
 - `REPO_ROOT` — `git rev-parse --show-toplevel`.
@@ -37,7 +41,7 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 Run sequentially (each as a separate Bash call — don't chain with `&&`). Independent calls (e.g., `gh pr view` and `gh pr diff` — both depend only on `PR_NUMBER` and `TMP`, not on each other's output) may be emitted in the same model turn; calls that read variables from a previous result (e.g., the jq `OWNER`/`REPO` extraction below, which needs `pr-meta.json` already on disk) must wait for the earlier call to complete:
 
 ```bash
-gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName,author > "$TMP/pr-meta.json"
+gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName,author,state > "$TMP/pr-meta.json"
 ```
 
 ```bash
@@ -53,6 +57,14 @@ REPO=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").r' "$
 jq -r '.author.login' "$TMP/pr-meta.json" > "$TMP/pr-author.txt"
 ```
 
+**Eligibility guard.** Abort early if the PR is not open — reviewing a merged/closed PR wastes specialist budget and risks posting to a finished thread. This guard reuses the fetch above (no extra API call); a second, immediately-before-posting re-check lives at the top of step [5/5] to catch a PR that changed state mid-review:
+
+```bash
+PR_STATE=$(jq -r '.state' "$TMP/pr-meta.json")
+```
+
+If `$PR_STATE` is not `OPEN`, report `PR #$PR_NUMBER is $PR_STATE — aborting` and stop (run Cleanup).
+
 Fetch prior Claude-Code review threads on this PR (used by the helper's prior-review dedup pass). Uses GraphQL `reviewThreads` so we get thread-level state (`isResolved`, `isOutdated`) and every reply — needed to detect when the PR author has already dismissed a finding as a false positive. The REST `pulls/{n}/reviews/{rid}/comments` endpoint does not expose any of that.
 
 Fetch all review threads in one GraphQL call. The first-page cap is 50 threads × 50 comments, which is well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. We embed the GraphQL variables via `-F` (typed) for `pr` and `-f` for strings:
@@ -61,10 +73,10 @@ Fetch all review threads in one GraphQL call. The first-page cap is 50 threads �
 gh api graphql -F owner="$OWNER" -F repo="$REPO" -F pr="$PR_NUMBER" -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:50){nodes{id isResolved isOutdated comments(first:50){nodes{databaseId author{login} body path line originalLine originalStartLine}}}}}}}' > "$TMP/review-threads.json"
 ```
 
-Then project to the helper's `PriorIssuesFile` shape — only threads whose first comment is a `/code-review` finding count. The filter keys off the per-finding header format `... (Confidence: NN/100) - ...` emitted by `internal/render/issue.go` (which is unique to this plugin's output); the older "Claude Code" / "Generated with Claude" marker lives only on the review _summary_, not on inline-comment bodies. `author_dismissed` is true when any reply (comments after the first) is authored by the PR author. `line` falls back to `originalLine` when GitHub couldn't re-anchor:
+Then project to the helper's `PriorIssuesFile` shape — only threads whose first comment is a `/code-review` finding count. The filter keys off the hidden `<!-- cr-finding id="…" -->` marker that `internal/render/issue.go` embeds in every finding body — a stable machine identity that survives any change to the rendered header wording. (The previous filter keyed on the human `(Confidence: NN/100)` header, which silently broke dedup whenever that text changed.) It extracts the `fingerprint` (for the helper's exact-match dedup arm) and a base64 `snippet`, decoded for the snippet-overlap arm. `author_dismissed` is true when any reply (comments after the first) is authored by the PR author. `line` falls back to `originalLine` when GitHub couldn't re-anchor:
 
 ```bash
-jq --arg pr_author "$(cat "$TMP/pr-author.txt")" '{issues: [.data.repository.pullRequest.reviewThreads.nodes[] | . as $t | ($t.comments.nodes[0]) as $first | select(($first.body // "") | test("\\(Confidence: [0-9]+/100\\)")) | {path: ($first.path // ""), line: ($first.line // $first.originalLine // 0), start_line: ($first.originalStartLine // 0), snippet: "", description: $first.body, is_resolved: $t.isResolved, is_outdated: $t.isOutdated, author_dismissed: any($t.comments.nodes[1:][]?; .author.login == $pr_author)}]}' "$TMP/review-threads.json" > "$TMP/prior-issues.json"
+jq --arg pr_author "$(cat "$TMP/pr-author.txt")" '{issues: [.data.repository.pullRequest.reviewThreads.nodes[] | . as $t | ($t.comments.nodes[0]) as $first | ($first.body // "") as $body | select($body | test("<!-- cr-finding id=")) | {path: ($first.path // ""), line: ($first.line // $first.originalLine // 0), start_line: ($first.originalStartLine // 0), fingerprint: (($body | capture("<!-- cr-finding id=\"(?<fp>[a-f0-9]+)\"") // {fp:""}) | .fp), snippet: (($body | capture("snippet64=\"(?<s>[A-Za-z0-9+/=]*)\"") // {s:""}) | .s | if . == "" then "" else (. | @base64d) end), description: $body, is_resolved: $t.isResolved, is_outdated: $t.isOutdated, author_dismissed: any($t.comments.nodes[1:][]?; .author.login == $pr_author)}]}' "$TMP/review-threads.json" > "$TMP/prior-issues.json"
 ```
 
 If the PR has no prior Claude-Code reviews, the `select(...)` filter yields zero rows and the jq still emits `{"issues": []}` — no special-case branch needed.
@@ -88,7 +100,7 @@ Compute the CLAUDE.md ancestor walk and the specialist roster. The helper encode
 Roster contents:
 
 - Always-on: `security`, `quality`, `errors`, `perf`.
-- Conditional: `typescript` (`.ts/.tsx/.cts/.mts`), `react` (`.tsx/.jsx`), `infra` (`.sql`, `migrations/`, `db/migrations/`, `.tf`, `.hcl`, `terraform/`, `Dockerfile`, `docker-compose`, `k8s/`, `kubernetes/`, `helm/`, `deploy/`, `infra(structure)?/`), `claude-md` (any `CLAUDE.md` ancestor of a changed file exists at `$REPO_ROOT`).
+- Conditional: `typescript` (`.ts/.tsx/.cts/.mts`, plus `tsconfig*.json`/`jsconfig.json` and framework/bundler configs), `react` (`.tsx/.jsx`, plus framework/bundler configs), `infra` (`.sql`, `migrations/`, `db/migrations/`, `.tf`, `.hcl`, `terraform/`, `Dockerfile`, `docker-compose`/`compose.yml`, `k8s/`, `kubernetes/`, `helm/`, `deploy/`, `infra(structure)?/`, `.github/workflows/`, `Jenkinsfile`, `.circleci/`, `.buildkite/`), `claude-md` (any `CLAUDE.md` ancestor of a changed file exists at `$REPO_ROOT`). Framework/bundler configs = `{next,vite,nuxt,webpack,rollup,esbuild,babel}.config.{js,mjs,cjs,ts,mts,cts}`, `babel.config.json`, `.babelrc` — these feed both `typescript` and `react`.
 
 Read `$TMP/roster.json` to know which specialists you'll spawn.
 
@@ -166,7 +178,11 @@ jq -r '
 
 The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). Without this, drops are silent.
 
-Then call the **AskUserQuestion** tool to get permission to post. Use a single question (`multiSelect: false`) with header `Post review`, a question naming the counts (e.g. "Post N inline + M summary-only finding(s) to PR #<PR_NUMBER>?"), and two options:
+Then branch on `POST_MODE` (derived at startup):
+
+- `dry-run` → **do not post and do not prompt.** Report the would-post counts (inline-eligible + summary-only) and proceed straight to Cleanup. Do not call AskUserQuestion.
+- `auto` → **post without prompting.** Skip the AskUserQuestion call and proceed to step [5/5] exactly as if the user had chosen `Post all`.
+- `interactive` (default) → call the **AskUserQuestion** tool to get permission to post. Use a single question (`multiSelect: false`) with header `Post review`, a question naming the counts (e.g. "Post N inline + M summary-only finding(s) to PR #<PR_NUMBER>?"), and two options:
 
 - `Post all` — "Post every eligible finding as inline comments plus the review summary."
 - `Skip` — "Skip posting and proceed to cleanup."
@@ -183,7 +199,13 @@ If the user supplied a finding-ID subset, re-run finalize with the same flags pl
 
 ## [5/5] Post review or skip
 
-If the user chose `Skip`, skip to cleanup. Otherwise post via `gh api` with a three-tier fallback (the same pattern `src/helpers/post-review.ts` implemented in code-review-AT).
+If the user chose `Skip` (or `POST_MODE` was `dry-run`), skip to cleanup. Otherwise, first re-confirm the PR is still open — it may have been merged or closed while specialists ran:
+
+```bash
+gh pr view "$PR_NUMBER" --json state --jq '.state'
+```
+
+If the result is not `OPEN`, report `PR #$PR_NUMBER is now <state> — skipping post` and proceed to Cleanup (do not post to a finished PR). Otherwise post via `gh api` with a three-tier fallback (the same pattern `src/helpers/post-review.ts` implemented in code-review-AT).
 
 **Tier 1 — single-shot review with batched comments:**
 

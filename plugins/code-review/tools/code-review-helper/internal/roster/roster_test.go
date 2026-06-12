@@ -48,8 +48,13 @@ func TestBuild_InfraVariants(t *testing.T) {
 		"k8s/ns.yaml":                "k8s dir",
 		"helm/chart/values.yaml":     "helm dir",
 		"docker-compose.yml":         "docker-compose",
+		"compose.yaml":               "compose.yaml",
 		"build/Dockerfile.prod":      "Dockerfile prefix",
 		"kubernetes/cluster/svc.yml": "kubernetes dir",
+		".github/workflows/ci.yml":   "github actions workflow",
+		"Jenkinsfile":                "jenkins",
+		".circleci/config.yml":       "circleci",
+		".buildkite/pipeline.yml":    "buildkite",
 	}
 	for p, label := range cases {
 		got := Build([]string{p}, 0)
@@ -61,6 +66,43 @@ func TestBuild_InfraVariants(t *testing.T) {
 		}
 		if !hasInfra {
 			t.Errorf("%s (%s) did not produce infra role; got %v", p, label, got)
+		}
+	}
+}
+
+func TestBuild_ConfigFileTriggers(t *testing.T) {
+	// Config files that govern TS compilation or framework/bundler builds but
+	// carry no .ts/.tsx/.jsx extension — previously these fell through to the
+	// always-on roster only (the con-5 routing gap).
+	cases := []struct {
+		file      string
+		wantTS    bool
+		wantReact bool
+	}{
+		{"tsconfig.json", true, false},
+		{"tsconfig.base.json", true, false},
+		{"packages/web/jsconfig.json", true, false},
+		{"next.config.js", true, true},
+		{"vite.config.ts", true, true}, // also matches the .ts extension
+		{"webpack.config.mjs", true, true},
+		{"babel.config.json", true, true},
+		{".babelrc", true, true},
+		{"README.md", false, false},
+	}
+	for _, c := range cases {
+		got := Build([]string{c.file}, 0)
+		hasTS, hasReact := false, false
+		for _, r := range got {
+			switch r {
+			case "typescript":
+				hasTS = true
+			case "react":
+				hasReact = true
+			}
+		}
+		if hasTS != c.wantTS || hasReact != c.wantReact {
+			t.Errorf("%s: got typescript=%v react=%v; want typescript=%v react=%v (roster %v)",
+				c.file, hasTS, hasReact, c.wantTS, c.wantReact, got)
 		}
 	}
 }

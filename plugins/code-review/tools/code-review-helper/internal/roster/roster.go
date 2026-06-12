@@ -18,9 +18,17 @@ import (
 var alwaysOn = []string{"security", "quality", "errors", "perf"}
 
 var (
-	patTypescript = regexp.MustCompile(`(?i)\.(ts|tsx|cts|mts)$`)
+	// patTypescript matches TS sources and the TS/JS compiler-config files
+	// (tsconfig*.json, jsconfig.json) that govern compilation but carry no TS
+	// extension — those previously fell through to the always-on roster only.
+	patTypescript = regexp.MustCompile(`(?i)(\.(ts|tsx|cts|mts)$|(^|/)tsconfig[^/]*\.json$|(^|/)jsconfig\.json$)`)
 	patReact      = regexp.MustCompile(`(?i)\.(tsx|jsx)$`)
-	patInfra      = regexp.MustCompile(`(?i)(\.sql$|(^|/)migrations/|(^|/)db/migrations/|\.tf$|\.hcl$|(^|/)terraform/|(^|/)Dockerfile|(^|/)docker-compose|(^|/)k8s/|(^|/)kubernetes/|(^|/)helm/|(^|/)deploy/|(^|/)infra(structure)?/)`)
+	patInfra      = regexp.MustCompile(`(?i)(\.sql$|(^|/)migrations/|(^|/)db/migrations/|\.tf$|\.hcl$|(^|/)terraform/|(^|/)Dockerfile|(^|/)docker-compose|(^|/)compose\.ya?ml$|(^|/)k8s/|(^|/)kubernetes/|(^|/)helm/|(^|/)deploy/|(^|/)infra(structure)?/|(^|/)\.github/workflows/|(^|/)Jenkinsfile|(^|/)\.circleci/|(^|/)\.buildkite/)`)
+	// patFrameworkConfig matches build/bundler config files that affect both the
+	// TypeScript build and the React/bundler surface but match neither extension
+	// pattern (e.g. next.config.js, vite.config.ts, babel.config.json, .babelrc).
+	// It feeds both the typescript and react conditionals.
+	patFrameworkConfig = regexp.MustCompile(`(?i)((^|/)(next|vite|nuxt|webpack|rollup|esbuild|babel)\.config\.(js|mjs|cjs|ts|mts|cts)$|(^|/)babel\.config\.json$|(^|/)\.babelrc$)`)
 )
 
 // ClaudeMdFiles returns the deduplicated set of repo-relative CLAUDE.md
@@ -68,10 +76,11 @@ func ClaudeMdFiles(changedFiles []string, repoRoot string) ([]string, error) {
 // typescript, react, infra, claude-md in that order.
 func Build(changedFiles []string, claudeMdCount int) []string {
 	roster := append([]string(nil), alwaysOn...)
-	if anyMatch(changedFiles, patTypescript) {
+	frameworkConfig := anyMatch(changedFiles, patFrameworkConfig)
+	if anyMatch(changedFiles, patTypescript) || frameworkConfig {
 		roster = append(roster, "typescript")
 	}
-	if anyMatch(changedFiles, patReact) {
+	if anyMatch(changedFiles, patReact) || frameworkConfig {
 		roster = append(roster, "react")
 	}
 	if anyMatch(changedFiles, patInfra) {

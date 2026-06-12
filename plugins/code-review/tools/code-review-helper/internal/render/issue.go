@@ -3,6 +3,7 @@
 package render
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -35,6 +36,14 @@ func Issue(finding findings.Finding, opt IssueOptions) string {
 	fmt.Fprintf(&b, "%s **%s** (Confidence: %d/100) - %s\n\n",
 		finding.Severity.Emoji(), finding.Severity, finding.Confidence, brief)
 
+	// Hidden machine marker. Invisible on GitHub; the prior-review dedup pass
+	// selects this plugin's own comments by this marker (not by any rendered
+	// prose), and recovers a comparison snippet from snippet64. See
+	// internal/findings.Fingerprint and internal/dedup.matchPrior.
+	fmt.Fprintf(&b, "<!-- cr-finding id=\"%s\" snippet64=\"%s\" -->\n\n",
+		findings.Fingerprint(finding.File, finding.Line, finding.Category),
+		encodeSnippet(finding.Code))
+
 	if finding.Explanation == "" {
 		fmt.Fprint(&b, "**Issue & impact:** _(no explanation provided)_\n\n")
 	} else {
@@ -52,6 +61,19 @@ func Issue(finding findings.Finding, opt IssueOptions) string {
 	}
 
 	return b.String()
+}
+
+// encodeSnippet base64-encodes a bounded, UTF-8-safe prefix of the finding's
+// code so the prior-review dedup pass can recover a comparison snippet from the
+// hidden marker without parsing the rendered code fence. Bounded to keep the
+// marker small; base64 keeps `-->` and newlines out of the comment body.
+func encodeSnippet(code string) string {
+	const maxSnippetBytes = 256
+	if len(code) > maxSnippetBytes {
+		code = code[:maxSnippetBytes]
+	}
+	code = strings.ToValidUTF8(code, "")
+	return base64.StdEncoding.EncodeToString([]byte(code))
 }
 
 func briefDescription(finding findings.Finding) string {

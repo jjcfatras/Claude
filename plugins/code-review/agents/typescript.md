@@ -1,7 +1,7 @@
 ---
 name: typescript
 description: TypeScript type-safety specialist for /code-review. Reviews PR diffs for type narrowing, any/unknown usage, generic constraints, null/undefined safety, discriminated unions, and as-assertion safety. Conditional specialist; spawned by the /code-review orchestrator when the diff touches .ts/.tsx/.cts/.mts files.
-tools: Read, Grep, Glob, Bash, Write, mcp__plugin_github_github__get_file_contents, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Bash, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
 color: blue
 ---
@@ -81,7 +81,7 @@ For runtime checks at boundaries, use a user-defined type guard rather than a ca
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/typescript.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-Schema is in the rubric. Required: `specialist: "typescript"`, `scan_status` (`"complete"` or `"timed_out"`), `findings` (array, may be empty). Each finding requires `id`, `category`, `file`, `line`, `confidence`, `severity` (`"Critical"`/`"Medium"`/`"Minor"`), `rationale`, `explanation`, `code`, `language`, and `suggested_fix` (string with the replacement code when the finding has a concrete code-level fix; `null` only for structural/conceptual findings where no single-snippet replacement applies). When `suggested_fix` spans multiple lines, also set `startLine` to the first line of the replaced range — `line` must remain the last line.
+The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "typescript"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, `Read` the file at HEAD_SHA to locate it (the working tree is the HEAD checkout), or omit the finding entirely.
 

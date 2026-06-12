@@ -1,6 +1,7 @@
 package render
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -46,6 +47,37 @@ func TestIssue_FullFormat(t *testing.T) {
 	}
 	if strings.Contains(out, "**src/auth/handler.ts:") {
 		t.Errorf("default render should NOT include path prefix")
+	}
+}
+
+func TestIssue_EmitsHiddenMarker(t *testing.T) {
+	// The dedup pass keys on this hidden marker (not on any rendered prose), so
+	// the fingerprint must be present and the snippet64 must base64-decode to a
+	// prefix of the finding's code.
+	finding := sample()
+	out := Issue(finding, IssueOptions{})
+
+	wantFP := findings.Fingerprint(finding.File, finding.Line, finding.Category)
+	if !strings.Contains(out, "<!-- cr-finding id=\""+wantFP+"\" snippet64=\"") {
+		t.Errorf("expected hidden marker with fingerprint %s, got:\n%s", wantFP, out)
+	}
+
+	const key = "snippet64=\""
+	start := strings.Index(out, key)
+	if start < 0 {
+		t.Fatal("no snippet64 in marker")
+	}
+	rest := out[start+len(key):]
+	end := strings.Index(rest, "\"")
+	if end < 0 {
+		t.Fatal("unterminated snippet64")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(rest[:end])
+	if err != nil {
+		t.Fatalf("snippet64 is not valid base64: %v", err)
+	}
+	if !strings.HasPrefix(finding.Code, string(decoded)) {
+		t.Errorf("decoded snippet %q is not a prefix of code %q", decoded, finding.Code)
 	}
 }
 
