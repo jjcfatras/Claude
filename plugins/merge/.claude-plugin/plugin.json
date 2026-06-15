@@ -1,9 +1,0 @@
-{
-  "name": "merge",
-  "version": "1.0.2",
-  "description": "Merge a source branch into the current branch with conflict resolution",
-  "author": { "name": "jjcfatras" },
-  "repository": "https://github.com/jjcfatras/Claude",
-  "license": "MIT",
-  "keywords": ["git", "merge", "conflict-resolution"]
-}

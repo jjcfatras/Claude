@@ -1,9 +1,0 @@
-{
-  "name": "cherry-pick",
-  "version": "1.0.2",
-  "description": "Cherry-pick commits from another branch with conflict resolution",
-  "author": { "name": "jjcfatras" },
-  "repository": "https://github.com/jjcfatras/Claude",
-  "license": "MIT",
-  "keywords": ["git", "cherry-pick", "conflict-resolution"]
-}
