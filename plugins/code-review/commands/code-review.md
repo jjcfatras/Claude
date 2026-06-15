@@ -3,7 +3,7 @@ description: Multi-specialist code review of a pull request. Spawns parallel sub
 argument-hint: [pr-number] [--auto|--dry-run]
 disable-model-invocation: false
 model: sonnet
-effort: medium
+effort: high
 allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
 ---
 
@@ -11,7 +11,7 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
 
 You are the orchestrator for /code-review. Execute the numbered steps below in order. Report progress with one short line per step (e.g. `[1/5] Fetching PR #42…`). Surface every command failure verbatim and stop — do not invent workarounds.
 
-A "stop" includes harness-side Agent rejections. If any `Agent` call returns a message containing `"user doesn't want to proceed"` or `"tool use was rejected"`, treat it as a fatal stop: do not retry, do not continue spawning further specialists. Report which subagent was denied, then jump to **Cleanup** (which always runs, regardless of whether the workflow finished normally).
+A "stop" includes harness-side Agent rejections. All specialists are spawned together in a single message (see [3b/5]), so a rejection means the harness denied one block of an already-issued batch — it is **not** a cue to issue the remaining specialists one at a time. If any `Agent` call returns a message containing `"user doesn't want to proceed"` or `"tool use was rejected"`, treat it as a fatal stop: do not retry, abandon the finalize/post phase. Report which subagent was denied, then jump to **Cleanup** (which always runs, regardless of whether the workflow finished normally).
 
 All agents in this plugin are namespaced under `code-review:` — use the fully-qualified form for every `subagent_type` value (`code-review:security`, `code-review:quality`, etc.). The unqualified bare names are not registered and will fail with "Agent type not found".
 
@@ -128,19 +128,21 @@ All three files must exist before specialists run.
 
 Read `$TMP/spawn-manifest.json` in a **single** `Read` call (or, if you must use the shell, one `jq -c '.[]'` invocation). Do not inspect it field-by-field across multiple Bash calls — no per-entry `jq '.[N].prompt'`, no `subagent_type` listing, no `head` preview. The manifest is forwarded verbatim, so printing individual fields first buys nothing and adds a round-trip per entry. It contains one object per roster entry, each with three pre-rendered fields: `subagent_type`, `description`, `prompt`. Emit one `Agent` `tool_use` block per entry, **all as sibling blocks in this single assistant message**. Forward each object's three fields verbatim — do not modify, truncate, summarize, or skip any entry. The manifest is the ground truth; if it has N entries your message must contain N `Agent` blocks.
 
-Schematic — `N` here equals the manifest length, which equals the roster length:
+**Do NOT emit one `Agent` block, wait for its result, then emit the next.** That runs the specialists sequentially and is the exact bug this step exists to prevent. Every block belongs in THIS one message — the harness then runs them concurrently and their results return together. The manifest is not a to-do list to work through turn by turn; it is the complete set of sibling blocks for a single message.
+
+Schematic — every manifest entry becomes one sibling `Agent` block inside the same message (not one block per turn):
 
 ```
-<single assistant message containing N tool_use blocks>
-  Agent(subagent_type=manifest[0].subagent_type, description=manifest[0].description, prompt=manifest[0].prompt)
-  Agent(subagent_type=manifest[1].subagent_type, description=manifest[1].description, prompt=manifest[1].prompt)
-  … one Agent block per remaining manifest entry …
+<single assistant message containing one Agent block per manifest entry>
+  Agent(subagent_type=…, description=…, prompt=…)   ← one manifest entry
+  Agent(subagent_type=…, description=…, prompt=…)   ← another manifest entry
+  … one more Agent block for every remaining entry, all in this same message …
 </single assistant message>
 ```
 
 After all Agent calls return, verify each role's findings file exists at `$TMP/findings/<role>.json`. Missing files are surfaced as `missing_roles` by the finalize step — don't retry them.
 
-On harness rejection: see top-of-file stop rule. Specialists whose findings files were written before the denial remain on disk but should not drive a post — abandon the finalize/post phase.
+On harness rejection: see top-of-file stop rule. Because the whole batch is issued at once, a denial of any one block aborts the run — any findings files already on disk are abandoned, not posted. Skip the finalize/post phase and jump to Cleanup.
 
 ---
 
