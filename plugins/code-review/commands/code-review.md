@@ -2,8 +2,8 @@
 description: Multi-specialist code review of a pull request. Spawns parallel subagents (security, quality, errors, perf, plus conditional typescript/react/infra), consolidates findings via the bundled Go helper, and posts inline review comments via gh.
 argument-hint: [pr-number] [--auto|--dry-run]
 disable-model-invocation: false
-model: sonnet
-effort: high
+model: opus
+effort: medium
 allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
 ---
 
