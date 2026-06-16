@@ -1,7 +1,7 @@
 {
   "name": "docs",
-  "version": "1.0.0",
-  "description": "Audit project documentation (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase — tech stack, paths, scripts, symbols — and report findings with suggested fixes",
+  "version": "1.1.0",
+  "description": "Maintain project documentation: /audit-docs verifies CLAUDE.md, READMEs, .claude/commands, .claude/skills, and architecture docs for stale claims about the codebase; /enrich-claude-md investigates the codebase for useful, non-obvious facts missing from CLAUDE.md or .claude/rules and proposes additions. Both report findings and offer to apply fixes per finding",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",
@@ -11,6 +11,11 @@
     "drift",
     "claude-md",
     "readme",
-    "consistency"
+    "consistency",
+    "enrich",
+    "context7"
+  ],
+  "dependencies": [
+    { "name": "context7", "marketplace": "claude-plugins-official" }
   ]
 }
