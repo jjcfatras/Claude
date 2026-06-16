@@ -18,7 +18,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                      | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                    |
 | `code-review-AT`    | `/code-review-AT [pr-number]`                                                                                      | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.                            |
 | `code-review`       | `/code-review [pr-number]`                                                                                         | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.                        |
-| `doc-audit`         | `/audit-docs`                                                                                                      | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes.                  |
+| `docs`              | `/audit-docs`                                                                                                      | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes.                  |
 | `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                   |
 | `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                                  |
 | `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                                               |
@@ -201,7 +201,7 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`git`, `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement`) do not need this flag.
+The other plugins (`git`, `test-driven-fix`, `respond-to-review`, `docs`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement`) do not need this flag.
 
 ### Building the helper from source
 
@@ -253,7 +253,7 @@ The repo also ships skills under `.claude/skills/`. These are **not** part of th
 .claude-plugin/marketplace.json                # marketplace manifest
 plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
-  commands/<file>.md                            # usually <plugin>.md; doc-audit ships audit-docs.md
+  commands/<file>.md                            # usually <plugin>.md; docs ships audit-docs.md
   agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
   src/, dist/, package.json, tsconfig.json      # code-review-AT only (SDK build)
 .claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)

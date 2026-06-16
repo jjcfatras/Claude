@@ -34,7 +34,7 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping thirteen plugins under `plugins/`:
 
-- `test-driven-fix`, `respond-to-review`, `doc-audit`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement` — single slash command each
+- `test-driven-fix`, `respond-to-review`, `docs`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement` — single slash command each
 - `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
 - `code-review-AT` — multi-agent review via Anthropic Agent SDK + agent teams; ships TypeScript source under `src/` (specialist agents at `src/agents/*.ts`), references, hooks, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`); builds to `dist/` via tsup
@@ -45,12 +45,12 @@ Per-plugin layout:
 ```
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
-  commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `doc-audit` ships `audit-docs.md`
+  commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `docs` ships `audit-docs.md`
   agents/, references/, bin/, tools/, hooks/      # only where needed
   src/, dist/, package.json, tsconfig.json        # code-review-AT only — SDK build with tsup
 ```
 
-`code-review-workspace/`, `doc-audit-workspace/`, and `plugin-session-auditor-workspace/` at the repo root are gitignored scratch dirs for the skill-creator / audit workflows — safe to ignore.
+`code-review-workspace/`, `docs-workspace/`, and `plugin-session-auditor-workspace/` at the repo root are gitignored scratch dirs for the skill-creator / audit workflows — safe to ignore.
 
 ## Plugin & Command File Structure
 

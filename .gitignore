@@ -23,4 +23,4 @@ debate-workspace/
 # Miscellaneous
 .token-savior-cache.json
 plugin-session-auditor-workspace/
-doc-audit-workspace/
+docs-workspace/

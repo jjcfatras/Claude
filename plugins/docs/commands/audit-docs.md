@@ -42,12 +42,12 @@ Locate every file matching these globs, all relative to the scope root determine
 
 Do not include files under `.claude/skills/*/agents/` or `.claude/skills/*/references/` — those are internal specialist prompts, not project documentation.
 
-Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`, and `.claude/worktrees/` (git-worktree copies of the repo — auditing them duplicates findings from the real working tree). Also exclude the plugin's own scratch workspace `doc-audit-workspace/` if present.
+Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`, and `.claude/worktrees/` (git-worktree copies of the repo — auditing them duplicates findings from the real working tree). Also exclude the plugin's own scratch workspace `docs-workspace/` if present.
 
 Use exactly one `find` invocation. Prune excluded directories with `-name <dir> -prune`, **not** `-path './<dir>'` — `-name` matches the directory at any depth, while `-path './node_modules'` matches only the top-level one and leaks nested copies (e.g. `plugins/*/node_modules`). A correct template, rooted at the scope root `$ROOT` from Step 0.5:
 
 ```bash
-find "$ROOT" \( -name node_modules -o -name .git -o -name dist -o -name build -o -name vendor -o -name .next -o -name target -o -name out -o -name coverage -o -name doc-audit-workspace -o -path '*/.claude/worktrees' \) -prune -o \
+find "$ROOT" \( -name node_modules -o -name .git -o -name dist -o -name build -o -name vendor -o -name .next -o -name target -o -name out -o -name coverage -o -name docs-workspace -o -path '*/.claude/worktrees' \) -prune -o \
   -type f \( -path '*/.claude/commands/*.md' -o -path '*/.claude/skills/*/SKILL.md' -o -name 'README.md' -o -name 'CLAUDE.md' -o -iname '*architecture*.md' \) -print
 ```
 
