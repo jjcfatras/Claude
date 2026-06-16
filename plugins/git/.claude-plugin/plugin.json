@@ -1,6 +1,6 @@
 {
   "name": "git",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Git workflow commands: commit, commit-push, commit-push-pr, clean-gone (prune stale local branches), cherry-pick, and merge (both with conflict resolution)",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

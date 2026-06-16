@@ -18,11 +18,11 @@ Commit the changes above, push them, and open a pull request. Requires the GitHu
 
 1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails, treat `main`, then `master`, as the default.
 
-2. **Branch-first guard.** If the current branch _is_ the default branch, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the default branch (e.g. "You're on the default branch `main`. Commit here or create a new branch?"), and two options:
+2. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings (the same set the team's branch-cleanup script refuses to delete): `dev`, `stage`, `qa`, `prod`, `main`, `release`. If protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
    - `Create new branch` (Recommended) — "Derive a short kebab-case branch name from the changes and run `git switch -c <name>` before committing."
-   - `Use current branch` — "Commit directly onto the default branch."
+   - `Use current branch` — "Commit directly onto the protected branch."
 
-   On `Create new branch`, create and report the branch. On `Use current branch`, stay. If already on a feature branch, stay **without prompting**.
+   On `Create new branch`, create and report the branch. On `Use current branch`, stay. If the current branch is **not** protected, stay **without prompting**.
 
 3. **Commit.** Decide which files belong in the commit. **Never stage files that look like secrets** (`.env`, `.env.*`, `credentials.json`, `*.pem`, `id_rsa`, `*.key`, token/password files). Draft a message matching the recent commit style and append this trailer as its final line, then stage and create a single commit:
 

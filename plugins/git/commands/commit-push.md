@@ -18,11 +18,11 @@ Commit the changes above and push them to the current branch's `origin`.
 
 1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails (no `origin/HEAD`), treat `main`, then `master`, as the default.
 
-2. **Branch-first guard.** If the current branch _is_ the default branch, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the default branch (e.g. "You're on the default branch `main`. Commit here or create a new branch?"), and two options:
+2. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings (the same set the team's branch-cleanup script refuses to delete): `dev`, `stage`, `qa`, `prod`, `main`, `release`. If the current branch is protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
    - `Create new branch` (Recommended) — "Derive a short kebab-case branch name from the nature of the changes (e.g. `fix-auth-token-expiry`) and run `git switch -c <name>` before committing."
-   - `Use current branch` — "Commit directly onto the default branch."
+   - `Use current branch` — "Commit directly onto the protected branch."
 
-   On `Create new branch` (or an equivalent answer), create the branch and report the name you created. On `Use current branch`, stay on the default branch. If the current branch is already a feature branch, stay on it **without prompting**.
+   On `Create new branch` (or an equivalent answer), create the branch and report the name you created. On `Use current branch`, stay on the protected branch. If the current branch is **not** protected, stay on it **without prompting**.
 
 3. **Commit.** Review the diff and decide which files belong in the commit. **Never stage files that look like secrets** — `.env`, `.env.*`, `credentials.json`, `*.pem`, `id_rsa`, `*.key`, or anything holding tokens/passwords. Draft a message matching the style of the recent commits above, append the trailer below as its final line, then stage the relevant files and create a single commit:
 
