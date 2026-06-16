@@ -16,7 +16,7 @@ effort: low
 
 Based on the changes above, create a single git commit.
 
-1. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings (the same set the team's branch-cleanup script refuses to delete): `dev`, `stage`, `qa`, `prod`, `main`, `release`. If the current branch is protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
+1. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings: `dev`, `stage`, `qa`, `prod`, `main`, `release`. If the current branch is protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
    - `Create new branch` (Recommended) — "Derive a short kebab-case branch name from the nature of the changes (e.g. `fix-auth-token-expiry`) and run `git switch -c <name>` before committing."
    - `Use current branch` — "Commit directly onto the protected branch."
 

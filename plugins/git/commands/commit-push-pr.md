@@ -18,7 +18,7 @@ Commit the changes above, push them, and open a pull request. Requires the GitHu
 
 1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails, treat `main`, then `master`, as the default.
 
-2. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings (the same set the team's branch-cleanup script refuses to delete): `dev`, `stage`, `qa`, `prod`, `main`, `release`. If protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
+2. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings: `dev`, `stage`, `qa`, `prod`, `main`, `release`. If protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
    - `Create new branch` (Recommended) — "Derive a short kebab-case branch name from the changes and run `git switch -c <name>` before committing."
    - `Use current branch` — "Commit directly onto the protected branch."
 
