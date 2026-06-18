@@ -259,3 +259,13 @@ esac
 ```
 
 On normal completion report `[5/5] Done.`. On a fatal stop report which step failed (e.g., `Stopped at [3b/5]: code-review:security spawn denied. Cleanup complete.`) and exit.
+
+## Completion marker (always the last line)
+
+On **every** exit path, your final message must end with exactly one completion-marker line so the agent-view job classifier resolves this run to a definite state instead of leaving it stale at "awaiting input". The classifier reads only your latest message's text and matches a literal lowercase line-prefix — `result:` (run finished) or `failed:` (fatal stop, could not complete). `needs input:` is not used here: the post-review prompt is a tool call, so while it's pending the harness already shows awaiting-input; by the time your final text turn lands the run is either complete or fatally stopped.
+
+- It must be the **last line** of your final message, at the start of its own line, plain text — no backticks, bold, tag, or emoji. `Done` / `✅` and the `[5/5] Done.` progress line do **not** count; only the literal token flips the badge.
+- The text after the token is a **self-contained one-line headline** — readable by someone who never saw the request.
+- Normal completion → `result: PR #N reviewed — <posted N inline + M summary via tier T | dry-run: would post N+M | posting skipped>`.
+- Fatal stop (command failure, harness denial, missing helper output) → `failed: code-review stopped at [step] — <reason>` (e.g. `failed: code-review stopped at [3b/5] — code-review:security spawn denied`).
+- If a later turn would otherwise replace this message (e.g. an auto-continue prompt), **re-emit the marker** so the finished state isn't downgraded.

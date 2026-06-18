@@ -337,3 +337,12 @@ After all replies are posted, display a summary:
   (X preexisting, Y false positives, Z fixes applied, W noted for follow-up)
 - Files modified: list of files changed
 ```
+
+## Step 7: Emit the completion marker (always the last line)
+
+On **every** exit path, your final message must end with exactly one completion-marker line so the agent-view job classifier resolves this run to a definite state instead of leaving it stale at "awaiting input". The classifier reads only your latest message's text and matches a literal lowercase line-prefix — `result:` (run finished) or `failed:` (fatal stop, could not complete).
+
+- It must be the **last line** of your final message, at the start of its own line, plain text — no backticks, bold, tag, or emoji. `Done` / `✅` do **not** count; only the literal token flips the badge.
+- The text after the token is a **self-contained one-line headline** — readable by someone who never saw the request. Good: `result: PR #1551 — replied to 1 inline comment; fix 45a30c0 pushed`. Weak: `result: done`.
+- Covers the early exits too: "No unaddressed review items found" (Step 1e) → `result: PR #N — no unaddressed review items`; `Cancel` at triage (Step 3) → `result: PR #N — triage cancelled, nothing posted`; a branch-mismatch / non-fast-forward push / push-verify-mismatch stop (Step 5) → `failed: PR #N — <what blocked it>`.
+- If a later turn would otherwise replace this message (e.g. an auto-continue prompt), **re-emit the marker** so the finished state isn't downgraded.
