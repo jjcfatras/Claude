@@ -1,5 +1,5 @@
 {
-  "skill_name": "jira-implement",
+  "skill_name": "jira:implement-ticket",
   "notes": "Live Atlassian MCP fetch is non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treated as already-fetched) plus a small fixture codebase to verify claims against. Evals 1-3 leave the approval gate intact, so autonomous runs stop at phase 5 (present-for-approval) without editing — phases 2-4 (intent, claim verification, plan reconciliation) are the differentiated value being graded there. Eval 4 is the exception: it pre-grants approval in the prompt so the run proceeds into phase 6 (implement) and works against a copy of the fixture, to exercise and grade the red/green TDD discipline that the other evals never reach.",
   "evals": [
     {

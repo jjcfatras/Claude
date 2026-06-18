@@ -1,0 +1,18 @@
+{
+  "name": "jira",
+  "version": "0.4.0",
+  "description": "JIRA workflow commands: create a structured ticket (summary, acceptance criteria, QA steps) from a diff/PR/description, and pick up a ticket by key to verify its codebase claims, plan, and implement it.",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": [
+    "jira",
+    "ticket",
+    "issue",
+    "qa",
+    "acceptance-criteria",
+    "implementation",
+    "planning",
+    "verification"
+  ]
+}

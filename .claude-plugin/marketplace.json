@@ -67,17 +67,10 @@
       "category": "session-tools"
     },
     {
-      "name": "jira-ticket",
-      "source": "./plugins/jira-ticket",
-      "description": "Generate a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and file it in JIRA after confirmation",
-      "version": "0.1.0",
-      "category": "project-management"
-    },
-    {
-      "name": "jira-implement",
-      "source": "./plugins/jira-implement",
-      "description": "Take a JIRA ticket by key, understand its intent, verify every claim it makes about the codebase to catch false positives, design an implementation plan (reconciling any solution the ticket proposed with one designed independently), present it for approval, then implement.",
-      "version": "0.1.0",
+      "name": "jira",
+      "source": "./plugins/jira",
+      "description": "JIRA workflow: create a structured ticket from a diff/PR/description, and pick up a ticket by key to verify claims, plan, and implement it.",
+      "version": "0.4.0",
       "category": "project-management"
     },
     {

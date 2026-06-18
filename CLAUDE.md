@@ -33,10 +33,12 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping thirteen plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping twelve plugins under `plugins/`:
 
-- `test-driven-fix`, `respond-to-review`, `docs`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement` — single slash command each
+- `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `transcript` — single slash command each
+- `docs` — documentation commands (`audit-docs`, `enrich-claude-md`)
 - `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
+- `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
 - `code-review-AT` — multi-agent review via Anthropic Agent SDK + agent teams; ships TypeScript source under `src/` (specialist agents at `src/agents/*.ts`), references, hooks, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`); builds to `dist/` via tsup
 - `code-review` — same multi-specialist review but native Claude Code only (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
@@ -46,7 +48,7 @@ Per-plugin layout:
 ```
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
-  commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `docs` ships `audit-docs.md`
+  commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `docs` ships `audit-docs.md`/`enrich-claude-md.md` and `jira` ships `create-ticket.md`/`implement-ticket.md`
   agents/, references/, bin/, tools/, hooks/      # only where needed
   src/, dist/, package.json, tsconfig.json        # code-review-AT only — SDK build with tsup
 ```
@@ -63,8 +65,8 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — which Claude model executes the command. Three values (if unset, inherits the session model; omit unless a command has a specific need):
   - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands (e.g. `transcript`). Typically pairs with `effort: low`.
-  - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `code-review`, `jira-ticket`). Typically pairs with `effort: low`/`medium`.
-  - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira-implement`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
+  - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `code-review`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
+  - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
 - `effort` — how thoroughly the model reasons through the command. Five levels (availability varies by model; an unsupported level falls back to the nearest supported one; if unset, inherits the session effort):
   - `low` — minimal thinking, fastest, biggest token savings. For mechanical / deterministic commands.
   - `medium` — moderate thinking; balances cost/latency vs. depth. For light reasoning without deep multi-step planning. (Unused in this repo.)

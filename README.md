@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping sixteen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping seventeen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -11,19 +11,18 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 ## Plugins
 
-| Plugin              | Slash command                                                                                                      | What it does                                                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge` | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution. |
-| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                                                                                   | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                                    |
-| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                      | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                    |
-| `code-review-AT`    | `/code-review-AT [pr-number]`                                                                                      | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.                            |
-| `code-review`       | `/code-review [pr-number]`                                                                                         | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.                        |
-| `docs`              | `/audit-docs`                                                                                                      | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims about the codebase and reports findings with suggested fixes.                  |
-| `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                   |
-| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                                  |
-| `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                                               |
-| `jira-ticket`       | `/jira-ticket`                                                                                                     | Generates a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and files it in JIRA after confirmation.                          |
-| `jira-implement`    | `/jira-implement <JIRA-key>`                                                                                       | Picks up a JIRA ticket by key, verifies every claim it makes about the codebase, designs and reconciles an implementation plan, presents it for approval, then implements it.         |
+| Plugin              | Slash command                                                                                                      | What it does                                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge` | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution.                                                                                         |
+| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                                                                                   | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                                                                                                                            |
+| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                      | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                                                                                                            |
+| `code-review-AT`    | `/code-review-AT [pr-number]`                                                                                      | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.                                                                                                                    |
+| `code-review`       | `/code-review [pr-number]`                                                                                         | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.                                                                                                                |
+| `docs`              | `/audit-docs` · `/enrich-claude-md`                                                                                | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / architecture docs for stale claims and reports findings with suggested fixes; or investigates the codebase for useful, non-obvious facts missing from CLAUDE.md / `.claude/rules` and proposes additions. |
+| `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                           |
+| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                                                                                                                          |
+| `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                                                                                                                                       |
+| `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>`                                                        | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; or pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it.                                                              |
 
 Install only the plugins you want — each is independent.
 
@@ -173,9 +172,9 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 
 Use this to hand the file to `/plugin-session-auditor` or any other transcript-consuming workflow.
 
-### `/jira-implement`
+### `/jira:implement-ticket`
 
-**Invoke:** `/jira-implement <JIRA-key>` (e.g. `/jira-implement PROJ-1234`).
+**Invoke:** `/jira:implement-ticket <JIRA-key>` (e.g. `/jira:implement-ticket PROJ-1234`).
 
 **Prereqs:** Authenticated Atlassian MCP access (the command resolves the site via `getAccessibleAtlassianResources` and fetches the ticket via `getJiraIssue`); run inside the repo the ticket targets.
 
@@ -201,7 +200,7 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 ```
 
-The other plugins (`git`, `test-driven-fix`, `respond-to-review`, `docs`, `debate`, `simplify`, `transcript`, `jira-ticket`, `jira-implement`) do not need this flag.
+The other plugins (`git`, `test-driven-fix`, `respond-to-review`, `docs`, `debate`, `simplify`, `transcript`, `jira`) do not need this flag.
 
 ### Building the helper from source
 
@@ -224,7 +223,7 @@ All cross-plugin scripts live in the repo-root `package.json` and are invoked wi
 | `pnpm format:go`   | `for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w "$d" && go -C "$d" mod edit -fmt \|\| exit 1; done` | `gofmt -w` and `go mod edit -fmt` across all three Go modules (both code-review helpers + plugin-session-auditor session-parser).                                                       |
 | `pnpm build:go`    | `for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper; do make -C "$d" release \|\| exit 1; done`                                                                                 | `make release` for **both** code-review helpers — cross-compiles darwin/linux × amd64/arm64 prebuilts into each plugin's `bin/`. Skips session-parser (no prebuilt shipped).            |
 | `pnpm check-types` | `tsc --noEmit`                                                                                                                                                                                                                     | TypeScript type-check using the root `tsconfig.json` (also extended by `plugins/code-review-AT/tsconfig.json`).                                                                         |
-| `pnpm test`        | `echo "Error: no test specified" && exit 1`                                                                                                                                                                                        | **Stub — no JS/TS test suite.** Go tests live in each helper's `make test`.                                                                                                             |
+| `pnpm test`        | `make -C plugins/code-review/tools/code-review-helper test`                                                                                                                                                                        | Runs the `code-review` Go test suite (`go test ./...`). No JS/TS suite exists; the other Go modules' tests run via their own `make test`.                                               |
 | `pnpm prepare`     | `husky`                                                                                                                                                                                                                            | Installs the Husky git hooks (runs automatically after `pnpm install`). The repo's `pre-commit` runs `pnpm exec lint-staged`; the lint-staged config lives at `lint-staged.config.mjs`. |
 
 To build a single Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review-AT/tools/code-review-helper/` or `plugins/code-review/tools/code-review-helper/`.

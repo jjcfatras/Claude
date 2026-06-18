@@ -14,7 +14,7 @@ Work through the phases in order. Don't skip the verification phase even when th
 
 - **Ticket key** — from `$ARGUMENTS` (e.g. `PROJ-1234`). If it's missing or doesn't look like a JIRA key, ask the user for it before doing anything else.
 - **cloudId** — `getAccessibleAtlassianResources` returns the Atlassian site(s). If there's exactly one, use it; if more than one, call the **AskUserQuestion** tool (`multiSelect: false`, header `Site`) populated with one option per site (name/URL) and use the chosen site's `cloudId`.
-- **Scratch dir** — `${TMPDIR:-/tmp}/jira-implement-$EPOCH` (one `date +%s` call). Use it only if you need to spawn investigator subagents that write findings to files; otherwise you may not need it at all.
+- **Scratch dir** — `${TMPDIR:-/tmp}/jira-implement-ticket-$EPOCH` (one `date +%s` call). Use it only if you need to spawn investigator subagents that write findings to files; otherwise you may not need it at all.
 
 ## [1/6] Fetch the ticket
 
