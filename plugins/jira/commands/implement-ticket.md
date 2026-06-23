@@ -2,13 +2,23 @@
 description: Take a JIRA ticket by key, understand its intent, verify every claim it makes about the codebase to catch false positives, design an implementation plan (reconciling any solution the ticket proposed with one designed independently), present it for approval, then implement. Use whenever the user wants to pick up, start, action, or implement a JIRA ticket/issue by key (e.g. "implement PROJ-1234", "pick up ABC-42", "let's action this ticket").
 argument-hint: <JIRA-key> (e.g. PROJ-1234)
 model: opus
-effort: high
-allowed-tools: Bash, Read, Write, Grep, Glob, Edit, Agent, AskUserQuestion, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources
+effort: xhigh
+allowed-tools: Bash, Read, Write, Grep, Glob, Edit, Agent, AskUserQuestion, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 Take a JIRA ticket and carry it all the way to working code — but with a healthy skepticism that separates this from "just do what the ticket says." Tickets are written by people who may be looking at stale code, half-remembering how a system works, or proposing a fix they haven't validated. So before you build anything, you find out what the ticket is _really_ asking for, check whether its claims about the codebase are actually true, and design your own approach rather than reflexively implementing whatever solution the ticket sketched. The whole point is to catch a wrong premise on day one instead of discovering it three commits deep.
 
 Work through the phases in order. Don't skip the verification phase even when the ticket looks obviously correct — that's exactly when stale claims slip through.
+
+## Use context7 for external-library facts
+
+Whenever a step turns on how an _external_ library, framework, SDK, or API actually behaves — not how this repo's own code behaves — verify it against current docs with context7 instead of trusting the ticket or your own memory (which may be stale): call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. This is the same skepticism the phases below aim at the ticket, pointed at the libraries you depend on. It matters most in three places:
+
+- **[3/6] Verify claims** — a bucket (b) claim that hinges on library behavior ("the SDK already retries on 5xx", "`axios` throws on 4xx") is _checkable_ against docs, not "unverifiable". Confirm or refute it from the docs and cite the version.
+- **[4/6] Design** — confirm the API you intend to use exists with the signature and capability you're assuming, so the plan isn't built on a stale or imagined API.
+- **[6/6] Implement** — get current API names and signatures before writing the call, so the code isn't stale on arrival.
+
+Skip context7 for project-internal logic, general programming patterns, or anything verifiable from the code in front of you — don't burn calls on claims that don't depend on external library behavior.
 
 ## Variables to derive at startup
 
