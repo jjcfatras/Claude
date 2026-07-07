@@ -299,3 +299,35 @@ func TestLoadDir_RoundTripRubricExample(t *testing.T) {
 		t.Fatalf("verifications drift: %+v", finding.Verifications)
 	}
 }
+
+func TestDropRedundantFix(t *testing.T) {
+	// Backstop for the side-by-side identical-blocks bug (PR #1608 r3492897198):
+	// a suggested_fix equal to the code (modulo surrounding whitespace) is nilled
+	// so the renderer omits the duplicate block; a real one-token change is kept.
+	ptr := func(s string) *string { return &s }
+	cases := []struct {
+		name    string
+		code    string
+		fix     *string
+		wantNil bool
+	}{
+		{"identical", "log.error({ err });", ptr("log.error({ err });"), true},
+		{"identical_modulo_whitespace", "x := 1", ptr("  x := 1\n"), true},
+		{"differs_one_token", "error: getError(e),", ptr("err: getError(e),"), false},
+		{"nil_stays_nil", "anything", nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := Finding{Code: tc.code, SuggestedFix: tc.fix}
+			dropRedundantFix(&f)
+			switch {
+			case tc.wantNil && f.SuggestedFix != nil:
+				t.Fatalf("expected SuggestedFix nilled, got %q", *f.SuggestedFix)
+			case !tc.wantNil && f.SuggestedFix == nil:
+				t.Fatal("expected SuggestedFix preserved, got nil")
+			case !tc.wantNil && *f.SuggestedFix != *tc.fix:
+				t.Fatalf("SuggestedFix mutated: want %q, got %q", *tc.fix, *f.SuggestedFix)
+			}
+		})
+	}
+}

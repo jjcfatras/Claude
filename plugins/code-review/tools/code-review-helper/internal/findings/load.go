@@ -77,6 +77,7 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 				})
 				continue
 			}
+			dropRedundantFix(&rf.Findings[i])
 			res.Findings = append(res.Findings, rf.Findings[i])
 		}
 	}
@@ -145,6 +146,21 @@ func validateFinding(role string, finding *Finding) error {
 		return fmt.Errorf("specialist %s finding %s: empty language", role, finding.ID)
 	}
 	return nil
+}
+
+// dropRedundantFix nils SuggestedFix when it is byte-identical to Code after
+// trimming surrounding whitespace, so the renderer never emits a "Suggested
+// fix" block that just duplicates the "Code" block (the side-by-side blocks
+// otherwise read as "no change"). The rubric tells specialists to use null when
+// the fix equals the code; this is the backstop. See PR #1608 r3492897198.
+//
+// ponytail: byte-equal after TrimSpace only — a fix that merely reindents or
+// reformats the same tokens still renders. Keeping the snippet tight so a small
+// diff stays visible is the specialist's job per the rubric, not this guard's.
+func dropRedundantFix(f *Finding) {
+	if f.SuggestedFix != nil && strings.TrimSpace(*f.SuggestedFix) == strings.TrimSpace(f.Code) {
+		f.SuggestedFix = nil
+	}
 }
 
 // ErrNoFindings is returned by callers (not LoadDir itself) when downstream

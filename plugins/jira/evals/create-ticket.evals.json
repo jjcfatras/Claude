@@ -10,7 +10,7 @@
     {
       "id": 1,
       "prompt": "Open a JIRA ticket for this PR: https://github.com/acme/payments-api/pull/482 — it changes the refund endpoint so refunds over $10,000 now require a second approver before they're processed.",
-      "expected_output": "A ticket summarizing the new dual-approval rule for refunds over $10k in user/API-facing terms. Acceptance criteria cover: refund under threshold processes as before, refund over threshold is held pending a second approver, and the second approver can approve/reject. QA steps are black-box (submit a refund via the UI/API, observe the held state and the approval flow) with observable Expected results, no code internals.",
+      "expected_output": "A ticket summarizing the new dual-approval rule for refunds over $10k in user/API-facing terms. Acceptance criteria cover: refund under threshold processes as before, refund over threshold is held pending a second approver, and the second approver can approve/reject. QA steps are black-box but concrete: they name the exact refund endpoint (method + path) and give a runnable request body for both a sub-threshold and an over-threshold amount, with expected status codes and the response fields/state that distinguish processed-immediately from held-pending-approval — not a vague 'submit a refund.' No code internals beyond the public endpoint contract.",
       "files": []
     },
     {

@@ -4,7 +4,7 @@ argument-hint: [pr-number] [--auto|--dry-run]
 disable-model-invocation: false
 model: opus
 effort: medium
-allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
+allowed-tools: Bash, Bash(gh:*), Bash(*/code-review-helper:*), Read, Write, Grep, Glob, Agent, AskUserQuestion
 ---
 
 # /code-review — orchestrate a multi-specialist PR review
@@ -103,6 +103,8 @@ Roster contents:
 - Conditional: `typescript` (`.ts/.tsx/.cts/.mts`, plus `tsconfig*.json`/`jsconfig.json` and framework/bundler configs), `react` (`.tsx/.jsx`, plus framework/bundler configs), `infra` (`.sql`, `migrations/`, `db/migrations/`, `.tf`, `.hcl`, `terraform/`, `Dockerfile`, `docker-compose`/`compose.yml`, `k8s/`, `kubernetes/`, `helm/`, `deploy/`, `infra(structure)?/`, `.github/workflows/`, `Jenkinsfile`, `.circleci/`, `.buildkite/`), `claude-md` (any `CLAUDE.md` ancestor of a changed file exists at `$REPO_ROOT`). Framework/bundler configs = `{next,vite,nuxt,webpack,rollup,esbuild,babel}.config.{js,mjs,cjs,ts,mts,cts}`, `babel.config.json`, `.babelrc` — these feed both `typescript` and `react`.
 
 Read `$TMP/roster.json` to know which specialists you'll spawn.
+
+To inspect a helper-written JSON file inline, use `jq` (a pipeline filter — allowed) or a separate `Read` call — never bare `cat <file>`, which this repo's `enforce-builtin-tools` guardrail blocks.
 
 ---
 
@@ -212,20 +214,24 @@ If the result is not `OPEN`, report `PR #$PR_NUMBER is now <state> — skipping 
 **Tier 1 — single-shot review with batched comments:**
 
 ```bash
-gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" --method POST --input "$TMP/payload.json"
+TIER1_ERR=$(gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" --method POST --input "$TMP/payload.json" 2>&1 > /dev/null)
+TIER1_RC=$?
+printf '%s' "$TIER1_ERR" > "$TMP/tier1.err"
 ```
 
-If tier 1 succeeds (`gh` exit 0), report `posted via tier 1` and skip to cleanup.
+`2>&1 >/dev/null` discards the success-path review JSON (tier 1 doesn't need it — success is the exit code) and captures any error text into `$TIER1_ERR`, persisted to `$TMP/tier1.err` for the tier-3 patch. **Branch on the variable, never by `cat`-ing the file** (the `enforce-builtin-tools` guardrail blocks bare `cat <file>`):
 
-If tier 1 fails with HTTP 422 in stderr, fall to tier 2. Any other failure → fall through to tier 3.
+- `$TIER1_RC` is `0` → report `posted via tier 1` and skip to cleanup.
+- non-zero **and** `$TIER1_ERR` contains `HTTP 422` → fall to tier 2.
+- any other non-zero → surface it verbatim with `echo "$TIER1_ERR"` and fall through to tier 3.
 
 **Tier 2 — create pending review then submit:**
 
 ```bash
-REVIEW_ID=$(gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" --method POST --input "$TMP/payload-pending.json" --jq '.id')
+REVIEW_ID=$(gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" --method POST --input "$TMP/payload-pending.json" --jq '.id' 2> "$TMP/tier2.err")
 ```
 
-If create failed, fall through to tier 3. Otherwise submit:
+If create failed (`$REVIEW_ID` is empty), fall through to tier 3 — its stderr is captured in `$TMP/tier2.err` (consumed by the tier-3 patch; don't `cat` it). Otherwise submit:
 
 ```bash
 gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews/$REVIEW_ID/events" --method POST --input "$TMP/payload-body.json" -f event=COMMENT
@@ -235,9 +241,12 @@ If submit succeeds, report `posted via tier 2`. If submit fails, warn the user t
 
 **Tier 3 — fallback issue comment:**
 
-Patch the `{API_ERROR}` placeholder in `$TMP/fallback.md` with the captured tier-1/tier-2 stderr, then:
+Patch the `{API_ERROR}` placeholder in `$TMP/fallback.md` with the captured stderr from the last failing tier — guardrail-safe (no `sed -i`, no `cat`), writing to the `.patched` copy:
 
 ```bash
+ERRFILE="$TMP/tier1.err"
+[ -s "$TMP/tier2.err" ] && ERRFILE="$TMP/tier2.err"
+python3 -c "import pathlib,sys; src=pathlib.Path('$TMP/fallback.md').read_text(); pathlib.Path('$TMP/fallback.md.patched').write_text(src.replace('{API_ERROR}', sys.stdin.read()))" < "$ERRFILE"
 gh pr comment "$PR_NUMBER" -F "$TMP/fallback.md.patched"
 ```
 

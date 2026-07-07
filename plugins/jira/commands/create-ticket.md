@@ -37,9 +37,9 @@ Use this exact structure. Show the draft to the user in the conversation **befor
 - [ ] <each criterion is something you can definitively call met or not met>
 
 ## QA Testing Steps (no codebase access)
-1. <precondition: environment, URL, test account, feature flag, seed data>
-2. <a concrete user action>
-   - Expected: <what the tester should observe>
+1. <precondition: environment, base URL, test account or auth token, feature flag, seed data>
+2. <a concrete action — a user action, OR for an API change the exact `METHOD /path` plus a full, runnable request body>
+   - Expected: <observable result — on-screen text/state, or a response status code plus the specific fields/values to check>
 3. ...
 ```
 
@@ -50,6 +50,21 @@ The tester running these steps **cannot read the code or the database**. They ca
 This rules out steps like "verify the `processPayment` function returns 200" or "check the `status` column flips to `settled`" — the tester has no way to do either. Reframe them as something observable: "Submit the payment form with a valid card → Expected: a confirmation banner reads 'Payment received' and the order moves to the Completed tab." Each step pairs an **action** with an **observable expected result**; a step with no observable outcome isn't testable and shouldn't be there.
 
 Reference internal names (functions, tables, columns, env vars) only inside _preconditions a tester can actually set up_ (like "set the `BETA_CHECKOUT` flag to on in the admin panel") — never as the thing being verified.
+
+### Be concrete — name the endpoints and request bodies
+
+Vague steps are the main failure mode here. "Submit a pair of strings that previously matched" is not runnable; "Send `POST /v1/credit/exposure/business-portfolio/search` with this body, expect `200` returning the same business" is. The tester can't read the code — but **you can**: the diff or PR is in front of you, so mine it for the externally-runnable contract and hand the tester something they can fire verbatim.
+
+When the change is reachable through an HTTP API (a new or changed endpoint, or any behavior an endpoint exercises):
+
+- Name the exact **method and path** — `POST /v1/credit/exposure/business-portfolio/search` — and the service/base URL when more than one app is in play.
+- Give a **complete, runnable request body** with realistic placeholder values, and flag which fields are **required** (and what failure looks like if one is omitted — e.g. a `400`, not a match result).
+- State the **expected status code** and the **specific response fields/values** to check — not "it works."
+- If the change is meant to preserve behavior (refactor, dependency swap, perf), give a **before/after baseline-diff recipe**: capture the response before deploy, send the identical request after, diff the two.
+
+Pull these from the route definitions and request-validation schemas in the diff. An endpoint's method, path, and body are the API's public contract, not leaked internals — so they belong in the steps. The earlier rule still holds for genuinely internal names (functions, tables, columns): those appear only in preconditions, never as the thing being verified.
+
+For a UI change, apply the same rule in UI terms: the exact screen/URL, the fields to fill with concrete values, and the on-screen text or state to observe. When the source is a freeform description that doesn't reveal the endpoint or body, ask for it (per Step 1) rather than emit a vague step.
 
 ## Step 3: Choose where it goes in JIRA
 
