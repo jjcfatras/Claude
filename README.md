@@ -30,7 +30,7 @@ Two additional hook-only plugins ship no slash command: `tool-discipline` (`PreT
 
 ## Using the plugins
 
-Each subsection below covers how to invoke the plugin, what to have ready first, and what to expect step by step. The full flow lives in each plugin's command file under `plugins/<name>/commands/`.
+Each subsection covers how to invoke the plugin, its prerequisites, and what to expect. The full flow lives in each command file under `plugins/<name>/commands/`.
 
 ### `/git:cherry-pick`
 
@@ -134,7 +134,7 @@ Each subsection below covers how to invoke the plugin, what to have ready first,
 
 **What happens:**
 
-1. Locates every doc file matching `CLAUDE.md`, `README.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, and `*[Aa]rchitecture*.md` (skipping `node_modules`, `dist`, etc.).
+1. Locates every doc file matching `CLAUDE.md`, `README.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, `.claude/rules/*.md`, and `*[Aa]rchitecture*.md` (skipping `node_modules`, `dist`, etc.).
 2. If more than 50 files match, lists them and asks whether to proceed, narrow scope, or skip directories.
 3. Extracts only **concrete claims** from each file — file paths, versions, scripts, symbol names, cross-doc links — not subjective prose.
 4. Verifies each claim against the current codebase.
@@ -210,11 +210,11 @@ make release # cross-compile all 4 platforms into ../../bin/
 make test
 ```
 
-`make release` is what the author runs before tagging a new plugin version. End users do not need a Go toolchain.
+The author runs `make release` before tagging a new plugin version; end users do not need a Go toolchain.
 
 ## Maintainer scripts
 
-All cross-plugin scripts live in the repo-root `package.json` and are invoked with `pnpm <script>`. End users installing the plugins via the marketplace never need these — they exist for contributors editing this repo.
+All cross-plugin scripts live in the repo-root `package.json` and are invoked with `pnpm <script>`. End users never need these — they exist for contributors editing this repo.
 
 | Script             | Command                                                                                                                                                                                                                            | Purpose                                                                                                                                                                                 |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
