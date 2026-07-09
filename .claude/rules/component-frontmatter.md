@@ -5,10 +5,11 @@ Every YAML frontmatter field available on the three authorable Claude Code compo
 (`plugins/<name>/agents/*.md`).
 
 Sources: §1 (skills) is verified against the official skills docs
-(`code.claude.com/docs/en/skills#configure-skills`, checked 2026-07-08); repo-local tier semantics
-come from the root `CLAUDE.md`; "in practice" notes from the actual component files in this repo. §2
-(commands) and §3 (agents) were **not** re-audited in that pass — commands now share the skill
-frontmatter set (see §2), while agent fields live on a separate page (`/en/sub-agents`).
+(`code.claude.com/docs/en/skills#configure-skills`, checked 2026-07-08); §3 (agents) against the
+official subagents docs (`code.claude.com/docs/en/sub-agents#supported-frontmatter-fields`, checked
+2026-07-09); repo-local tier semantics come from the root `CLAUDE.md`; "in practice" notes from the
+actual component files in this repo. §2 (commands) was **not** re-audited in those passes —
+commands now share the skill frontmatter set (see §2).
 
 Plugin manifests (`plugins/<name>/.claude-plugin/plugin.json`) are separate config, not component
 frontmatter — out of scope here. Use `${CLAUDE_PLUGIN_ROOT}` inside any component to resolve
@@ -119,39 +120,52 @@ effort: low
 
 ## 3. Agents — `agents/*.md`
 
-| Field         | Purpose                                                                                                                                                            | Values / example                                                                                   | Required?         |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ----------------- |
-| `name`        | Agent identifier for namespacing / dispatch.                                                                                                                       | lowercase + digits + hyphens, 3–50 chars, start/end alphanumeric, no underscores (`code-reviewer`) | **Yes**           |
-| `description` | The dispatch-decision field — loaded into context. State triggering conditions ("Use this agent when…"); conventionally include `<example>`/`<commentary>` blocks. | see below                                                                                          | **Yes**           |
-| `model`       | Which model the agent uses.                                                                                                                                        | `inherit` (recommended) \| `sonnet` \| `opus` \| `haiku`                                           | **Yes** (per doc) |
-| `color`       | Visual identifier in the UI.                                                                                                                                       | `blue` `cyan` `green` `yellow` `magenta` `red`                                                     | **Yes** (per doc) |
-| `tools`       | Restrict the agent to specific tools (least privilege). Omit to grant all tools. MCP tool names allowed.                                                           | `["Read", "Grep", "Glob"]`                                                                         | Optional          |
+Only `name` and `description` are required; every other field is optional.
 
-**In practice (this repo diverges from the docs):**
+| Field             | Purpose                                                                                                                                                                                                                           | Values / example                                                                                                                          | Required? |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `name`            | Unique identifier using lowercase letters and hyphens. Hooks receive this value as `agent_type`. The filename doesn't have to match.                                                                                              | `code-reviewer`                                                                                                                           | **Yes**   |
+| `description`     | The dispatch-decision field — when Claude should delegate to this agent. State triggering conditions ("Use this agent when…"); conventionally include `<example>`/`<commentary>` blocks; "use proactively" encourages delegation. | see below                                                                                                                                 | **Yes**   |
+| `tools`           | Allowlist of tools (least privilege). Inherits all tools if omitted. Comma-separated string; MCP tool names allowed. To preload skills, use `skills` rather than listing `Skill` here.                                            | `Read, Grep, Glob`                                                                                                                        | No        |
+| `disallowedTools` | Denylist — removed from the inherited or specified list. Applied first; `tools` resolves against the remaining pool. Accepts `mcp__<server>` / `mcp__*` patterns.                                                                 | `Write, Edit`                                                                                                                             | No        |
+| `model`           | Which model the agent uses. `CLAUDE_CODE_SUBAGENT_MODEL` env var overrides all of these; a per-invocation `model` parameter beats the frontmatter.                                                                                | `sonnet` \| `opus` \| `haiku` \| `fable` \| full model ID \| `inherit` (default)                                                          | No        |
+| `permissionMode`  | Permission mode for the subagent. Parent `bypassPermissions`/`acceptEdits`/auto mode takes precedence. Ignored for plugin subagents (see note).                                                                                   | `default` \| `acceptEdits` \| `auto` \| `dontAsk` \| `bypassPermissions` \| `plan` (+ `manual` alias for `default`, ≥2.1.200)             | No        |
+| `maxTurns`        | Maximum number of agentic turns before the subagent stops.                                                                                                                                                                        | `30`                                                                                                                                      | No        |
+| `skills`          | Skills preloaded into the subagent's context at startup — full content injected, not just descriptions. Unlisted skills stay invocable via the Skill tool.                                                                        | YAML list of skill names                                                                                                                  | No        |
+| `mcpServers`      | MCP servers for this subagent: string references to already-configured servers, or inline definitions scoped to the subagent. Ignored for plugin subagents (see note).                                                            | server-name refs or inline defs (`stdio`/`http`/`sse`/`ws`)                                                                               | No        |
+| `hooks`           | Lifecycle hooks scoped to this subagent; frontmatter `Stop` converts to `SubagentStop` at runtime. Ignored for plugin subagents (see note).                                                                                       | see hooks docs                                                                                                                            | No        |
+| `memory`          | Persistent memory directory that survives across conversations; auto-enables Read/Write/Edit and injects the first 200 lines / 25KB of its `MEMORY.md`.                                                                           | `user` (`~/.claude/agent-memory/<name>/`) \| `project` (`.claude/agent-memory/<name>/`) \| `local` (`.claude/agent-memory-local/<name>/`) | No        |
+| `background`      | `true` = always run as a background task, even when Claude needs the result right away. Unset = Claude chooses (background by default since v2.1.198).                                                                            | `true` \| `false`                                                                                                                         | No        |
+| `effort`          | Effort level while the subagent is active; overrides the session effort. Available levels depend on the model.                                                                                                                    | `low` \| `medium` \| `high` \| `xhigh` \| `max`                                                                                           | No        |
+| `isolation`       | `worktree` runs the subagent in a temporary git worktree branched from the default branch (not the parent's `HEAD`); auto-cleaned if the subagent makes no changes.                                                               | `worktree`                                                                                                                                | No        |
+| `color`           | Display color in the task list and transcript.                                                                                                                                                                                    | `red` \| `blue` \| `green` \| `yellow` \| `purple` \| `orange` \| `pink` \| `cyan`                                                        | No        |
+| `initialPrompt`   | Auto-submitted as the first user turn when the agent runs as the main session agent (`--agent` flag or `agent` setting). Commands and skills are processed; prepended to any user-provided prompt.                                | text                                                                                                                                      | No        |
 
-- `color` uses values beyond the documented six — `purple`, `pink`, `orange` also appear.
-- `tools` is written as a **comma-separated string**, not the documented `["array"]` form, and mixes built-ins with MCP tool names.
-- `model` is `sonnet`/`opus`, never the doc-recommended `inherit`.
+**Plugin subagents** (every agent in this repo — all ship under `plugins/*/agents/`): `hooks`,
+`mcpServers`, and `permissionMode` are ignored for security reasons when the agent loads from a
+plugin. If an agent needs them, copy its file into `.claude/agents/` or `~/.claude/agents/`.
 
-Official example (`complete-agent-examples.md`, array `tools` + `inherit`):
+**In practice (this repo):**
+
+- Repo agents use only `name`/`description`/`tools`/`model`/`color` — none of the other 11 fields.
+- `color: magenta` (`plugins/debate/agents/rebuttal.md`) is the one value outside the documented
+  set; `purple`, `orange`, and `pink` (also used here) are now officially documented.
+- `model` is pinned to `sonnet`/`opus` explicitly, never left to the `inherit` default.
+- `tools` as a comma-separated string mixing built-ins with MCP tool names matches the documented
+  file format (the `["array"]` form belongs to the `--agents` CLI JSON, not agent files).
+
+Official example (docs "Example subagents" `code-reviewer`, comma-string `tools` + `model: inherit`):
 
 ```yaml
 ---
-name: security-analyzer
-description: Use this agent when the user implements security-critical code (auth, payments, data handling), explicitly requests security analysis, or before deploying sensitive changes. Examples:
-
-  <example>
-  Context: User implemented authentication logic
-  user: "I've added JWT token validation"
-  assistant: "I'll use the security-analyzer agent to review for vulnerabilities."
-  </example>
+name: code-reviewer
+description: Expert code review specialist. Proactively reviews code for quality, security, and maintainability. Use immediately after writing or modifying code.
+tools: Read, Grep, Glob, Bash
 model: inherit
-color: red
-tools: ["Read", "Grep", "Glob"]
 ---
 ```
 
-Repo example (`plugins/code-review/agents/security.md`, comma-string `tools` + explicit model):
+Repo example (`plugins/code-review/agents/security.md`, MCP tool names in `tools` + pinned model):
 
 ```yaml
 ---
