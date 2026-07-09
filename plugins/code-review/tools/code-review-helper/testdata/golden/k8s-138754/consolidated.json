@@ -65,6 +65,16 @@
     }
   ],
   "dropped_prior_review": [],
+  "dropped_by_gate": [
+    {
+      "id": "qual-1",
+      "severity": "Minor",
+      "confidence": 45,
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 38,
+      "rationale": "low-confidence style nit"
+    }
+  ],
   "specialists_used": [
     "errors",
     "perf",

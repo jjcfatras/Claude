@@ -52,6 +52,8 @@ function area(shape: Shape) {
 
 For runtime checks at boundaries, use a user-defined type guard rather than a cast.
 
+Trust boundaries go beyond HTTP: request bodies, job/queue payloads, event or message data, and `JSON.parse` results are all boundary values; valid guard shapes include a schema parse, a user-defined type guard, or an enum-membership check (`Object.values(Enum).includes(x)`). Before scoring an `as` cast, trace the cast subject to its origin — a variable destructured or assigned from a boundary object is still boundary data, so flag its unguarded cast even when the cast sits far from the boundary read (the hunk alone often hides the connection; `Read` the enclosing function). Conversely, if the subject was runtime-validated upstream of the cast site (schema-parsed or membership-checked), the cast is safe — score it 0.
+
 **`any` and unconstrained `unknown`**
 
 - New `any` annotations in production code without a justifying comment.
@@ -83,6 +85,6 @@ Write your findings as JSON to `$REVIEW_TMPDIR/findings/typescript.json` using t
 
 The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "typescript"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
-**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, `Read` the file at HEAD_SHA to locate it (the working tree is the HEAD checkout), or omit the finding entirely.
+**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 
 After the Write returns, validate the file with `jq -e . "$REVIEW_TMPDIR/findings/typescript.json" >/dev/null` using the Bash tool. If `jq` exits non-zero, the JSON is malformed — typically a `` \` `` escape inside a string value. Backticks are literal in JSON strings (see `references/code-review-rubrics.md` § "JSON string escaping"); the only valid JSON string escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`. Re-`Write` the file with corrected escapes and re-run `jq -e` until it exits 0. Then end your turn with a short status line. Do not print the JSON to chat.

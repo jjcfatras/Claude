@@ -54,6 +54,14 @@ If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 
 - Replicas, rate limits, timeouts, or resource budgets changed without a stated reason.
 - Service exposed publicly when prior version was internal.
 
+**New deployable surface — boot contract**
+
+When the diff introduces an entirely new app/service directory together with its deployment config (every file under the directory carries `new file mode` / `--- /dev/null` in the diff), cross-check the manifest against the app it deploys:
+
+- The health/probe path declared in the manifest (ALB target group, `livenessProbe`/`readinessProbe`, compose healthcheck) is actually registered by the app's routing/entry-point code — a missing health route fails probes on first deploy.
+- Declared ports (`containerPort`, `EXPOSE`, compose `ports`, target-group port) match the port the app listens on or its config default — a mismatch with no env override means every request is connection-refused.
+- Env/config keys read without defaults along the new entry point's import chain are supplied by the deployment's env/secret bindings — a missing one crashes at boot or on the first code path that touches it. Lower confidence where the chain can't be fully traced.
+
 **Secret management**
 
 - New `process.env.X` / `os.getenv("X")` reference without a corresponding secret-manager entry.
@@ -66,6 +74,6 @@ Write your findings as JSON to `$REVIEW_TMPDIR/findings/infra.json` using the Wr
 
 The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "infra"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
-**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, `Read` the file at HEAD_SHA to locate it (the working tree is the HEAD checkout), or omit the finding entirely.
+**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 
 After the Write returns, validate the file with `jq -e . "$REVIEW_TMPDIR/findings/infra.json" >/dev/null` using the Bash tool. If `jq` exits non-zero, the JSON is malformed — typically a `` \` `` escape inside a string value. Backticks are literal in JSON strings (see `references/code-review-rubrics.md` § "JSON string escaping"); the only valid JSON string escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`. Re-`Write` the file with corrected escapes and re-run `jq -e` until it exits 0. Then end your turn with a short status line. Do not print the JSON to chat.

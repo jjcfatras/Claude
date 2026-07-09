@@ -86,6 +86,7 @@
   ],
   "summary_only": [],
   "dropped_prior_review": [],
+  "dropped_by_gate": [],
   "specialists_used": [
     "errors",
     "perf",

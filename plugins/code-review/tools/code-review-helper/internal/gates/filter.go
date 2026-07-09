@@ -7,14 +7,19 @@ package gates
 
 import "github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
 
-func Filter(in []findings.Finding) []findings.Finding {
-	out := make([]findings.Finding, 0, len(in))
+// Filter partitions findings by the gate. Dropped findings are surfaced in
+// consolidated.json as dropped_by_gate so the reasoning trail behind gate
+// decisions is visible in the terminal summary instead of vanishing.
+func Filter(in []findings.Finding) (kept, dropped []findings.Finding) {
+	kept = make([]findings.Finding, 0, len(in))
 	for _, finding := range in {
 		if Pass(finding.Confidence, finding.Severity) {
-			out = append(out, finding)
+			kept = append(kept, finding)
+		} else {
+			dropped = append(dropped, finding)
 		}
 	}
-	return out
+	return kept, dropped
 }
 
 func Pass(confidence int, sev findings.Severity) bool {

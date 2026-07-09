@@ -83,6 +83,6 @@ Write your findings as JSON to `$REVIEW_TMPDIR/findings/react.json` using the Wr
 
 The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "react"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
-**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, `Read` the file at HEAD_SHA to locate it (the working tree is the HEAD checkout), or omit the finding entirely.
+**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 
 After the Write returns, validate the file with `jq -e . "$REVIEW_TMPDIR/findings/react.json" >/dev/null` using the Bash tool. If `jq` exits non-zero, the JSON is malformed — typically a `` \` `` escape inside a string value. Backticks are literal in JSON strings (see `references/code-review-rubrics.md` § "JSON string escaping"); the only valid JSON string escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`. Re-`Write` the file with corrected escapes and re-run `jq -e` until it exits 0. Then end your turn with a short status line. Do not print the JSON to chat.

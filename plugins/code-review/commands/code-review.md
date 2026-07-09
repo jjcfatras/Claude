@@ -48,6 +48,14 @@ gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName,author,st
 gh pr diff "$PR_NUMBER" > "$TMP/pr-$PR_NUMBER.diff"
 ```
 
+Fetch the PR head into a hidden local ref so `git show $HEAD_SHA:<path>` and `git grep <sym> $HEAD_SHA` resolve even on a stale clone or a fork PR (specialists and the bundle builder both depend on the HEAD_SHA objects being present locally). This call depends only on `PR_NUMBER`, so it may be emitted in the same turn as the two fetches above:
+
+```bash
+git fetch origin "+pull/$PR_NUMBER/head:refs/code-review/pr-$PR_NUMBER" --no-tags
+```
+
+If this fetch fails (offline, fork ref unavailable, restricted remote), print a one-line warning and continue — an explicit exception to the surface-and-stop rule at the top of this file. Specialists fall back to the bundle's embedded source; line confirmation against `$HEAD_SHA` may degrade on stale clones.
+
 Extract `HEAD_SHA`, `OWNER`, `REPO`, and the PR author login — all derived from the single `pr-meta.json` fetch above (no second `gh pr view` call). The author login is used further down to mark "author replied" threads in the prior-issues filter:
 
 ```bash
@@ -172,6 +180,8 @@ jq -r '
   (if (.invalid_findings // []) | length > 0 then "  Invalid findings (\(.invalid_findings | length)):" else empty end),
   ((.invalid_findings // [])[] | "    [\(.role)/\(.id)] \(.reason)"),
   (if (.dropped_prior_review // []) | length > 0 then "  Dropped (prior review): \(.dropped_prior_review | length)" else empty end),
+  (if (.dropped_by_gate // []) | length > 0 then "  Reconciled (below gate): \(.dropped_by_gate | length)" else empty end),
+  ((.dropped_by_gate // [])[] | "    [\(.id)] \(.severity) conf=\(.confidence) \(.file):\(.line) — \(.rationale)"),
   "  Inline eligible: \(.inline_eligible | length)",
   "  Summary only: \(.summary_only | length)",
   "",
@@ -180,7 +190,7 @@ jq -r '
 ' "$TMP/consolidated.json"
 ```
 
-The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). Without this, drops are silent.
+The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). The Reconciled block shows findings the confidence gate filtered out, each with the specialist's one-sentence rationale — the reasoning trail for what was investigated and dismissed. Neither is posted to GitHub; without them, drops are silent.
 
 Then branch on `POST_MODE` (derived at startup):
 
@@ -265,6 +275,12 @@ case "$(basename "$TMP")" in
   pr-review-*) rm -rf "$TMP" ;;
   *) echo "refusing to remove $TMP (unexpected prefix)" ;;
 esac
+```
+
+Also delete the hidden ref created in step [1/5] (ignore failure — it may not exist if the fetch failed or the stop happened first):
+
+```bash
+git update-ref -d "refs/code-review/pr-$PR_NUMBER"
 ```
 
 On normal completion report `[5/5] Done.`. On a fatal stop report which step failed (e.g., `Stopped at [3b/5]: code-review:security spawn denied. Cleanup complete.`) and exit.

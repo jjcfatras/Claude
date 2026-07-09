@@ -29,6 +29,7 @@ If a Read returns `File content (… tokens) exceeds maximum allowed tokens (250
 - Ownership checks that read the user from the request without verifying it matches the resource owner.
 - Auth middleware bypassed by a new route registration order.
 - Token/session handling that leaks secrets into logs or responses.
+- Newly added plain equality comparisons (`===`/`==`/string equality) of credentials, API keys, tokens, or HMAC/webhook signatures — these leak a character-by-character timing oracle. The fix is the platform's constant-time compare (`crypto.timingSafeEqual`, `hmac.compare_digest`, Go `subtle.ConstantTimeCompare`, PHP `hash_equals`). Score high when the same file already imports/uses a constant-time helper for another comparison (self-documenting inconsistency — see the rubric's "Safer alternative already in the file?" question); lower otherwise, and don't flag equality on non-secret values that merely look token-like.
 
 **Input validation**
 
@@ -49,9 +50,11 @@ const { userId, amount } = result.data;
 
 Flag handlers that destructure straight off `req.body` without a schema, that call `.parse()` instead of `.safeParse()`, or that swallow the `ZodError` and return 200.
 
+Before flagging missing sanitization or normalization, `Read` the validation schema — transforms and preprocessing (Zod `.transform()`/`.preprocess()`, coercion) may already normalize the input upstream of the flagged site. If so, drop the finding or score it low.
+
 **Injection vectors**
 
-- String-built SQL where the input came from a request. Template literals concatenating identifiers or `WHERE` clauses are a strong signal.
+- String-built SQL where the input came from a request. **Untagged** template literals concatenating identifiers or `WHERE` clauses are a strong signal.
 - Shell exec with user-controlled arguments.
 - HTML/Markdown injection into rendered output (XSS).
 - Prompt injection: user input concatenated directly into a system or developer prompt.
@@ -70,6 +73,8 @@ db.query("SELECT * FROM users WHERE email = $1", [req.body.email]);
 
 For ORMs, prefer query-builder methods (`where({ email })`) or tagged-template helpers that explicitly parameterize.
 
+**Tagged-template false positive:** tagged-template SQL helpers (Kysely / slonik / postgres.js `` sql`…` ``, Prisma `$queryRaw`, Drizzle `` sql`…` ``) parameterize interpolated values — including nested `sql` fragments — into placeholders and are NOT injection. Only explicit raw escape hatches (`sql.raw()`, `$queryRawUnsafe`, `knex.raw` with interpolation) or untagged string-built SQL are. When unsure how a specific builder handles interpolation, verify via Context7 before flagging.
+
 **Secrets & config**
 
 - Secret values committed to source.
@@ -78,7 +83,8 @@ For ORMs, prefer query-builder methods (`where({ email })`) or tagged-template h
 
 **API contract**
 
-- New routes added without docs (OpenAPI/Swagger/typed clients).
+- New routes added without docs (OpenAPI/Swagger/typed clients). When the repo generates its spec from source annotations (swagger-jsdoc, springdoc, drf-spectacular, utoipa, etc.), confirm the new route's annotations are in the form the generator actually scans (check the generator config when identifiable) — annotations the generator can't see are equivalent to no docs; the route silently never appears in the published spec.
+- Response schemas declared as free-form objects (`additionalProperties: true` or equivalent) with no `$ref`/named schema when the handler returns a concrete shape. `Read` the handler first — genuine pass-through/proxy endpoints forwarding arbitrary upstream JSON are accurately documented as opaque; only flag when a concrete named schema could express the real contract.
 - Response shapes silently changed.
 - Status codes that don't match the success/error semantics expected by the client.
 
@@ -88,6 +94,6 @@ Write your findings as JSON to `$REVIEW_TMPDIR/findings/security.json` using the
 
 The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "security"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
-**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, `Read` the file at HEAD_SHA to locate it (the working tree is the HEAD checkout), or omit the finding entirely.
+**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 
 After the Write returns, validate the file with `jq -e . "$REVIEW_TMPDIR/findings/security.json" >/dev/null` using the Bash tool. If `jq` exits non-zero, the JSON is malformed — typically a `` \` `` escape inside a string value. Backticks are literal in JSON strings (see `references/code-review-rubrics.md` § "JSON string escaping"); the only valid JSON string escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`. Re-`Write` the file with corrected escapes and re-run `jq -e` until it exits 0. Then end your turn with a short status line (e.g., `"Wrote 3 findings, scan complete"`). Do not print the JSON to chat.

@@ -60,12 +60,23 @@ try {
 
 - State updated on a stale closure value (often co-occurs with React effect issues).
 - Two requests in flight, the slower one wins — needs cancellation or sequencing (AbortController).
+- Check-then-act (TOCTOU): a value read non-atomically (`find`/`get`/peek) is treated as still current after a later atomic operation (`update`/consume/transactional write) touches the same record. Prefer sourcing return values from the atomic operation's own result — a silent fallback on the stale read (`stale?.field ?? ''`) masks the race with a wrong-but-plausible value instead of surfacing it.
 
 **Transactions & resource lifecycle**
 
 - DB transactions opened but commit/rollback not in `try/finally`.
+- A new method performing multiple dependent writes as separate awaits when sibling methods in the same class wrap equivalent write sets in a transaction — the divergence is evidence the writes should be atomic (partial-failure risk), not a style nit.
+- A fallible operation (config/env read with no default, external lookup, secondary service call) placed AFTER an irreversible side effect (DB write, message publish, external charge) on the same non-transactional path. Failure surfaces as a 5xx while the side effect persists as an orphan, and a retry mints a duplicate. Fix: hoist the fallible read above the mutation, wrap the sequence in one transaction, or validate config at boot.
 - File handles, DB clients, or streams not closed on the error path.
 - Locks not released on the error path.
+
+**Pairing obligations at instantiation**
+
+- New event emitters, queue workers/consumers, or streams created without the error handler / cleanup the API requires — in Node an unhandled `'error'` event crashes the process. Check how existing sibling instantiations in the repo wire it.
+
+**Consolidation refactors**
+
+- When the diff extracts a new function that consolidates logic from multiple callers, compare the callers' removed lines against the new function body: cross-cutting concerns that previously lived in each caller (logging with caller context, error wrapping, transaction/rollback boundaries) must either move to the join point or deliberately remain at the call sites — flag any that vanished in the move. In this pattern "another path handles it" is usually false on both sides, so don't down-score via the rubric's handled-elsewhere question without reading both the join point and at least one caller.
 
 **Observability**
 
@@ -78,6 +89,6 @@ Write your findings as JSON to `$REVIEW_TMPDIR/findings/errors.json` using the W
 
 The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "errors"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
-**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, `Read` the file at HEAD_SHA to locate it (the working tree is the HEAD checkout), or omit the finding entirely.
+**Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 
 After the Write returns, validate the file with `jq -e . "$REVIEW_TMPDIR/findings/errors.json" >/dev/null` using the Bash tool. If `jq` exits non-zero, the JSON is malformed — typically a `` \` `` escape inside a string value. Backticks are literal in JSON strings (see `references/code-review-rubrics.md` § "JSON string escaping"); the only valid JSON string escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`. Re-`Write` the file with corrected escapes and re-run `jq -e` until it exits 0. Then end your turn with a short status line. Do not print the JSON to chat.

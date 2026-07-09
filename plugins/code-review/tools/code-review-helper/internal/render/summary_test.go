@@ -17,6 +17,9 @@ func TestSummary_NoIssues(t *testing.T) {
 	if !strings.Contains(out, "errors, perf, quality, security") {
 		t.Errorf("specialists should appear sorted: %s", out)
 	}
+	if !strings.Contains(out, "Diff-scoped automated review") {
+		t.Errorf("missing scope footer line: %s", out)
+	}
 }
 
 func TestSummary_HasInline(t *testing.T) {

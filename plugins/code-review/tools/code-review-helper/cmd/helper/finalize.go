@@ -17,15 +17,19 @@ import (
 )
 
 type consolidatedFile struct {
-	InlineEligible     []findings.Finding        `json:"inline_eligible"`
-	SummaryOnly        []findings.Finding        `json:"summary_only"`
-	DroppedPriorReview []findings.Finding        `json:"dropped_prior_review"`
-	SpecialistsUsed    []string                  `json:"specialists_used"`
-	TimedOutRoles      []string                  `json:"timed_out_roles"`
-	MissingRoles       []string                  `json:"missing_roles"`
-	UnreadableRoles    []string                  `json:"unreadable_roles"`
-	InvalidFindings    []findings.InvalidFinding `json:"invalid_findings"`
-	LastReviewDate     *string                   `json:"last_review_date"`
+	InlineEligible     []findings.Finding `json:"inline_eligible"`
+	SummaryOnly        []findings.Finding `json:"summary_only"`
+	DroppedPriorReview []findings.Finding `json:"dropped_prior_review"`
+	// DroppedByGate is the audit trail for the confidence/severity gate — the
+	// specialist's rationale supplies the reasoning for each dismissal. Shown in
+	// the terminal summary only; never posted to GitHub.
+	DroppedByGate   []droppedGateEntry        `json:"dropped_by_gate"`
+	SpecialistsUsed []string                  `json:"specialists_used"`
+	TimedOutRoles   []string                  `json:"timed_out_roles"`
+	MissingRoles    []string                  `json:"missing_roles"`
+	UnreadableRoles []string                  `json:"unreadable_roles"`
+	InvalidFindings []findings.InvalidFinding `json:"invalid_findings"`
+	LastReviewDate  *string                   `json:"last_review_date"`
 	// PostingFilter is the audit trail for the include/exclude subset; the
 	// consolidated counts above reflect the PRE-filter classification while
 	// payload.json reflects the POST-filter subset. omitempty keeps existing
@@ -36,6 +40,32 @@ type consolidatedFile struct {
 type postingFilter struct {
 	IncludeIDs []string `json:"include_ids,omitempty"`
 	ExcludeIDs []string `json:"exclude_ids,omitempty"`
+}
+
+// droppedGateEntry is a slim projection of a gate-dropped finding — enough for
+// the terminal "Reconciled (below gate)" block without the full finding noise.
+type droppedGateEntry struct {
+	ID         string            `json:"id"`
+	Severity   findings.Severity `json:"severity"`
+	Confidence int               `json:"confidence"`
+	File       string            `json:"file"`
+	Line       int               `json:"line"`
+	Rationale  string            `json:"rationale"`
+}
+
+func toDroppedGateEntries(in []findings.Finding) []droppedGateEntry {
+	out := make([]droppedGateEntry, 0, len(in))
+	for _, f := range in {
+		out = append(out, droppedGateEntry{
+			ID:         f.ID,
+			Severity:   f.Severity,
+			Confidence: f.Confidence,
+			File:       f.File,
+			Line:       f.Line,
+			Rationale:  f.Rationale,
+		})
+	}
+	return out
 }
 
 type finalizeOpts struct {
@@ -121,13 +151,13 @@ func warnInvalid(invalid []findings.InvalidFinding) {
 	}
 }
 
-func runPipeline(parsed *diffpkg.Parsed, loaded *findings.LoadResult, prior dedup.PriorIssuesFile) (lines.Result, []findings.Finding) {
+func runPipeline(parsed *diffpkg.Parsed, loaded *findings.LoadResult, prior dedup.PriorIssuesFile) (lines.Result, []findings.Finding, []findings.Finding) {
 	step1 := dedup.Positional(loaded.Findings)
 	inDiff := func(path string) bool { _, ok := parsed.ValidLines[path]; return ok }
 	step2 := dedup.Semantic(step1, inDiff)
-	step3, dropped := dedup.PriorReview(step2, prior, parsed.IsAddedLine)
-	step4 := gates.Filter(step3)
-	return lines.Classify(step4, parsed), dropped
+	step3, droppedPrior := dedup.PriorReview(step2, prior, parsed.IsAddedLine)
+	step4, droppedGate := gates.Filter(step3)
+	return lines.Classify(step4, parsed), droppedPrior, droppedGate
 }
 
 // buildPostingFilter runs AFTER classification so the IDs in --include/--exclude
@@ -155,11 +185,12 @@ func buildPostingFilter(includeIDs, excludeIDs string, classified lines.Result) 
 	return &postingFilter{IncludeIDs: includeList, ExcludeIDs: excludeList}, nil
 }
 
-func assembleConsolidated(classified lines.Result, dropped []findings.Finding, loaded *findings.LoadResult, prior dedup.PriorIssuesFile, pf *postingFilter) consolidatedFile {
+func assembleConsolidated(classified lines.Result, droppedPrior, droppedGate []findings.Finding, loaded *findings.LoadResult, prior dedup.PriorIssuesFile, pf *postingFilter) consolidatedFile {
 	return consolidatedFile{
 		InlineEligible:     coalesce(classified.InlineEligible),
 		SummaryOnly:        coalesce(classified.SummaryOnly),
-		DroppedPriorReview: coalesce(dropped),
+		DroppedPriorReview: coalesce(droppedPrior),
+		DroppedByGate:      toDroppedGateEntries(droppedGate),
 		SpecialistsUsed:    coalesce(loaded.Specialists),
 		TimedOutRoles:      coalesce(loaded.TimedOutRoles),
 		MissingRoles:       coalesce(loaded.MissingRoles),
@@ -223,13 +254,13 @@ func runFinalize(argv []string) error {
 	}
 	warnInvalid(loaded.InvalidFindings)
 
-	classified, dropped := runPipeline(parsed, loaded, prior)
+	classified, droppedPrior, droppedGate := runPipeline(parsed, loaded, prior)
 	pf, err := buildPostingFilter(opts.includeIDs, opts.excludeIDs, classified)
 	if err != nil {
 		return err
 	}
 
-	cf := assembleConsolidated(classified, dropped, loaded, prior, pf)
+	cf := assembleConsolidated(classified, droppedPrior, droppedGate, loaded, prior, pf)
 	buildIn := assembleBuildInput(opts, classified, loaded.Specialists, pf)
 	return writeFinalizeOutputs(opts, cf, buildIn)
 }

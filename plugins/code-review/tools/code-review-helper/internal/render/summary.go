@@ -9,9 +9,13 @@ import (
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
 )
 
-const summaryFooter = `🤖 Generated with [Claude Code](https://claude.ai/code)
+// Footer is appended to every rendered review body — the three summary layouts
+// here and payload.Fallback. Shared so the two consumers can't silently diverge.
+const Footer = `🤖 Generated with [Claude Code](https://claude.ai/code)
 
-<sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>`
+<sub>If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
+
+<sub>Diff-scoped automated review — does not run tests or builds, verify test correctness, or examine code outside this PR's diff. Pair with CI and human review.</sub>`
 
 type SummaryInput struct {
 	Owner          string
@@ -40,7 +44,7 @@ func summaryNoIssues(specialists []string) string {
 	roles := append([]string(nil), specialists...)
 	slices.Sort(roles)
 	return fmt.Sprintf("### Code review\n\nNo issues found. Reviewed by: %s.\n\n%s",
-		strings.Join(roles, ", "), summaryFooter)
+		strings.Join(roles, ", "), Footer)
 }
 
 func summaryWithInline(in SummaryInput) string {
@@ -67,7 +71,7 @@ func summaryWithInline(in SummaryInput) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(summaryFooter)
+	b.WriteString(Footer)
 	return b.String()
 }
 
@@ -80,7 +84,7 @@ func summaryOnlyAll(in SummaryInput) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(summaryFooter)
+	b.WriteString(Footer)
 	return b.String()
 }
 
