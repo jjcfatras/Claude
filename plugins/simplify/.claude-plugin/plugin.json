@@ -1,7 +1,7 @@
 {
   "name": "simplify",
-  "version": "0.2.0",
-  "description": "Propose and apply targeted simplifications to recently modified code while preserving behavior",
+  "version": "0.3.0",
+  "description": "Propose and apply targeted simplifications to recently modified code — or the whole project when no scope is given — while preserving behavior",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",

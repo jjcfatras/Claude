@@ -1,5 +1,5 @@
 ---
-description: Propose lossless distillation of verbose prose — inline text or recently modified prose files — and apply on approval
+description: Propose lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and apply on approval
 argument-hint: "[text|path|--staged|--since=<ref>]"
 allowed-tools: Bash(git *), Read, Edit, Grep, Glob, AskUserQuestion
 model: opus
@@ -18,7 +18,7 @@ Classify `$1` first:
 2. **`$1` is `--staged`**: run `git diff --name-only --cached` and use that file set.
 3. **`$1` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
 4. **`$1` is any other path or glob**: if it is a directory, walk it via `Glob`. If it is a glob, expand it.
-5. **`$1` is empty**: use the union of (a) files modified in the current session and (b) the output of `git status --porcelain` (working tree + staged, excluding untracked unless they are clearly prose files).
+5. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files); the prose-file filter below narrows the set.
 
 For file scopes (cases 2–5), keep only prose files: `.md`, `.mdx`, `.markdown`, `.txt`, `.rst`. Drop generated files (`dist/`, `bin/`, `node_modules/`, lockfiles), binary files, and files whose only changes are whitespace or formatter churn.
 

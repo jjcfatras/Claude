@@ -1,5 +1,5 @@
 ---
-description: Propose targeted simplifications to recently modified code and apply on approval
+description: Propose targeted simplifications to recently modified code — or the whole project when no scope is given — and apply on approval
 argument-hint: "[path|--staged|--since=<ref>]"
 allowed-tools: Bash(git *), Read, Edit, Grep, Glob, AskUserQuestion
 model: opus
@@ -17,7 +17,7 @@ Pick the file set in this order:
 1. **`$1` is `--staged`**: run `git diff --name-only --cached` and use that file set.
 2. **`$1` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
 3. **`$1` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it via `Glob`. If it is a glob, expand it.
-4. **`$1` is empty**: use the union of (a) files modified in the current session and (b) the output of `git status --porcelain` (working tree + staged, excluding untracked unless they are clearly source files).
+4. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify-prose`'s job.
 
 After collecting candidates, drop anything that is obviously out of scope:
 
