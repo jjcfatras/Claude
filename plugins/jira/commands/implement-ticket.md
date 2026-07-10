@@ -3,7 +3,7 @@ description: Take a JIRA ticket by key, understand its intent, verify every clai
 argument-hint: <JIRA-key> (e.g. PROJ-1234)
 model: opus
 effort: xhigh
-allowed-tools: Bash, Read, Write, Grep, Glob, Edit, Agent, AskUserQuestion, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+allowed-tools: Bash, Read, Write, Grep, Glob, Edit, Agent, Skill, AskUserQuestion, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 Take a JIRA ticket and carry it all the way to working code — but with a healthy skepticism that separates this from "just do what the ticket says." Tickets are written by people who may be looking at stale code, half-remembering how a system works, or proposing a fix they haven't validated. So before you build anything, you find out what the ticket is _really_ asking for, check whether its claims about the codebase are actually true, and design your own approach rather than reflexively implementing whatever solution the ticket sketched. The whole point is to catch a wrong premise on day one instead of discovering it three commits deep.
@@ -93,7 +93,7 @@ Then gate with `AskUserQuestion`: implement this plan, adjust it, or stop. **Do 
 
 Only after approval. Work through the plan, letting the nature of each change decide how careful to be.
 
-**Testable changes** (logic, validation, data transforms, bug fixes) — drive them with red/green TDD. The cycle, and why each step matters:
+**Testable changes** (logic, validation, data transforms, bug fixes) — drive them with the **`superpowers:test-driven-development` skill**: invoke it via the `Skill` tool _before_ you write implementation code, then follow the RED → GREEN → REFACTOR loop it enforces. It's a declared dependency of this plugin, so it should be available. The cycle it enforces, and why each step matters:
 
 1. **Write the smallest test** that pins the behavior the ticket wants — one case, named for what it asserts.
 2. **Run it and watch it fail (RED).** This is the step it's tempting to skip, and the one that does the work. A test you've never seen fail might be passing for the wrong reason — asserting nothing, exercising a typo'd path, or already satisfied — in which case it guards nothing. Seeing the _expected_ failure (the feature is missing, not a syntax error) is what proves the test actually grips the gap you're about to close.
@@ -101,7 +101,7 @@ Only after approval. Work through the plan, letting the nature of each change de
 4. **Run it again and watch it pass (GREEN)**, and confirm the rest of the suite is still green so you didn't fix one thing by breaking another.
 5. **Refactor under green** — tidy names, remove duplication, no behavior change — then loop back for the next case.
 
-This is the same skepticism the earlier phases aim at the ticket, turned on your own code: don't trust that it works because you wrote it — prove it by watching the test go red, then green. See `${CLAUDE_PLUGIN_ROOT}/references/red-green-tdd.md` for the full cycle and the edge cases. If the `superpowers:test-driven-development` skill is installed it's the canonical, stricter form of this loop — lean on it; the discipline above stands on its own when it isn't.
+This is the same skepticism the earlier phases aim at the ticket, turned on your own code: don't trust that it works because you wrote it — prove it by watching the test go red, then green. The `superpowers:test-driven-development` skill is the canonical, stricter enforcement of this loop, which is why phase 6 invokes it. If it's somehow unavailable (the dependency was disabled), the steps above and `${CLAUDE_PLUGIN_ROOT}/references/red-green-tdd.md` are the self-contained fallback — the discipline stands on its own without the skill.
 
 **Non-testable changes** (config, docs, copy, scaffolding) — implement directly; a forced test here is theater. And if a change _would_ be testable but you genuinely can't run the tests (no runner wired up, behavior hangs on live external state), say so plainly rather than claim a green you never saw.
 

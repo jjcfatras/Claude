@@ -1,6 +1,6 @@
 {
   "name": "jira",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "JIRA workflow commands: create a structured ticket (summary, acceptance criteria, QA steps) from a diff/PR/description, pick up a ticket by key to verify its codebase claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria.",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
@@ -16,5 +16,9 @@
     "verification",
     "testing",
     "postman"
+  ],
+  "dependencies": [
+    { "name": "context7", "marketplace": "claude-plugins-official" },
+    { "name": "superpowers", "marketplace": "claude-plugins-official" }
   ]
 }

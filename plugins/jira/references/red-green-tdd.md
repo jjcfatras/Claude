@@ -72,7 +72,9 @@ will trust it.
 
 ## Relation to `superpowers:test-driven-development`
 
-If that skill is installed, it's the canonical, stricter form of this loop — the same RED → GREEN →
-REFACTOR with a harder line ("no production code without a failing test first; if you wrote code
-first, delete it and start over"). Lean on it when it's present. This doc is the self-contained
-version so the workflow holds up for anyone using the plugin without it.
+Phase 6 of `implement-ticket` now drives testable changes by invoking that skill directly — it's a
+declared dependency of this plugin, so it should be present. The skill is the canonical, stricter form
+of this loop — the same RED → GREEN → REFACTOR with a harder line ("no production code without a
+failing test first; if you wrote code first, delete it and start over"). This doc is the self-contained
+version of the same discipline, kept as the fallback for anyone running the plugin with the skill
+disabled or unavailable.
