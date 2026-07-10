@@ -48,7 +48,7 @@ plugins/<name>/
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 
-`code-review-workspace/`, `docs-workspace/`, and `plugin-session-auditor-workspace/` at the repo root are gitignored scratch dirs for the skill-creator / audit workflows — safe to ignore.
+Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`, `jira-ticket-workspace/`, `debate-workspace/`, `plugin-session-auditor-workspace/`) are gitignored scratch space for the skill-creator / audit / command workflows — safe to ignore. All match the `*-workspace/` convention in `.gitignore`.
 
 ## Plugin & Command File Structure
 
