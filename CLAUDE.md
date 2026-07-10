@@ -30,9 +30,9 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping eleven plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping twelve plugins under `plugins/`:
 
-- `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `transcript` — single slash command each
+- `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `simplify-prose`, `transcript` — single slash command each
 - `docs` — documentation commands (`audit-docs`, `enrich-claude-md`)
 - `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
 - `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`, `create-tests`)

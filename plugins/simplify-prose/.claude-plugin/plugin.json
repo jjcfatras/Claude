@@ -1,0 +1,9 @@
+{
+  "name": "simplify-prose",
+  "version": "0.1.0",
+  "description": "Propose lossless distillation of verbose prose — inline text or recently modified prose files — and apply on approval",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": ["prose", "writing", "distill", "conciseness", "simplify"]
+}

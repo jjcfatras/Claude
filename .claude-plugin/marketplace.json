@@ -53,6 +53,13 @@
       "category": "code-quality"
     },
     {
+      "name": "simplify-prose",
+      "source": "./plugins/simplify-prose",
+      "description": "Propose lossless distillation of verbose prose — inline text or recently modified prose files — and apply on approval",
+      "version": "0.1.0",
+      "category": "writing"
+    },
+    {
       "name": "transcript",
       "source": "./plugins/transcript",
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript with size and line count",
