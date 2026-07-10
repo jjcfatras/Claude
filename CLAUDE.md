@@ -14,34 +14,30 @@ All scripts live in `package.json` and are invoked with `pnpm <script>`:
 
 - `pnpm install` — install dependencies; also runs `pnpm prepare` automatically
 - `pnpm format` — `prettier --write .` across the repo (uses `prettier-plugin-sh` for shell files)
-- `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across all three Go modules (`plugins/code-review/tools/code-review-helper`, `plugins/code-review-AT/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
-- `pnpm build:go` — `make release` for **both** code-review helpers; cross-compiles prebuilts into each plugin's `bin/`. `plugins/code-review/` emits darwin/linux/windows × amd64/arm64 (Windows binaries get a `.exe` suffix); `plugins/code-review-AT/` emits darwin/linux × amd64/arm64. Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
-- `code-review-AT` is a **standalone package**, not part of the root install — it has its own `package.json`, `pnpm-lock.yaml`, and `node_modules` (SDK deps: `@anthropic-ai/claude-agent-sdk`, `zod`). Install and build it from inside `plugins/code-review-AT/`: `pnpm install`, then `pnpm build` (tsup → `dist/`). Its `dist/cli.js` is **committed**, so after editing `src/` you must rebuild and commit `dist/`. Root `pnpm install`/`build:go` do not touch it.
-- `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json` (also extended by `plugins/code-review-AT/tsconfig.json`)
+- `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across both Go modules (`plugins/code-review/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
+- `pnpm build:go` — `make release` for the `code-review` helper; cross-compiles prebuilts into `plugins/code-review/bin/` (darwin/linux/windows × amd64/arm64; Windows binaries get a `.exe` suffix). Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
+- `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json`
 - `pnpm test` — runs the `code-review` Go test suite via `make -C plugins/code-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the other Go modules' tests run via their own `make test`
 - `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
 
-To build a single Go helper without the others, run `make release` (or `make test`) directly from inside `plugins/code-review-AT/tools/code-review-helper/` or `plugins/code-review/tools/code-review-helper/`.
+To build the Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review/tools/code-review-helper/`.
 
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
 
 - **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `go mod edit -fmt` for `go.mod`, `prettier --write` for everything else. Don't run formatters manually.
 - **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
 - **Command frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md` must start with `---` and include a `description:` field.
-- **`go vet` on helper edits** (`PostToolUse`): edits to `plugins/code-review-AT/tools/code-review-helper/**/*.go` run `go vet ./...`; fix any reported issues.
-- **Prebuilt binaries are write-locked** (`PreToolUse`): direct edits to `plugins/code-review-AT/bin/*` are blocked. Rebuild via `cd plugins/code-review-AT/tools/code-review-helper && make release`.
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping twelve plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping eleven plugins under `plugins/`:
 
 - `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `transcript` — single slash command each
 - `docs` — documentation commands (`audit-docs`, `enrich-claude-md`)
 - `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
 - `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
-- `code-review-AT` — multi-agent review via Anthropic Agent SDK + agent teams; ships TypeScript source under `src/` (specialist agents at `src/agents/*.ts`), references, hooks, a Go helper (`tools/code-review-helper/`), and prebuilt binaries (`bin/`); builds to `dist/` via tsup
-- `code-review` — same multi-specialist review but native Claude Code only (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
+- `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
 
 Per-plugin layout:
 
@@ -50,7 +46,6 @@ plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `docs` ships `audit-docs.md`/`enrich-claude-md.md` and `jira` ships `create-ticket.md`/`implement-ticket.md`
   agents/, references/, bin/, tools/, hooks/      # only where needed
-  src/, dist/, package.json, tsconfig.json        # code-review-AT only — SDK build with tsup
 ```
 
 `code-review-workspace/`, `docs-workspace/`, and `plugin-session-auditor-workspace/` at the repo root are gitignored scratch dirs for the skill-creator / audit workflows — safe to ignore.
@@ -65,7 +60,7 @@ Each slash command is a markdown file in `plugins/<name>/commands/` with YAML fr
 - `allowed-tools` — restricts which tools the command can invoke
 - `model` — which Claude model executes the command. Three values (if unset, inherits the session model; omit unless a command has a specific need):
   - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands (e.g. `transcript`). Typically pairs with `effort: low`.
-  - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `code-review-AT`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
+  - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
   - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
 - `effort` — how thoroughly the model reasons through the command. Five levels (availability varies by model; an unsupported level falls back to the nearest supported one; if unset, inherits the session effort):
   - `low` — minimal thinking, fastest, biggest token savings. For mechanical / deterministic commands.
@@ -88,7 +83,7 @@ When a change touches anything under `plugins/<name>/` (commands, agents, refere
 
 Bump rules:
 
-- Bump only the affected plugin(s). A change scoped to `plugins/code-review-AT/` does not touch `plugins/transcript/.claude-plugin/plugin.json`.
+- Bump only the affected plugin(s). A change scoped to `plugins/code-review/` does not touch `plugins/transcript/.claude-plugin/plugin.json`.
 - A single change picks one tier — the highest tier triggered by any part of the diff. (A breaking command rename plus a bug fix is MAJOR, not MAJOR + PATCH.)
 - Bumping a higher tier resets lower tiers to `0` (1.4.7 → MINOR → 1.5.0, not 1.5.7).
 - Pure non-plugin changes (root `CLAUDE.md`, `.claude/settings.json`, `.claude-plugin/marketplace.json`, repo-level docs, `code-review-workspace/`) do not require any plugin version bump.

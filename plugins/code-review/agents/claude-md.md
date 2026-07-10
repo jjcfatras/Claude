@@ -29,7 +29,7 @@ After indexing the root CLAUDE.md, judge whether any indexed rule plausibly gove
 
 - For each changed file, walk up to the nearest CLAUDE.md and to the root CLAUDE.md. Apply only the rules that govern the kind of change in the diff.
 - **Always quote the relevant CLAUDE.md sentence verbatim** in `explanation` — that's how downstream readers verify the citation. Include the CLAUDE.md path the sentence came from.
-- The native /code-review plugin has no cross-agent peer verification (unlike /code-review-AT). When you've found a CLAUDE.md rule but aren't certain the diff actually violates it (e.g., a "all DB writes must be in a transaction" rule and the diff adds a DB write), **lower the confidence** rather than escalating. Do not invent fictional verification.
+- The native /code-review plugin has no cross-agent peer verification. When you've found a CLAUDE.md rule but aren't certain the diff actually violates it (e.g., a "all DB writes must be in a transaction" rule and the diff adds a DB write), **lower the confidence** rather than escalating. Do not invent fictional verification.
 - **Cap confidence at 60** unless the rule is quoted verbatim AND the finding is also a clear functional bug independent of the CLAUDE.md rule.
 
 ## What to look for

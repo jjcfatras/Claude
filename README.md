@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping seventeen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping sixteen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -16,8 +16,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge` | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution.                                                                                                           |
 | `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                                                                                   | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                                                                                                                                              |
 | `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                      | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                                                                                                                              |
-| `code-review-AT`    | `/code-review-AT [pr-number]`                                                                                      | Multi-specialist PR review (security, typescript, react, infra, errors, perf, quality, claude-md) coordinated via a sub-agent team. Posts inline comments.                                                                                                                                      |
-| `code-review`       | `/code-review [pr-number]`                                                                                         | Same multi-specialist PR review using parallel native Claude Code subagents — no Agent SDK, no agent team, no cross-agent verification. Posts inline comments.                                                                                                                                  |
+| `code-review`       | `/code-review [pr-number]`                                                                                         | Multi-specialist PR review (security, quality, errors, perf, plus conditional typescript, react, infra, claude-md) using parallel native Claude Code subagents. Posts inline comments.                                                                                                          |
 | `docs`              | `/audit-docs` · `/enrich-claude-md`                                                                                | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / `.claude/rules` / architecture docs for stale claims and reports findings with suggested fixes; or investigates the codebase for useful, non-obvious facts missing from CLAUDE.md / `.claude/rules` and proposes additions. |
 | `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                                             |
 | `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                                                                                                                                            |
@@ -94,26 +93,11 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 4. Triages each item as **false positive**, **preexisting code (not introduced by this PR)**, or **valid issue**.
 5. Implements fixes for the valid items and replies confirming the change; replies to the others with an explanation dismissing the finding.
 
-### `/code-review-AT`
-
-**Invoke:** `/code-review-AT [pr-number]` — omit the argument to review the PR for the current branch.
-
-**Prereqs:** `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` must be set before launching Claude Code (see [Requirements](#requirements) below); `/tmp` must be writable for the agent's `Write` tool, or grant `Write` to `$HOME/.claude/tmp/pr-review-*` as a fallback.
-
-**What happens:**
-
-1. Preps the PR diff, prior reviews, project `CLAUDE.md`, and a one-paragraph PR summary into a temp workspace under `/tmp/pr-review-…`.
-2. Picks an applicable subset of specialists — security, typescript, react, infra, errors, perf, quality, claude-md — and spawns one subagent per category in parallel.
-3. Specialists scan their domain and cross-verify with peer DMs; findings are written to a shared task list.
-4. The Go `code-review-helper` finalizes, dedupes, and gates findings, then assembles the review payload.
-5. You're shown the inline + summary findings and asked to approve before anything is posted.
-6. On approval: posts the review with inline comments, then cleans up the temp workspace.
-
 ### `/code-review`
 
 **Invoke:** `/code-review <pr-number>` — the PR number is required (the command treats an absent or non-integer argument as a hard error).
 
-**Prereqs:** `gh` CLI authenticated for the repo; `/tmp` (or `$TMPDIR`) writable for the scratch workspace under `pr-review-<number>-<epoch>/`. Unlike `/code-review-AT`, this plugin does **not** require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — it uses native Claude Code subagents (`Agent` with `subagent_type`) only.
+**Prereqs:** `gh` CLI authenticated for the repo; `/tmp` (or `$TMPDIR`) writable for the scratch workspace under `pr-review-<number>-<epoch>/`. This plugin uses native Claude Code subagents (`Agent` with `subagent_type`) only — no experimental flag required.
 
 **What happens:**
 
@@ -187,26 +171,16 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 5. **Present for approval** — intent, claim-verification table (false claims headlined), the synthesized plan, and reconciliation rationale. Gates with `AskUserQuestion`; edits no file before you approve.
 6. **Implement** the approved plan — test-first for testable changes, directly for config/docs — then runs the existing suite and reports results honestly.
 
-## `code-review-AT` — extras
+## `code-review` — extras
 
-- Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`; a `bin/code-review-helper` shell wrapper dispatches to the right one.
-- Installs eight `code-review-*` review specialists into the team that runs the review.
-
-### Requirements
-
-`/code-review-AT` orchestrates multiple specialist subagents via Claude Code's agent-team APIs (`TeamCreate`, `SendMessage`, concurrent `Agent` spawns). Those tools are gated behind an experimental flag — without it, the command's preflight aborts with an allowlist error. Enable agent teams in your shell before running `/code-review-AT`:
-
-```sh
-export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-```
-
-The other plugins (`git`, `test-driven-fix`, `respond-to-review`, `docs`, `debate`, `simplify`, `transcript`, `jira`) do not need this flag.
+- Bundles a Go helper (`code-review-helper`) used to deterministically parse diffs and assemble review payloads. The plugin ships prebuilt binaries for `darwin`, `linux`, and `windows` × `amd64`/`arm64` (Windows binaries carry a `.exe` suffix); a `bin/code-review-helper` shell wrapper dispatches to the right one.
+- Spawns its review specialists (`security`, `quality`, `errors`, `perf`, plus conditional `typescript`, `react`, `infra`, `claude-md`) as parallel native Claude Code subagents — no agent-team API, no experimental flag.
 
 ### Building the helper from source
 
 ```sh
 cd "${CLAUDE_PLUGIN_ROOT}/tools/code-review-helper"
-make release # cross-compile all 4 platforms into ../../bin/
+make release # cross-compile all platforms into ../../bin/
 make test
 ```
 
@@ -216,17 +190,17 @@ The author runs `make release` before tagging a new plugin version; end users do
 
 All cross-plugin scripts live in the repo-root `package.json` and are invoked with `pnpm <script>`. End users never need these — they exist for contributors editing this repo.
 
-| Script             | Command                                                                                                                                                                                                                            | Purpose                                                                                                                                                                                 |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install`     | Installs dependencies; also fires `prepare`.                                                                                                                                                                                       | Standard install.                                                                                                                                                                       |
-| `pnpm format`      | `prettier --write .`                                                                                                                                                                                                               | Format every file the prettier config matches. Uses `prettier-plugin-sh` for shell.                                                                                                     |
-| `pnpm format:go`   | `for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w "$d" && go -C "$d" mod edit -fmt \|\| exit 1; done` | `gofmt -w` and `go mod edit -fmt` across all three Go modules (both code-review helpers + plugin-session-auditor session-parser).                                                       |
-| `pnpm build:go`    | `for d in plugins/code-review/tools/code-review-helper plugins/code-review-AT/tools/code-review-helper; do make -C "$d" release \|\| exit 1; done`                                                                                 | `make release` for **both** code-review helpers — cross-compiles darwin/linux × amd64/arm64 prebuilts into each plugin's `bin/`. Skips session-parser (no prebuilt shipped).            |
-| `pnpm check-types` | `tsc --noEmit`                                                                                                                                                                                                                     | TypeScript type-check using the root `tsconfig.json` (also extended by `plugins/code-review-AT/tsconfig.json`).                                                                         |
-| `pnpm test`        | `make -C plugins/code-review/tools/code-review-helper test`                                                                                                                                                                        | Runs the `code-review` Go test suite (`go test ./...`). No JS/TS suite exists; the other Go modules' tests run via their own `make test`.                                               |
-| `pnpm prepare`     | `husky`                                                                                                                                                                                                                            | Installs the Husky git hooks (runs automatically after `pnpm install`). The repo's `pre-commit` runs `pnpm exec lint-staged`; the lint-staged config lives at `lint-staged.config.mjs`. |
+| Script             | Command                                                                                                                                                                            | Purpose                                                                                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`     | Installs dependencies; also fires `prepare`.                                                                                                                                       | Standard install.                                                                                                                                                                       |
+| `pnpm format`      | `prettier --write .`                                                                                                                                                               | Format every file the prettier config matches. Uses `prettier-plugin-sh` for shell.                                                                                                     |
+| `pnpm format:go`   | `for d in plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w "$d" && go -C "$d" mod edit -fmt \|\| exit 1; done` | `gofmt -w` and `go mod edit -fmt` across both Go modules (the code-review helper + plugin-session-auditor session-parser).                                                              |
+| `pnpm build:go`    | `make -C plugins/code-review/tools/code-review-helper release`                                                                                                                     | `make release` for the code-review helper — cross-compiles darwin/linux/windows × amd64/arm64 prebuilts into `bin/` (Windows gets `.exe`). Skips session-parser (no prebuilt shipped).  |
+| `pnpm check-types` | `tsc --noEmit`                                                                                                                                                                     | TypeScript type-check using the root `tsconfig.json`.                                                                                                                                   |
+| `pnpm test`        | `make -C plugins/code-review/tools/code-review-helper test`                                                                                                                        | Runs the `code-review` Go test suite (`go test ./...`). No JS/TS suite exists; the plugin-session-auditor session-parser's tests run via its own `make test`.                           |
+| `pnpm prepare`     | `husky`                                                                                                                                                                            | Installs the Husky git hooks (runs automatically after `pnpm install`). The repo's `pre-commit` runs `pnpm exec lint-staged`; the lint-staged config lives at `lint-staged.config.mjs`. |
 
-To build a single Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review-AT/tools/code-review-helper/` or `plugins/code-review/tools/code-review-helper/`.
+To build the Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review/tools/code-review-helper/`.
 
 ## Repo-internal skills
 
@@ -254,6 +228,5 @@ plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
   commands/<file>.md                            # usually <plugin>.md; docs ships audit-docs.md
   agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
-  src/, dist/, package.json, tsconfig.json      # code-review-AT only (SDK build)
 .claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)
 ```

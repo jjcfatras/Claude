@@ -104,7 +104,7 @@ effort: low
 
 - `model` — which Claude model executes the command. Three values (if unset, inherits the session model; omit unless a command has a specific need):
   - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands (e.g. `transcript`). Typically pairs with `effort: low`.
-  - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `code-review-AT`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
+  - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
   - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
 
 ### `effort` tier semantics (verbatim from `CLAUDE.md`)

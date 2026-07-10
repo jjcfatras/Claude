@@ -219,7 +219,7 @@ If the user chose `Skip` (or `POST_MODE` was `dry-run`), skip to cleanup. Otherw
 gh pr view "$PR_NUMBER" --json state --jq '.state'
 ```
 
-If the result is not `OPEN`, report `PR #$PR_NUMBER is now <state> — skipping post` and proceed to Cleanup (do not post to a finished PR). Otherwise post via `gh api` with a three-tier fallback (the same pattern `src/helpers/post-review.ts` implemented in code-review-AT).
+If the result is not `OPEN`, report `PR #$PR_NUMBER is now <state> — skipping post` and proceed to Cleanup (do not post to a finished PR). Otherwise post via `gh api` with a three-tier fallback.
 
 **Tier 1 — single-shot review with batched comments:**
 
