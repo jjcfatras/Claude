@@ -1,0 +1,85 @@
+{
+  "skill_name": "jira:create-tests",
+  "notes": "Live Atlassian and Postman MCP are unavailable / non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treat as already-fetched) plus a minimal fixture codebase to pin the API contract against, and instructs the run to STOP at the approval gate [5/6] without calling createCollection. The graded value is phases [2/6]-[5/6]: deriving happy/sad scenarios from the acceptance criteria, pinning the real contract from the code (auth token field, nested request body, how failures surface), reconciling a flat sample against the real schema, and presenting the plan without authoring. Eval 1 targets the flat-vs-nested request-body trap; eval 2 the HTTP-200-with-failed failure signature; eval 3 end-to-end scenario derivation and request chaining.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "flat-vs-nested-body",
+      "prompt": "You're creating a QA test collection for JIRA ticket WF-142. The Atlassian fetch has already been done — the full ticket is in /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-1-flat-vs-nested/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable here, so read the file). A sample workflow to seed from is /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-1-flat-vs-nested/sample-workflow.json. The working codebase is /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-1-flat-vs-nested/codebase/ (workflow.routes.js defines the create endpoint). The Postman MCP is unavailable in this environment, so DO NOT create a collection — work through the analysis and stop at the approval gate, presenting the collection plan and the exact request body you would send for the create call. Create the QA tests for this ticket.",
+      "expected_output": "Reads both the sample and the create-endpoint schema and recognizes the sample is flat (top-level definition + status) while the endpoint nests definition under `version` and rejects unknown top-level keys (additionalProperties:false), so posting the sample as-is would 400. Cites file:line from workflow.routes.js. Presents a reconciled create body nesting the definition under `version` and dropping the disallowed top-level keys, plans a login -> create -> execute sequence, and stops at the approval gate without authoring a collection.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-1-flat-vs-nested/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-1-flat-vs-nested/sample-workflow.json",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-1-flat-vs-nested/codebase/workflow.routes.js"
+      ],
+      "assertions": [
+        {
+          "text": "Notices the sample is flat while the create endpoint requires `definition` nested under `version`, citing file:line evidence from workflow.routes.js"
+        },
+        {
+          "text": "Flags that posting the flat sample as-is (top-level definition/status) would 400 because of additionalProperties:false"
+        },
+        {
+          "text": "Produces a reconciled create request body that nests definition under `version` and omits the disallowed top-level keys"
+        },
+        {
+          "text": "Plans a chained login -> create -> execute request sequence"
+        },
+        {
+          "text": "Stops at the approval gate and does NOT create a Postman collection"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "failure-surfacing",
+      "prompt": "You're creating a QA test collection for JIRA ticket TM-210. The Atlassian fetch has already been done — the full ticket is in /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-2-failure-surfacing/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable, so read the file). The working codebase is /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-2-failure-surfacing/codebase/ (execution.service.js backs the execute endpoint). The Postman MCP is unavailable in this environment, so DO NOT create a collection — work through the analysis and stop at the approval gate, presenting the scenarios and the assertions each request would make. Create the QA tests for this ticket.",
+      "expected_output": "Determines from execution.service.js that the execute endpoint returns HTTP 200 even when a node throws — the failure is in the body (failed > 0 and a logs[].status === 'failed' entry), not a 4xx — with file:line evidence. Consequently writes the sad-path/containment assertion (a non-allowlisted crypto function) against the response body, not against an HTTP 4xx, and the happy-path assertion confirms success via the body (failed === 0 / completed). Stops at the approval gate without authoring a collection.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-2-failure-surfacing/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-2-failure-surfacing/codebase/execution.service.js"
+      ],
+      "assertions": [
+        {
+          "text": "Determines from execution.service.js that a thrown node yields HTTP 200 with failed > 0 (failure reported in the body, not the status), with file:line evidence"
+        },
+        {
+          "text": "The sad-path/containment assertion checks the response body (failed > 0 or a logs[].status === 'failed' entry), NOT an HTTP 4xx status"
+        },
+        {
+          "text": "The happy-path assertion confirms success via the body (failed === 0 / completed) rather than status alone"
+        },
+        {
+          "text": "Stops at the approval gate and does NOT create a Postman collection"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "scenario-derivation",
+      "prompt": "You're creating a QA test collection for JIRA ticket CRY-330. The Atlassian fetch has already been done — the full ticket is in /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-3-scenario-derivation/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable, so read the file). The working codebase overview is /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-3-scenario-derivation/codebase/ (routes.js summarizes the auth and task-manager endpoints). The Postman MCP is unavailable in this environment, so DO NOT create a collection — derive the scenarios and the request sequence and stop at the approval gate. Create the QA tests for this ticket.",
+      "expected_output": "Derives a happy-path scenario for each positive acceptance criterion (AC1-4), each tagged to the AC it proves, and treats AC5 (containment: non-curated crypto fns remain unavailable) as a sad-path/negative scenario. Plans a chained, stateful sequence login -> create workflow -> execute, using the real auth contract from routes.js (the token comes back in `token`, and the `x-brand` header is required) rather than guessing, and expresses the base URL as a variable rather than a hardcoded host. Stops at the approval gate without authoring a collection.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-3-scenario-derivation/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-3-scenario-derivation/codebase/routes.js"
+      ],
+      "assertions": [
+        {
+          "text": "Derives happy-path scenarios covering the positive ACs (AC1-4) and maps each scenario to the acceptance criterion it proves"
+        },
+        {
+          "text": "Treats AC5 (containment: non-curated crypto functions unavailable) as a sad-path/negative scenario"
+        },
+        {
+          "text": "Plans a chained, stateful sequence (login -> create workflow -> execute) that passes state between requests"
+        },
+        {
+          "text": "Uses the correct auth contract from routes.js — token field `token` and the required `x-brand` header — rather than guessing (e.g. accessToken)"
+        },
+        {
+          "text": "Stops at the approval gate, expresses the base URL as a variable, and does NOT hardcode a specific host"
+        }
+      ]
+    }
+  ]
+}
