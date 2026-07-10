@@ -1,5 +1,5 @@
 ---
-description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob.
+description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links, provenance/attribution), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob.
 argument-hint: "[file|dir|glob]"
 allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob, AskUserQuestion
 model: opus
@@ -66,13 +66,14 @@ Report the count and a summary list before continuing.
 
 Issue the `Read` calls for all discovered files in a single message — they are independent, so reading them sequentially wastes a round-trip per file. For each discovered file, read the full content and extract claims into one of these categories. **Concrete only** — you are verifying facts about the current codebase, not auditing taste, opinions, or aspirational guidance.
 
-| Category                        | What counts                                                                                             | Examples                                                                                                    |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Tech stack / version**        | Specific tools, languages, frameworks, runtime versions, package managers                               | "Node v22", "uses pnpm 10.x", "Go 1.22", "React 18", "TypeScript 5"                                         |
-| **Paths / structure**           | Directory or file paths claimed to exist or hold specific contents                                      | "Plugins live under `plugins/`", "see `src/auth/middleware.ts`", "manifest at `.claude-plugin/plugin.json`" |
-| **Commands / scripts / config** | package.json scripts, Makefile targets, CLI commands, env vars, config keys, hook names, settings flags | "`pnpm test`", "`make release`", "set `DEBUG=1`", "the `prepare-commit-msg` hook"                           |
-| **Module / symbol refs**        | Functions, classes, types, exports, API endpoints, CLI subcommands                                      | "the `AuthMiddleware` class", "`POST /api/users`", "`renderReport()` in `report.ts`"                        |
-| **Cross-doc links**             | References to other docs that must exist                                                                | "see `ARCHITECTURE.md`", "details in `references/schemas.md`"                                               |
+| Category                        | What counts                                                                                                                                              | Examples                                                                                                       |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Tech stack / version**        | Specific tools, languages, frameworks, runtime versions, package managers                                                                                | "Node v22", "uses pnpm 10.x", "Go 1.22", "React 18", "TypeScript 5"                                            |
+| **Paths / structure**           | Directory or file paths claimed to exist or hold specific contents                                                                                       | "Plugins live under `plugins/`", "see `src/auth/middleware.ts`", "manifest at `.claude-plugin/plugin.json`"    |
+| **Commands / scripts / config** | package.json scripts, Makefile targets, CLI commands, env vars, config keys, hook names, settings flags                                                  | "`pnpm test`", "`make release`", "set `DEBUG=1`", "the `prepare-commit-msg` hook"                              |
+| **Module / symbol refs**        | Functions, classes, types, exports, API endpoints, CLI subcommands                                                                                       | "the `AuthMiddleware` class", "`POST /api/users`", "`renderReport()` in `report.ts`"                           |
+| **Cross-doc links**             | References to other docs that must exist                                                                                                                 | "see `ARCHITECTURE.md`", "details in `references/schemas.md`"                                                  |
+| **Provenance / attribution**    | Text claimed to be copied, derived, or quoted verbatim from another named doc or section — the assertion is content _correspondence_, not mere existence | "tier semantics verbatim from `CLAUDE.md`", "mirrors `README` §2", "per the schema in `references/schemas.md`" |
 
 **Skip** subjective prose (style preferences, design rationale, "we believe in X"), rhetorical examples ("for example, an auth middleware..."), pseudo-code, and anything inside fenced code blocks unless the surrounding sentence explicitly asserts the code as current project state. Code blocks often illustrate hypothetical examples; flagging them produces high false-positive rates.
 
@@ -97,6 +98,7 @@ Verification depends on category. Use the cheapest tool that answers definitivel
 - **Commands / scripts / config** — for `package.json` scripts, `jq -r '.scripts | keys[]' package.json`. For `Makefile` targets, grep `^<target>:` in `Makefile`. For env vars / config keys / hook names, grep for usage in source.
 - **Module / symbol refs** — prefer LSP if available (`workspaceSymbol`, `goToDefinition`); fall back to `Grep` for symbol name with appropriate file-type filter. For API endpoints, grep route definitions.
 - **Cross-doc links** — `test -e` on the resolved path.
+- **Provenance / attribution** — locate the named source doc/section, then `Grep` the attributed text (or a distinctive phrase from it) inside that source. Absent or diverged ⇒ ⚠️ **stale**: the attribution is wrong or reversed. Watch for the common form where content was _moved out of_ the cited doc into the current one, leaving a backwards "verbatim from X" pointer.
 
 For each claim, classify as:
 

@@ -1,6 +1,6 @@
 {
   "name": "docs",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Maintain project documentation: /audit-docs verifies CLAUDE.md, READMEs, .claude/commands, .claude/skills, .claude/rules, and architecture docs for stale claims about the codebase; /enrich-claude-md investigates the codebase for useful, non-obvious facts missing from CLAUDE.md or .claude/rules and proposes additions. Both report findings and offer to apply fixes per finding",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
