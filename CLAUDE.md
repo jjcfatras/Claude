@@ -54,6 +54,6 @@ plugins/<name>/
 
 Each plugin has a manifest at `plugins/<name>/.claude-plugin/plugin.json` (name, version, description, repository, license, keywords).
 
-Each slash command is a markdown file in `plugins/<name>/commands/` with YAML frontmatter (`description`, `allowed-tools`, `model`, `effort`, `argument-hint`, `disable-model-invocation`). See `.claude/rules/component-frontmatter.md` §2 for the full field reference and the `model`/`effort` tier semantics.
+Each slash command is a markdown file in `plugins/<name>/commands/` with YAML frontmatter (`description`, `allowed-tools`, `model`, `effort`, `argument-hint`, `disable-model-invocation`). See `.claude/rules/component-frontmatter.md` §1 (skills & slash commands share one frontmatter set) for the full field reference and the `model`/`effort` tier semantics.
 
 Reference docs and shared rubrics live under `plugins/<name>/references/`. Use `${CLAUDE_PLUGIN_ROOT}` inside command files to resolve plugin-relative paths at runtime.
