@@ -38,7 +38,7 @@ This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.j
 - `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
 - `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`, `create-tests`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
-- `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, prebuilt binaries, and a hook
+- `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, and prebuilt binaries
 
 Besides the plugins, one repo-local skill ships at `.claude/skills/plugin-session-auditor/` — session-transcript audit: `SKILL.md`, four analyzer agents, evals, and the `session-parser` Go module (run via `go run .`).
 
@@ -51,7 +51,7 @@ plugins/<name>/
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 
-Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`, `jira-ticket-workspace/`, `debate-workspace/`, `plugin-session-auditor-workspace/`) are gitignored scratch space for the skill-creator / audit / command workflows — safe to ignore. All match the `*-workspace/` convention in `.gitignore`.
+Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`, `jira-ticket-workspace/`, `debate-workspace/`, `plugin-session-auditor-workspace/`) are gitignored scratch space for the skill-creator / audit / command workflows — safe to ignore. Each is listed individually in `.gitignore` (no `*-workspace/` glob — add new workspace dirs there explicitly).
 
 ## Plugin & Command File Structure
 

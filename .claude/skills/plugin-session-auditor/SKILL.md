@@ -11,7 +11,7 @@ Audits Claude Code jsonl session logs for plugin issues, then proposes fixes.
 ## When this triggers
 
 - User passes a path like `~/.claude/projects/.../<uuid>.jsonl` and asks for a review, audit, or analysis.
-- User says one of the plugins (`git`, `code-review`, `respond-to-review`, `test-driven-fix`, `docs`, `debate`, `simplify`, `transcript`, `jira`) misbehaved in a recent session.
+- User says one of the plugins (`git`, `code-review`, `respond-to-review`, `test-driven-fix`, `docs`, `debate`, `simplify`, `simplify-prose`, `transcript`, `jira`, `tool-discipline`, `tool-discipline-lsp`) misbehaved in a recent session.
 - User wants to find inefficiencies, repeated permission prompts, or orchestration mistakes from a real run.
 
 The user may pass a single jsonl, a directory of them, or a glob — the parser accepts all three.
@@ -102,7 +102,7 @@ Inputs:
 - Parsed session JSON: $RUN_DIR/parsed.json
 - Plugins in scope: <list from parsed.json plugins_used>
 - Plugin source roots: plugins/<name>/ for each plugin in scope
-- Repo CLAUDE.md: read for plugin-versioning rules and project structure
+- Repo CLAUDE.md: read for project structure; `.claude/rules/plugin-versioning.md` for the plugin-versioning rules
 
 Output: write your findings to $RUN_DIR/findings/<category>.md.
 ```
@@ -177,7 +177,7 @@ Show the user the proposals doc location and a one-line summary per proposal. As
 For each approved proposal:
 
 1. Apply the change to the relevant `plugins/<name>/` file(s).
-2. Bump the plugin's `version` in `plugins/<name>/.claude-plugin/plugin.json` per the repo's SemVer rules (see root `CLAUDE.md`).
+2. Bump the plugin's `version` in `plugins/<name>/.claude-plugin/plugin.json` per the repo's SemVer rules (see `.claude/rules/plugin-versioning.md`).
 3. Note the change for the commit message.
 
 Do **not** auto-commit. Stop after the edits are in the worktree and tell the user what changed.

@@ -12,8 +12,8 @@ Sources: §1 (skills & slash commands) is verified against the official skills d
 integrated into skills and share the same frontmatter, with `SKILL.md` the recommended authoring
 format and plain command files still operational; §2 (agents) against the official subagents docs
 (`code.claude.com/docs/en/sub-agents#supported-frontmatter-fields`, checked 2026-07-09). Repo-local
-tier semantics come from the root `CLAUDE.md`; "in practice" notes from the actual component files
-in this repo.
+tier semantics are defined here (root `CLAUDE.md` links to this file); "in practice" notes from the
+actual component files in this repo.
 
 Plugin manifests (`plugins/<name>/.claude-plugin/plugin.json`) are separate config, not component
 frontmatter — out of scope here. Use `${CLAUDE_PLUGIN_ROOT}` inside any component to resolve
@@ -72,7 +72,7 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.
 
-### `model` tier semantics (verbatim from `CLAUDE.md`)
+### `model` tier semantics
 
 These govern the `model` row above for both skills and slash commands.
 
@@ -81,7 +81,7 @@ These govern the `model` row above for both skills and slash commands.
   - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
   - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
 
-### `effort` tier semantics (verbatim from `CLAUDE.md`)
+### `effort` tier semantics
 
 These govern the `effort` row above for both skills and slash commands.
 

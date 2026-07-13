@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping sixteen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping eighteen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -19,9 +19,10 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `code-review`       | `/code-review [pr-number]`                                                                                         | Multi-specialist PR review (security, quality, errors, perf, plus conditional typescript, react, infra, claude-md) using parallel native Claude Code subagents. Posts inline comments.                                                                                                          |
 | `docs`              | `/audit-docs` · `/enrich-claude-md`                                                                                | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / `.claude/rules` / architecture docs for stale claims and reports findings with suggested fixes; or investigates the codebase for useful, non-obvious facts missing from CLAUDE.md / `.claude/rules` and proposes additions. |
 | `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                                             |
-| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code; shows diffs per file and applies only on approval.                                                                                                                                                            |
+| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code — or the whole project when no scope is given; shows diffs per file and applies only on approval.                                                                                                              |
+| `simplify-prose`    | `/simplify-prose [text\|path\|--staged\|--since=<ref>]`                                                            | Proposes lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and applies only on approval.                                                                                                                       |
 | `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                                                                                                                                                         |
-| `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>`                                                        | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; or pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it.                                                                                |
+| `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>` · `/jira:create-tests <JIRA-key>`                      | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it; or generate a runnable Postman QA collection from a ticket's acceptance criteria. |
 
 Install only the plugins you want — each is independent.
 
@@ -108,11 +109,9 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 5. The helper finalizes — dedup, severity/confidence gating, line-snapping, payload rendering — and you're shown the findings summary with a `Post review? [Y]es/[n]o/[i]ds <csv>` prompt. You can post all, skip, or filter to specific finding IDs.
 6. On approval: posts via a three-tier fallback (batched review → pending-then-submit → plain PR comment), then removes the scratch dir.
 
-**Hook:** the plugin bundles a `PreToolUse` hook that auto-approves `Grep` and `Glob` so specialist subagents never stall on permission prompts during parallel scans.
-
 ### `/audit-docs`
 
-**Invoke:** `/audit-docs` (no arguments).
+**Invoke:** `/audit-docs [file|dir|glob]` — no argument audits the whole repo; pass a file, directory, or glob to narrow the scope.
 
 **Prereqs:** Run inside a git repo. Outside of one, the command falls back to the current working directory and warns that path-relative claim verification is less reliable.
 
@@ -127,7 +126,7 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 ### `/simplify`
 
-**Invoke:** `/simplify [path|--staged|--since=<ref>]` — no argument scopes to files modified in this session plus the working tree / staged set.
+**Invoke:** `/simplify [path|--staged|--since=<ref>]` — no argument audits the whole project.
 
 **Prereqs:** Inside a git repo for `--staged` / `--since=` modes. The plugin's `PostToolUse` formatter hooks (Prettier, gofmt) handle reformatting after edits, so don't run formatters manually.
 
