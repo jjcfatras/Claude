@@ -91,8 +91,9 @@ func TestE2E_FinalizePipeline(t *testing.T) {
 
 // TestE2E_FinalizeSubsetFilter pins the --include-finding-ids behavior:
 // payload reflects the post-filter subset while consolidated.json remains the
-// pre-filter audit log. Uses the k8s-138754 fixture whose IDs are sec-1,
-// err-2, qual-2.
+// pre-filter audit log. Uses the k8s-138754 fixture; IDs are role-namespaced at
+// load, so the classified findings are security-sec-1, errors-err-2,
+// quality-qual-2.
 func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
@@ -112,7 +113,7 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 			"--repo", "test-repo",
 			"--pr-number", "1",
 			"--expected-roles", "security,errors,perf,quality",
-			"--include-finding-ids", "err-2",
+			"--include-finding-ids", "errors-err-2",
 			"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
 			"--out-payload", filepath.Join(outDir, "payload.json"),
 			"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
@@ -141,8 +142,8 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 		if cons.PostingFilter == nil {
 			t.Fatal("consolidated.json missing posting_filter")
 		}
-		if !equalStringSet(cons.PostingFilter.IncludeIDs, []string{"err-2"}) {
-			t.Errorf("posting_filter.include_ids = %v, want [err-2]", cons.PostingFilter.IncludeIDs)
+		if !equalStringSet(cons.PostingFilter.IncludeIDs, []string{"errors-err-2"}) {
+			t.Errorf("posting_filter.include_ids = %v, want [errors-err-2]", cons.PostingFilter.IncludeIDs)
 		}
 		if len(cons.PostingFilter.ExcludeIDs) != 0 {
 			t.Errorf("posting_filter.exclude_ids should be empty, got %v", cons.PostingFilter.ExcludeIDs)
@@ -150,7 +151,7 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 		// Pre-filter audit log still carries every classified finding.
 		preFilter := append([]string{}, idsOf(cons.InlineEligible)...)
 		preFilter = append(preFilter, idsOf(cons.SummaryOnly)...)
-		for _, want := range []string{"sec-1", "err-2", "qual-2"} {
+		for _, want := range []string{"security-sec-1", "errors-err-2", "quality-qual-2"} {
 			if !contains(preFilter, want) {
 				t.Errorf("consolidated.json pre-filter buckets missing %s; got %v", want, preFilter)
 			}

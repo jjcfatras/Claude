@@ -192,6 +192,8 @@ jq -r '
 
 The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). The Reconciled block shows findings the confidence gate filtered out, each with the specialist's one-sentence rationale — the reasoning trail for what was investigated and dismissed. Neither is posted to GitHub; without them, drops are silent.
 
+**The rendered summary is the complete, authoritative account of what will and will not be posted.** Every drop already carries its own rationale in the blocks above (Invalid / Reconciled / Dropped-prior). Do **not** re-read `consolidated.json`, the raw `findings/*.json`, `valid-lines.json`, or the helper's Go source to re-derive or second-guess a drop/keep decision — those reads produce nothing the summary didn't already surface. Do **not** edit any findings file or re-run `finalize`, except via the `--include-finding-ids` subset path in step [5/5]. If a count looks wrong, that is a bug to report to the user, not one to work around here. Proceed directly to the `POST_MODE` branch.
+
 Then branch on `POST_MODE` (derived at startup):
 
 - `dry-run` → **do not post and do not prompt.** Report the would-post counts (inline-eligible + summary-only) and proceed straight to Cleanup. Do not call AskUserQuestion.
@@ -229,11 +231,21 @@ TIER1_RC=$?
 printf '%s' "$TIER1_ERR" > "$TMP/tier1.err"
 ```
 
-`2>&1 >/dev/null` discards the success-path review JSON (tier 1 doesn't need it — success is the exit code) and captures any error text into `$TIER1_ERR`, persisted to `$TMP/tier1.err` for the tier-3 patch. **Branch on the variable, never by `cat`-ing the file** (the `enforce-builtin-tools` guardrail blocks bare `cat <file>`):
+`2>&1 >/dev/null` discards the success-path review JSON (tier 1 doesn't need it — success is the exit code) and captures any error text into `$TIER1_ERR`, persisted to `$TMP/tier1.err` for the tier-3 patch. **Branch on the variable, never by `cat`-ing the file** (the `enforce-builtin-tools` guardrail blocks bare `cat <file>`). Run this exact block — every branch ends in a plain `echo`, so the block's own exit status is always `0` and a successful post never gets misreported as a Bash failure (do **not** end the check on a bare `[ … ] && echo`, whose exit status is `1` on the success path where `$TIER1_ERR` is empty):
 
-- `$TIER1_RC` is `0` → report `posted via tier 1` and skip to cleanup.
+```bash
+if [ "$TIER1_RC" -eq 0 ]; then
+  echo "posted via tier 1" # → skip to Cleanup
+elif printf '%s' "$TIER1_ERR" | grep -q 'HTTP 422'; then
+  echo "tier 1 hit HTTP 422 — falling to tier 2"
+else
+  echo "tier 1 failed (rc=$TIER1_RC): $TIER1_ERR" # → fall through to tier 3
+fi
+```
+
+- `$TIER1_RC` is `0` → `posted via tier 1`; skip to cleanup.
 - non-zero **and** `$TIER1_ERR` contains `HTTP 422` → fall to tier 2.
-- any other non-zero → surface it verbatim with `echo "$TIER1_ERR"` and fall through to tier 3.
+- any other non-zero → the error is surfaced verbatim; fall through to tier 3.
 
 **Tier 2 — create pending review then submit:**
 

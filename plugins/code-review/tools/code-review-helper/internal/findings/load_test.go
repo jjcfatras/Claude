@@ -163,11 +163,52 @@ func TestLoadDir_MixedValidAndInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDir should tolerate one invalid finding, got %v", err)
 	}
-	if len(res.Findings) != 1 || res.Findings[0].ID != "s-1" {
+	if len(res.Findings) != 1 || res.Findings[0].ID != "security-s-1" {
 		t.Fatalf("expected only valid security finding, got %+v", res.Findings)
 	}
 	if len(res.InvalidFindings) != 1 || res.InvalidFindings[0].Role != "perf" {
 		t.Fatalf("expected one invalid perf finding, got %+v", res.InvalidFindings)
+	}
+}
+
+func TestLoadDir_NamespacesIDsAcrossRoles(t *testing.T) {
+	// Regression for the cross-role finding-ID collision (session audit,
+	// PR #1608): specialists number findings locally, so two roles routinely
+	// emit "f-1". Before namespacing, the semantic-dedup map (keyed on ID)
+	// dropped the later collider before any comparison — silently losing
+	// findings. LoadDir must hand downstream globally-unique, role-prefixed IDs.
+	dir := t.TempDir()
+	mkFinding := func() Finding {
+		return Finding{
+			ID: "f-1", Category: "x", File: "src/a.ts", Line: 10,
+			Confidence: 70, Severity: SeverityMedium,
+			Rationale: "r", Explanation: "e", Code: "c", Language: "ts",
+		}
+	}
+	writeJSON(t, dir, "security", RoleFile{
+		Specialist: "security", ScanStatus: ScanComplete, Findings: []Finding{mkFinding()},
+	})
+	writeJSON(t, dir, "errors", RoleFile{
+		Specialist: "errors", ScanStatus: ScanComplete, Findings: []Finding{mkFinding()},
+	})
+
+	res, err := LoadDir(dir, nil)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	if len(res.Findings) != 2 {
+		t.Fatalf("colliding IDs dropped a finding: want 2, got %d (%+v)", len(res.Findings), res.Findings)
+	}
+	ids := map[string]bool{}
+	for _, f := range res.Findings {
+		if ids[f.ID] {
+			t.Fatalf("duplicate ID after namespacing: %q", f.ID)
+		}
+		ids[f.ID] = true
+	}
+	// Entries are read in sorted filename order: errors.json before security.json.
+	if !ids["errors-1"] || !ids["security-1"] {
+		t.Fatalf("want namespaced IDs errors-1 & security-1, got %v", ids)
 	}
 }
 

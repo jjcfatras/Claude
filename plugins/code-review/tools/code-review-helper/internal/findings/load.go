@@ -78,6 +78,7 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 				continue
 			}
 			dropRedundantFix(&rf.Findings[i])
+			rf.Findings[i].ID = namespaceID(role, rf.Findings[i].ID)
 			res.Findings = append(res.Findings, rf.Findings[i])
 		}
 	}
@@ -161,6 +162,19 @@ func dropRedundantFix(f *Finding) {
 	if f.SuggestedFix != nil && strings.TrimSpace(*f.SuggestedFix) == strings.TrimSpace(f.Code) {
 		f.SuggestedFix = nil
 	}
+}
+
+// namespaceID prefixes a specialist's local finding ID with its role so IDs are
+// globally unique across specialists. Specialists number findings locally
+// ("f-1", "f-2", …), so two roles routinely emit the same ID; the semantic-dedup
+// pass keys its working map on ID alone (internal/dedup/semantic.go), which
+// silently drops the later-loaded collider before any comparison runs. Prefixing
+// here — the single point where every role's findings merge into one slice —
+// makes the whole downstream pipeline (dedup keys, positional tiebreak, render,
+// --include-finding-ids) collision-free without touching those consumers. A
+// leading "f-" is stripped so the result reads "security-1", not "security-f-1".
+func namespaceID(role, id string) string {
+	return role + "-" + strings.TrimPrefix(id, "f-")
 }
 
 // ErrNoFindings is returned by callers (not LoadDir itself) when downstream

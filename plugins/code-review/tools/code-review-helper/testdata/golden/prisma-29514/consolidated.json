@@ -1,7 +1,7 @@
 {
   "inline_eligible": [
     {
-      "id": "err-1",
+      "id": "errors-err-1",
       "category": "errors",
       "file": "package.json",
       "line": 162,
@@ -16,7 +16,7 @@
       "verifications": []
     },
     {
-      "id": "sec-1",
+      "id": "security-sec-1",
       "category": "security",
       "file": "package.json",
       "line": 166,
@@ -31,7 +31,7 @@
       "verifications": []
     },
     {
-      "id": "qual-2",
+      "id": "quality-qual-2",
       "category": "quality",
       "file": "package.json",
       "line": 173,
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "id": "sec-2",
+      "id": "security-sec-2",
       "category": "security",
       "file": "packages/client-engine-runtime/package.json",
       "line": 39,
@@ -69,7 +69,7 @@
       "verifications": []
     },
     {
-      "id": "perf-1",
+      "id": "perf-perf-1",
       "category": "perf",
       "file": "pnpm-lock.yaml",
       "line": 1000,

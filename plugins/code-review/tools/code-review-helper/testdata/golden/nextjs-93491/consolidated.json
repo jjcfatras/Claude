@@ -1,7 +1,7 @@
 {
   "inline_eligible": [
     {
-      "id": "perf-1",
+      "id": "perf-perf-1",
       "category": "perf",
       "file": "packages/next/src/client/route-params.ts",
       "line": 49,
@@ -16,7 +16,7 @@
       "verifications": []
     },
     {
-      "id": "sec-1",
+      "id": "security-sec-1",
       "category": "security",
       "file": "packages/next/src/client/route-params.ts",
       "line": 121,
@@ -39,7 +39,7 @@
       ]
     },
     {
-      "id": "react-1",
+      "id": "react-react-1",
       "category": "react",
       "file": "test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx",
       "line": 18,
@@ -64,7 +64,7 @@
   ],
   "summary_only": [
     {
-      "id": "qual-1",
+      "id": "quality-qual-1",
       "category": "quality",
       "file": "packages/next/src/client/route-params.ts",
       "line": 200,
