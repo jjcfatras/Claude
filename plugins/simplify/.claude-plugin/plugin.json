@@ -1,9 +1,18 @@
 {
   "name": "simplify",
-  "version": "0.3.0",
-  "description": "Propose and apply targeted simplifications to recently modified code — or the whole project when no scope is given — while preserving behavior",
+  "version": "1.0.0",
+  "description": "Propose and apply targeted simplifications — behavior-preserving code cleanups (/simplify:code) and lossless prose distillation (/simplify:prose) — with diffs shown first and applied on approval",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",
-  "keywords": ["refactor", "cleanup", "code-quality", "simplify"]
+  "keywords": [
+    "refactor",
+    "cleanup",
+    "code-quality",
+    "simplify",
+    "prose",
+    "writing",
+    "distill",
+    "conciseness"
+  ]
 }

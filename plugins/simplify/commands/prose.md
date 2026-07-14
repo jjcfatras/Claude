@@ -8,7 +8,7 @@ effort: medium
 
 Distill overly verbose prose to its concentrated essence. Lossless compression is the absolute hard constraint — every fact, qualification, and nuance in the original survives. Show diffs first, apply only on user approval.
 
-This command is the prose counterpart of `/simplify`: the same propose-then-apply contract, applied to natural language instead of code.
+This command is the prose counterpart of `/simplify:code`: the same propose-then-apply contract, applied to natural language instead of code.
 
 ## Step 0: Determine scope
 
@@ -35,7 +35,7 @@ If the user selects `Cancel` (or answers with their own equivalent), stop withou
 
 Before reading any candidate file:
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/references/standards.md` for the distillation rubric — the hierarchy of cuts and preservation rules.
+1. Read `${CLAUDE_PLUGIN_ROOT}/references/prose-standards.md` for the distillation rubric — the hierarchy of cuts and preservation rules.
 2. Read the repo root `CLAUDE.md` if present, and for each candidate the nearest non-root `CLAUDE.md` ancestor. Project writing conventions override the rubric's defaults.
 
 Carry these standards as the active rubric for the rest of the run.

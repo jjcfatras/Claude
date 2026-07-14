@@ -17,7 +17,7 @@ Pick the file set in this order:
 1. **`$1` is `--staged`**: run `git diff --name-only --cached` and use that file set.
 2. **`$1` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
 3. **`$1` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it via `Glob`. If it is a glob, expand it.
-4. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify-prose`'s job.
+4. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify:prose`'s job.
 
 After collecting candidates, drop anything that is obviously out of scope:
 
@@ -40,7 +40,7 @@ Before reading any candidate file:
 
 1. Read the repo root `CLAUDE.md` if present.
 2. For each candidate, read the nearest `CLAUDE.md` ancestor that is not the root (project-specific conventions override defaults).
-3. Read `${CLAUDE_PLUGIN_ROOT}/references/standards.md` for the four-pillar default rubric.
+3. Read `${CLAUDE_PLUGIN_ROOT}/references/code-standards.md` for the four-pillar default rubric.
 
 Carry these standards as the active rubric for the rest of the run.
 

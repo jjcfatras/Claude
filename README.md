@@ -19,8 +19,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `code-review`       | `/code-review [pr-number]`                                                                                         | Multi-specialist PR review (security, quality, errors, perf, plus conditional typescript, react, infra, claude-md) using parallel native Claude Code subagents. Posts inline comments.                                                                                                                                                                                               |
 | `docs`              | `/audit-docs` · `/enrich-claude-md`                                                                                | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / `.claude/rules` / architecture docs for stale claims and reports findings with suggested fixes; or investigates the codebase for useful, non-obvious facts missing from CLAUDE.md / `.claude/rules` and proposes additions. Both ship as skills, so Claude can auto-invoke them in addition to the `/` commands. |
 | `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                                                                                                                                  |
-| `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code — or the whole project when no scope is given; shows diffs per file and applies only on approval.                                                                                                                                                                                                   |
-| `simplify-prose`    | `/simplify-prose [text\|path\|--staged\|--since=<ref>]`                                                            | Proposes lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and applies only on approval.                                                                                                                                                                                                            |
+| `simplify`          | `/simplify:code [path\|--staged\|--since=<ref>]` · `/simplify:prose [text\|path\|--staged\|--since=<ref>]`         | Proposes targeted, behavior-preserving simplifications to recently modified code (`code`) or lossless distillation of verbose prose (`prose`) — or the whole project when no scope is given; shows diffs per file and applies only on approval.                                                                                                                                      |
 | `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count. Shipped as a skill, so Claude can also invoke it automatically when it needs the path.                                                                                                                                                                                       |
 | `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>` · `/jira:create-tests <JIRA-key>`                      | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it; or generate a runnable Postman QA collection from a ticket's acceptance criteria.                                                                                      |
 
@@ -128,9 +127,9 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 **Note:** `audit-docs` and `enrich-claude-md` now ship as skills (`plugins/docs/skills/`), so besides `/audit-docs` / `/enrich-claude-md` Claude can auto-invoke them when it judges the docs need auditing or enriching.
 
-### `/simplify`
+### `/simplify:code`
 
-**Invoke:** `/simplify [path|--staged|--since=<ref>]` — no argument audits the whole project.
+**Invoke:** `/simplify:code [path|--staged|--since=<ref>]` — no argument audits the whole project. The prose counterpart, `/simplify:prose [text|path|--staged|--since=<ref>]`, follows the same flow for prose files (or inline text) with a lossless-distillation rubric.
 
 **Prereqs:** Inside a git repo for `--staged` / `--since=` modes. The plugin's `PostToolUse` formatter hooks (Prettier, gofmt) handle reformatting after edits, so don't run formatters manually.
 
@@ -138,7 +137,7 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 1. Resolves scope per the argument (path/glob, `--staged`, `--since=<ref>`, or default session + working tree).
 2. Drops generated files, binaries, and whitespace-only changes from the candidate set; lists the survivors and asks you to confirm.
-3. Loads the root `CLAUDE.md`, nearest non-root `CLAUDE.md` ancestors per file, and the plugin's four-pillar `standards.md` rubric.
+3. Loads the root `CLAUDE.md`, nearest non-root `CLAUDE.md` ancestors per file, and the plugin's four-pillar `code-standards.md` rubric.
 4. Analyzes each file and proposes hunks — unified diff + one-sentence rationale citing the pillar. Hard guardrails drop hunks that change behavior, alter public API, or duplicate formatter work.
 5. For each file with surviving hunks: shows diffs and prompts `apply all` / `apply some` / `skip file` / `edit and apply`.
 6. Applies approved hunks via `Edit`. Never commits — that's your call.
