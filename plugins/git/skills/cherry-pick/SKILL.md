@@ -1,5 +1,6 @@
 ---
-description: Cherry-pick commits from another branch with conflict resolution
+name: cherry-pick
+description: Cherry-pick commits from another branch with conflict resolution. Use when the user asks to "cherry-pick" commits, "bring/port a commit from another branch", or "apply commit X here".
 argument-hint: <source-branch> [commit-sha or sha1..sha2]
 allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
 model: opus

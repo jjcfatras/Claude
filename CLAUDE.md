@@ -35,7 +35,7 @@ This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.j
 
 - `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `simplify-prose` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
-- `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
+- `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
 - `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`, `create-tests`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
 - `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, and prebuilt binaries
@@ -48,7 +48,7 @@ Per-plugin layout:
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `jira` ships `create-ticket.md`/`implement-ticket.md`/`create-tests.md`
-  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one and `docs` ships two (`audit-docs`, `enrich-claude-md`) instead of commands
+  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), and `git` ships six instead of commands
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 

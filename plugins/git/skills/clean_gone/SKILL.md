@@ -1,5 +1,6 @@
 ---
-description: Delete local branches marked [gone] (deleted on the remote but still present locally), removing their worktrees first
+name: clean_gone
+description: Delete local branches marked [gone] (deleted on the remote but still present locally), removing their worktrees first. Use when the user asks to "clean up branches", "prune gone branches", "delete stale local branches", or after remote branches were deleted (e.g. post-merge cleanup).
 model: sonnet
 effort: low
 ---

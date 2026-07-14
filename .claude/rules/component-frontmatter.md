@@ -75,6 +75,10 @@ description: This skill should be used when the user asks to "specific phrase 1"
   are plugin-shipped skills using the fuller command-style subset — `description`,
   `argument-hint`, `model: opus`, `effort: high`, `allowed-tools` — and are model-invocable (no
   `disable-model-invocation`).
+- The six `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
+  `clean_gone`, `cherry-pick`, `merge`) migrated from `commands/*.md` keeping the command-style
+  subset — `description`, `argument-hint` (cherry-pick/merge only), `allowed-tools` (all but
+  clean_gone), `model`, `effort` — and are model-invocable.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.

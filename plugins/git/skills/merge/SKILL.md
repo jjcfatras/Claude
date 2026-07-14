@@ -1,5 +1,6 @@
 ---
-description: Merge a source branch into the current branch with conflict resolution
+name: merge
+description: Merge a source branch into the current branch with conflict resolution. Use when the user asks to "merge branch X", "merge main into this branch", or "pull in changes from another branch".
 argument-hint: <source-branch>
 allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
 model: opus
@@ -53,7 +54,7 @@ Check the exit code:
 
 When the merge produces conflicts:
 
-Resolve every conflicting file directly in this context using the `Read` and `Edit` tools. Do not spawn a subagent (the `Agent` tool is intentionally not in this command's `allowed-tools`) — delegating conflict resolution breaks the per-context Read-before-Edit guard and causes cascading `File has not been read yet` errors when the main thread later edits files the subagent touched.
+Resolve every conflicting file directly in this context using the `Read` and `Edit` tools. Do not spawn a subagent (the `Agent` tool is intentionally not in this skill's `allowed-tools`) — delegating conflict resolution breaks the per-context Read-before-Edit guard and causes cascading `File has not been read yet` errors when the main thread later edits files the subagent touched.
 
 ### 4a: Identify all conflicting files
 
@@ -100,7 +101,7 @@ For each conflicting file:
 After all conflicts are resolved and staged:
 
 1. Use the Grep tool to search for `<<<<<<<` across the repository to verify no conflict markers remain.
-2. Run `git merge --continue` (which will open the merge-commit message editor — git uses the prepared default message non-interactively when run from this command). If the editor environment causes a hang, use `git commit --no-edit` instead to finalize with the default merge message.
+2. Run `git merge --continue` (which will open the merge-commit message editor — git uses the prepared default message non-interactively when run from this skill). If the editor environment causes a hang, use `git commit --no-edit` instead to finalize with the default merge message.
 3. If this fails, check `git status` for remaining issues.
 
 ## Step 5: Verify the result

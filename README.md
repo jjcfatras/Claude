@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping fifteen slash commands and three skills the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping nine slash commands and nine skills the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -13,7 +13,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 | Plugin              | Slash command                                                                                                      | What it does                                                                                                                                                                                                                                                                                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge` | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution.                                                                                                                                                                                                |
+| `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge` | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution. All six ship as skills, so Claude can auto-invoke them in addition to the `/` commands.                                                                                                        |
 | `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                                                                                   | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                                                                                                                                                                                                                                   |
 | `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                      | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                                                                                                                                                                                                                   |
 | `code-review`       | `/code-review [pr-number]`                                                                                         | Multi-specialist PR review (security, quality, errors, perf, plus conditional typescript, react, infra, claude-md) using parallel native Claude Code subagents. Posts inline comments.                                                                                                                                                                                               |
@@ -30,7 +30,7 @@ Two additional hook-only plugins ship no slash command: `tool-discipline` (`PreT
 
 ## Using the plugins
 
-Each subsection covers how to invoke the plugin, its prerequisites, and what to expect. The full flow lives in each command file under `plugins/<name>/commands/`.
+Each subsection covers how to invoke the plugin, its prerequisites, and what to expect. The full flow lives in each command or skill file under `plugins/<name>/commands/` or `plugins/<name>/skills/`.
 
 ### `/git:cherry-pick`
 
@@ -65,6 +65,8 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 6. Reports a final `git log --graph` summary and a `git diff ORIG_HEAD..HEAD --stat`.
 
 **Escape hatch:** `git merge --abort`.
+
+**Note:** all six git workflows ship as skills (`plugins/git/skills/`), so besides the `/git:*` commands Claude can auto-invoke them when asked in natural language (e.g. "commit and push this").
 
 ### `/test-driven-fix`
 
@@ -230,7 +232,7 @@ The repo also ships skills under `.claude/skills/`. These are **not** part of th
 plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
   commands/<file>.md                            # usually <plugin>.md (jira ships several)
-  skills/<name>/SKILL.md                        # a plugin may ship skills instead (e.g. transcript, docs)
+  skills/<name>/SKILL.md                        # a plugin may ship skills instead (e.g. transcript, docs, git)
   agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
 .claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)
 ```

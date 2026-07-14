@@ -1,5 +1,6 @@
 ---
-description: Commit changes and push to the current branch's origin; refresh an open PR's description if one exists
+name: commit-push
+description: Commit changes and push to the current branch's origin; refresh an open PR's description if one exists. Use when the user asks to "commit and push", "push this up", or wants changes committed and the remote updated without opening a new PR.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*), AskUserQuestion
 model: sonnet
 effort: low

@@ -1,5 +1,6 @@
 ---
-description: Commit, push, and open a pull request
+name: commit-push-pr
+description: Commit, push, and open a pull request. Use when the user asks to "open a PR", "commit and create a pull request", or wants changes committed, pushed, and a new PR opened.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), AskUserQuestion
 model: sonnet
 effort: low
