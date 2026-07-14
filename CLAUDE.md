@@ -33,7 +33,7 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping twelve plugins under `plugins/`:
 
-- `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `simplify-prose`, `transcript` — single slash command each
+- `test-driven-fix`, `respond-to-review`, `debate`, `simplify`, `simplify-prose` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
 - `docs` — documentation commands (`audit-docs`, `enrich-claude-md`)
 - `git` — git workflow commands (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`)
 - `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`, `create-tests`)
@@ -48,6 +48,7 @@ Per-plugin layout:
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `docs` ships `audit-docs.md`/`enrich-claude-md.md` and `jira` ships `create-ticket.md`/`implement-ticket.md`/`create-tests.md`
+  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one instead of a command
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 

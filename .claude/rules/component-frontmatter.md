@@ -68,6 +68,9 @@ description: This skill should be used when the user asks to "specific phrase 1"
 
 - `.claude/skills/plugin-session-auditor/SKILL.md` carries `argument-hint`
   (`<jsonl-path-or-dir-or-glob>`) — a documented skill field, used exactly as intended.
+- `plugins/transcript/skills/transcript/SKILL.md` is the repo's first plugin-shipped skill
+  (model-invocable), using the command-style subset — `description`, `allowed-tools`,
+  `model: haiku`, `effort: low` — since skills and commands share one frontmatter set.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.
@@ -77,7 +80,7 @@ description: This skill should be used when the user asks to "specific phrase 1"
 These govern the `model` row above for both skills and slash commands.
 
 - `model` — which Claude model executes the command. Three values (if unset, inherits the session model; omit unless a command has a specific need):
-  - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands (e.g. `transcript`). Typically pairs with `effort: low`.
+  - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands or skills (e.g. the `transcript` skill). Typically pairs with `effort: low`.
   - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
   - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
 

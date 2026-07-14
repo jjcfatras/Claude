@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping eighteen slash commands the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping seventeen slash commands and a skill the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -21,7 +21,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 | `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                                             |
 | `simplify`          | `/simplify [path\|--staged\|--since=<ref>]`                                                                        | Proposes targeted, behavior-preserving simplifications to recently modified code — or the whole project when no scope is given; shows diffs per file and applies only on approval.                                                                                                              |
 | `simplify-prose`    | `/simplify-prose [text\|path\|--staged\|--since=<ref>]`                                                            | Proposes lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and applies only on approval.                                                                                                                       |
-| `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count.                                                                                                                                                                                         |
+| `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count. Shipped as a skill, so Claude can also invoke it automatically when it needs the path.                                                                                                  |
 | `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>` · `/jira:create-tests <JIRA-key>`                      | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it; or generate a runnable Postman QA collection from a ticket's acceptance criteria. |
 
 Install only the plugins you want — each is independent.
@@ -155,6 +155,8 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 Use this to hand the file to `/plugin-session-auditor` or any other transcript-consuming workflow.
 
+**Note:** `transcript` is now packaged as a skill (`plugins/transcript/skills/transcript/`) rather than a command, so besides `/transcript` Claude can auto-invoke it when it needs the current session's transcript path.
+
 ### `/jira:implement-ticket`
 
 **Invoke:** `/jira:implement-ticket <JIRA-key>` (e.g. `/jira:implement-ticket PROJ-1234`).
@@ -226,6 +228,7 @@ The repo also ships skills under `.claude/skills/`. These are **not** part of th
 plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
   commands/<file>.md                            # usually <plugin>.md; docs ships audit-docs.md
+  skills/<name>/SKILL.md                        # a plugin may ship a skill instead (e.g. transcript)
   agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
 .claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)
 ```

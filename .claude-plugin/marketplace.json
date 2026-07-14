@@ -63,7 +63,7 @@
       "name": "transcript",
       "source": "./plugins/transcript",
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript with size and line count",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "category": "session-tools"
     },
     {
