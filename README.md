@@ -230,7 +230,7 @@ The repo also ships skills under `.claude/skills/`. These are **not** part of th
 .claude-plugin/marketplace.json                # marketplace manifest
 plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
-  commands/<file>.md                            # usually <plugin>.md (jira ships several)
+  commands/<file>.md                            # usually <plugin>.md (jira and simplify ship several)
   skills/<name>/SKILL.md                        # a plugin may ship skills instead (e.g. transcript, docs, git)
   agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
 .claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)

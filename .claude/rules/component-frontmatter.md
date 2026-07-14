@@ -122,11 +122,12 @@ allowed-tools: Bash(git:*)   # only git; also Bash(npm:*), Bash(docker:*)
 allowed-tools: "*"            # all tools — avoid
 ```
 
-Example (from `plugins/git/commands/commit.md`):
+Example (from `plugins/git/skills/commit/SKILL.md`):
 
 ```yaml
 ---
-description: Create a git commit with an auto-generated message matching the repo's style
+name: commit
+description: Create a git commit with an auto-generated message matching the repo's style. Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message. Commits only — does not push.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git switch:*), Bash(git commit:*), AskUserQuestion
 model: sonnet
 effort: low
