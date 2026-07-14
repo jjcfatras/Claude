@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -66,7 +66,7 @@ func ClaudeMdFiles(changedFiles []string, repoRoot string) ([]string, error) {
 			out = append(out, cand)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }
 
@@ -93,10 +93,5 @@ func Build(changedFiles []string, claudeMdCount int) []string {
 }
 
 func anyMatch(files []string, re *regexp.Regexp) bool {
-	for _, f := range files {
-		if re.MatchString(f) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(files, re.MatchString)
 }

@@ -1,7 +1,7 @@
 {
   "inline_eligible": [
     {
-      "id": "perf-perf-1",
+      "id": "perf-1",
       "category": "perf",
       "file": "packages/next/src/client/route-params.ts",
       "line": 49,
@@ -39,7 +39,7 @@
       ]
     },
     {
-      "id": "react-react-1",
+      "id": "react-1",
       "category": "react",
       "file": "test/e2e/app-dir/segment-cache/encoded-slash-params/components/link-accordion.tsx",
       "line": 18,

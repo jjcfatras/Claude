@@ -35,11 +35,7 @@ func runRoster(argv []string) error {
 	if err != nil {
 		return err
 	}
-	// nil → [] so the JSON output is [] not null
-	if cmFiles == nil {
-		cmFiles = []string{}
-	}
-	if err := writeJSON(*outClaudeMd, cmFiles); err != nil {
+	if err := writeJSON(*outClaudeMd, coalesce(cmFiles)); err != nil {
 		return err
 	}
 

@@ -173,7 +173,6 @@ type sourceDecision struct {
 	Reason  string       // omission rationale (per-file cap, aggregate cap, git show error)
 }
 
-// planSourceSection iterates the changed paths in lexicographic order and
 // writeSection emits a heading followed by raw bytes (trimmed of trailing
 // newlines so consecutive sections aren't separated by a growing blank-line
 // run). The "\n\n" suffix keeps the per-section separator deterministic.
@@ -183,6 +182,7 @@ func writeSection(b *bytes.Buffer, heading string, raw []byte) {
 	b.WriteString("\n\n")
 }
 
+// planSourceSection iterates the changed paths in lexicographic order and
 // decides per-file whether to embed the content, mark it omitted under the
 // per-file cap, or mark it omitted under the aggregate-bytes cap. Lexicographic
 // ordering is deterministic, greppable, and golden-test friendly. Per-file cap

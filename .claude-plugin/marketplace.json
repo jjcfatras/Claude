@@ -28,7 +28,7 @@
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "1.9.2",
+      "version": "1.9.3",
       "category": "code-review"
     },
     {
@@ -70,7 +70,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow: create a structured ticket from a diff/PR/description, and pick up a ticket by key to verify claims, plan, and implement it.",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "category": "project-management"
     },
     {

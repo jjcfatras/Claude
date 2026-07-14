@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -152,7 +154,7 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 		preFilter := append([]string{}, idsOf(cons.InlineEligible)...)
 		preFilter = append(preFilter, idsOf(cons.SummaryOnly)...)
 		for _, want := range []string{"security-sec-1", "errors-err-2", "quality-qual-2"} {
-			if !contains(preFilter, want) {
+			if !slices.Contains(preFilter, want) {
 				t.Errorf("consolidated.json pre-filter buckets missing %s; got %v", want, preFilter)
 			}
 		}
@@ -222,21 +224,12 @@ func idsOf(items []struct {
 	return out
 }
 
-func contains(xs []string, want string) bool {
-	for _, x := range xs {
-		if x == want {
-			return true
-		}
-	}
-	return false
-}
-
 func equalStringSet(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for _, x := range a {
-		if !contains(b, x) {
+		if !slices.Contains(b, x) {
 			return false
 		}
 	}
@@ -249,11 +242,8 @@ func equalStringSet(a, b []string) bool {
 func firstDivergence(want, got string) string {
 	wantLines := strings.Split(want, "\n")
 	gotLines := strings.Split(got, "\n")
-	max := len(wantLines)
-	if len(gotLines) > max {
-		max = len(gotLines)
-	}
-	for i := 0; i < max; i++ {
+	n := max(len(wantLines), len(gotLines))
+	for i := range n {
 		var w, g string
 		if i < len(wantLines) {
 			w = wantLines[i]
@@ -262,20 +252,8 @@ func firstDivergence(want, got string) string {
 			g = gotLines[i]
 		}
 		if w != g {
-			return "  line " + itoa(i+1) + ":\n  want: " + w + "\n  got:  " + g
+			return "  line " + strconv.Itoa(i+1) + ":\n  want: " + w + "\n  got:  " + g
 		}
 	}
 	return "(no line-level difference found; trailing newlines may differ)"
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
 }

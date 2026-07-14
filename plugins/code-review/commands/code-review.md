@@ -73,9 +73,7 @@ PR_STATE=$(jq -r '.state' "$TMP/pr-meta.json")
 
 If `$PR_STATE` is not `OPEN`, report `PR #$PR_NUMBER is $PR_STATE — aborting` and stop (run Cleanup).
 
-Fetch prior Claude-Code review threads on this PR (used by the helper's prior-review dedup pass). Uses GraphQL `reviewThreads` so we get thread-level state (`isResolved`, `isOutdated`) and every reply — needed to detect when the PR author has already dismissed a finding as a false positive. The REST `pulls/{n}/reviews/{rid}/comments` endpoint does not expose any of that.
-
-Fetch all review threads in one GraphQL call. The first-page cap is 50 threads × 50 comments, which is well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. We embed the GraphQL variables via `-F` (typed) for `pr` and `-f` for strings:
+Fetch prior Claude-Code review threads on this PR in one GraphQL call (used by the helper's prior-review dedup pass). GraphQL `reviewThreads` gives thread-level state (`isResolved`, `isOutdated`) and every reply — needed to detect when the PR author has already dismissed a finding as a false positive; the REST `pulls/{n}/reviews/{rid}/comments` endpoint exposes none of that. The first-page cap is 50 threads × 50 comments, well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. We embed the GraphQL variables via `-F` (typed) for `pr` and `-f` for strings:
 
 ```bash
 gh api graphql -F owner="$OWNER" -F repo="$REPO" -F pr="$PR_NUMBER" -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:50){nodes{id isResolved isOutdated comments(first:50){nodes{databaseId author{login} body path line originalLine originalStartLine}}}}}}}' > "$TMP/review-threads.json"
@@ -242,10 +240,6 @@ else
   echo "tier 1 failed (rc=$TIER1_RC): $TIER1_ERR" # → fall through to tier 3
 fi
 ```
-
-- `$TIER1_RC` is `0` → `posted via tier 1`; skip to cleanup.
-- non-zero **and** `$TIER1_ERR` contains `HTTP 422` → fall to tier 2.
-- any other non-zero → the error is surfaced verbatim; fall through to tier 3.
 
 **Tier 2 — create pending review then submit:**
 

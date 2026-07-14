@@ -41,9 +41,14 @@ Use this exact structure. Show the draft to the user in the conversation **befor
 2. <a concrete action — a user action, OR for an API change the exact `METHOD /path` plus a full, runnable request body>
    - Expected: <observable result — on-screen text/state, or a response status code plus the specific fields/values to check>
 3. ...
+
+<!-- OR, when nothing is externally testable (see the doctrine below), the whole section is exactly one line instead of the numbered list: -->
+NA: <reason — e.g. tooling-only change, no user-/API-observable surface; verified developer-side / by automated tests in CI>
 ```
 
 ### Why the QA section is written the way it is
+
+**First decide whether there is anything to test at all.** Two kinds of change give a QA tester nothing to do, and in both the entire section is a single line — `NA: <reason>` — with no numbered steps: (a) the change has **no user- or API-observable surface** — build tooling, CI config, dependency bumps, dev scripts, docs, or a behavior-preserving refactor; (b) the behavior is **fully covered by automated tests that run in CI**, so a manual tester has nothing to add. Write the reason concretely — e.g. `NA: tooling-only Nx 22→23 upgrade — no runtime/UI/API surface; validated by the build/test pipeline in CI` — then stop; the `<reason>` is mandatory so a reader can see why QA was skipped and challenge it. **Never** substitute project-level scripts — `pnpm …`, `make …`, `go test`, `nx …`, "check out the branch and run …", or any repo/CLI command — as QA steps: a QA tester has no repo checkout and no toolchain, so those are exactly as unrunnable for them as "verify the `processPayment` function returns 200." If neither case applies, write real steps as below.
 
 The tester running these steps **cannot read the code or the database**. They can only see and do what any user can: open pages, click buttons, fill inputs, read on-screen text and error messages, inspect an API response or an email, observe state changes. So write every step from that vantage point.
 

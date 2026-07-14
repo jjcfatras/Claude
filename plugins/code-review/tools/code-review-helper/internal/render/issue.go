@@ -88,10 +88,8 @@ func briefDescription(finding findings.Finding) string {
 
 func firstSentence(text string) string {
 	text = strings.TrimSpace(text)
-	for i, r := range text {
-		if r == '.' || r == '\n' {
-			return strings.TrimSpace(text[:i])
-		}
+	if i := strings.IndexAny(text, ".\n"); i >= 0 {
+		return strings.TrimSpace(text[:i])
 	}
 	return text
 }

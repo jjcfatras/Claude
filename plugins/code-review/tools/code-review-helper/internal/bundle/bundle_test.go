@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -368,9 +369,9 @@ func TestBuild_SourceIndexBlock(t *testing.T) {
 			content := strings.Repeat("// pad\n", 200) // ~1.4 KB
 			return content, len(content), nil
 		case "c.ts":
-			return "", 0, &fakeErr{"path not found at HEAD"}
+			return "", 0, errors.New("path not found at HEAD")
 		}
-		return "", 0, &fakeErr{"unexpected path " + path}
+		return "", 0, errors.New("unexpected path " + path)
 	}
 
 	out, err := Build(Input{
@@ -507,11 +508,6 @@ func TestBuild_AggregateCapDisabledWhenZero(t *testing.T) {
 		t.Error("aggregate-cap reason leaked into output despite MaxTotalSourceBytes=0")
 	}
 }
-
-// fakeErr is a simple error type used by tests injecting GitShowFn failures.
-type fakeErr struct{ msg string }
-
-func (e *fakeErr) Error() string { return e.msg }
 
 func mustWrite(t *testing.T, p, content string) {
 	t.Helper()

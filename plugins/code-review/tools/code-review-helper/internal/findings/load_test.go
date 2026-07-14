@@ -212,6 +212,31 @@ func TestLoadDir_NamespacesIDsAcrossRoles(t *testing.T) {
 	}
 }
 
+// Specialists may number findings "<role>-N" locally instead of "f-N";
+// namespaceID must not double-prefix those into "perf-perf-1".
+func TestLoadDir_DoesNotDoublePrefixRoleStyleIDs(t *testing.T) {
+	dir := t.TempDir()
+	writeJSON(t, dir, "perf", RoleFile{
+		Specialist: "perf", ScanStatus: ScanComplete,
+		Findings: []Finding{{
+			ID: "perf-1", Category: "x", File: "src/a.ts", Line: 10,
+			Confidence: 70, Severity: SeverityMedium,
+			Rationale: "r", Explanation: "e", Code: "c", Language: "ts",
+		}},
+	})
+
+	res, err := LoadDir(dir, nil)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	if len(res.Findings) != 1 {
+		t.Fatalf("want 1 finding, got %d", len(res.Findings))
+	}
+	if got := res.Findings[0].ID; got != "perf-1" {
+		t.Fatalf("double-prefixed role-style ID: want perf-1, got %q", got)
+	}
+}
+
 func TestLoadDir_RejectsEmptyContentFields(t *testing.T) {
 	// Repro of the failure mode in
 	// https://github.com/FS-Main/fairsquare/pull/1345#pullrequestreview-4232328571

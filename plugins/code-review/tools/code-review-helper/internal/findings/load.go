@@ -3,9 +3,7 @@ package findings
 import (
 	"cmp"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -93,12 +91,7 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 }
 
 func loadFile(path string) (*RoleFile, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	data, err := io.ReadAll(file)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -172,11 +165,11 @@ func dropRedundantFix(f *Finding) {
 // here — the single point where every role's findings merge into one slice —
 // makes the whole downstream pipeline (dedup keys, positional tiebreak, render,
 // --include-finding-ids) collision-free without touching those consumers. A
-// leading "f-" is stripped so the result reads "security-1", not "security-f-1".
+// leading "f-" or "<role>-" is stripped so the result reads "security-1", not
+// "security-f-1" or "security-security-1" — clean regardless of whether the
+// specialist numbered its findings "f-N" or "<role>-N" locally.
 func namespaceID(role, id string) string {
-	return role + "-" + strings.TrimPrefix(id, "f-")
+	id = strings.TrimPrefix(id, "f-")
+	id = strings.TrimPrefix(id, role+"-")
+	return role + "-" + id
 }
-
-// ErrNoFindings is returned by callers (not LoadDir itself) when downstream
-// stages need to short-circuit. Exposed for type-asserted handling.
-var ErrNoFindings = errors.New("no findings to process")
