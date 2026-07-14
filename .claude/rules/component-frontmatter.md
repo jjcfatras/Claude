@@ -71,6 +71,10 @@ description: This skill should be used when the user asks to "specific phrase 1"
 - `plugins/transcript/skills/transcript/SKILL.md` is the repo's first plugin-shipped skill
   (model-invocable), using the command-style subset — `description`, `allowed-tools`,
   `model: haiku`, `effort: low` — since skills and commands share one frontmatter set.
+- `plugins/docs/skills/audit-docs/SKILL.md` and `plugins/docs/skills/enrich-claude-md/SKILL.md`
+  are plugin-shipped skills using the fuller command-style subset — `description`,
+  `argument-hint`, `model: opus`, `effort: high`, `allowed-tools` — and are model-invocable (no
+  `disable-model-invocation`).
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.

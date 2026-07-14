@@ -1,17 +1,17 @@
 ---
-description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links, provenance/attribution), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob.
+name: audit-docs
+description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links, provenance/attribution), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob. Use when the user asks to audit docs, check for stale or outdated documentation, verify CLAUDE.md / README claims against the code, or find doc drift.
 argument-hint: "[file|dir|glob]"
 allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob, AskUserQuestion
 model: opus
 effort: high
-disable-model-invocation: true
 ---
 
 Audit project documentation for stale claims about the codebase. The user is asking because docs drift — over time, CLAUDE.md / README / architecture notes accumulate statements that were once true but no longer match the code. Your job: find those statements, verify each, and produce an actionable report.
 
 You audit a fixed set of file globs in the repo, extract only **concrete, verifiable claims** (file paths, versions, scripts, symbols, cross-doc links — not subjective prose like "this codebase is well-tested"), check each claim against current code, and present findings grouped by source file. Then you offer to apply fixes one finding at a time.
 
-This command is a one-shot read-and-report. Do not modify any files until the user explicitly approves a specific fix in step 5.
+This skill is a one-shot read-and-report. Do not modify any files until the user explicitly approves a specific fix in step 5.
 
 ## Step 0: Establish repo root
 

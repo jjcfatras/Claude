@@ -35,7 +35,7 @@
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "category": "documentation"
     },
     {

@@ -1,17 +1,17 @@
 ---
-description: Investigate the codebase for useful, durable, non-obvious facts not yet captured in CLAUDE.md (or .claude/rules/) and propose them as additions. Researches current best practices for what belongs in a CLAUDE.md / .claude/rules file via context7, then scans the repo (build/test/lint commands, project structure, conventions, environment quirks, gotchas), filters out what's obvious or already documented, and reports proposed additions grouped by target file with evidence and a paste-ready snippet — including proposing a new nested CLAUDE.md when a cluster of facts is specific to a subtree. Offers to apply each addition. Optionally scope to a directory or glob.
+name: enrich-claude-md
+description: Investigate the codebase for useful, durable, non-obvious facts not yet captured in CLAUDE.md (or .claude/rules/) and propose them as additions. Researches current best practices for what belongs in a CLAUDE.md / .claude/rules file via context7, then scans the repo (build/test/lint commands, project structure, conventions, environment quirks, gotchas), filters out what's obvious or already documented, and reports proposed additions grouped by target file with evidence and a paste-ready snippet — including proposing a new nested CLAUDE.md when a cluster of facts is specific to a subtree. Offers to apply each addition. Optionally scope to a directory or glob. Use when the user asks to enrich or update CLAUDE.md / .claude/rules, capture undocumented conventions or gotchas into project memory, or find facts worth adding to a memory file.
 argument-hint: "[dir|glob]"
 allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob, Agent, AskUserQuestion, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
 effort: high
-disable-model-invocation: true
 ---
 
 Investigate the codebase for useful, durable, non-obvious facts that would help a future Claude session but aren't yet captured in the project's memory files (the root `CLAUDE.md`, directory-scoped nested `CLAUDE.md` files, and `.claude/rules/*.md`). This is the inverse of `/audit-docs`: that command finds claims in the docs that are now _wrong_; this one finds facts in the _code_ that are missing from the docs and worth adding.
 
 The bar is high on purpose. A memory file earns its value by being short and high-signal — every line a future session must read. So you are not transcribing the codebase; you are hunting for the handful of facts that are **durable** (won't churn next week), **non-obvious** (a fresh session would waste time or get it wrong without being told), and **project-specific** (not generic best practice the model already knows). Most of what you find will not clear that bar, and that's expected.
 
-This command is a one-shot investigate-and-report. Do not modify any files until the user explicitly approves a specific addition in Step 6.
+This skill is a one-shot investigate-and-report. Do not modify any files until the user explicitly approves a specific addition in Step 6.
 
 ## Step 0: Establish repo root and scope
 
@@ -165,4 +165,4 @@ After the last decision, summarize what was added and what was deferred.
 - **Use `jq` for `package.json`** — `jq -r '.scripts | keys[]' package.json` to enumerate scripts; read plain version files (`.nvmrc`, `.tool-versions`) with `Read`, not `cat` (blocked by the `enforce-builtin-tools.sh` hook).
 - **Match the house style** — a snippet that reads like the lines around it gets accepted; one that doesn't gets reformatted or rejected. Mirror table-vs-prose, heading depth, and terseness of the target file.
 - **Don't restate the obvious to pad the report** — a short report with three real additions beats a long one padded with facts the user already knows.
-- **Respect `disable-model-invocation`** — this is a deliberate, user-initiated scan, not something to run mid-task. Keep working notes in memory or a temp file; do not persist them to the repo.
+- **Confirm scope before a full-repo pass** — this is a whole-repo scan. When auto-invoked mid-task rather than run explicitly, confirm the intended scope with the user before scanning the entire repo. Keep working notes in memory or a temp file; do not persist them to the repo.
