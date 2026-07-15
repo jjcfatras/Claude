@@ -87,10 +87,11 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `argument-hint`, `allowed-tools`, `model`, `effort` — plus `disable-model-invocation: true`:
   the repo's first user-only skills, invocable via `/jira:*` but never auto-loaded by Claude.
 - `plugins/code-review/skills/code-review/SKILL.md` migrated from `commands/code-review.md`
-  keeping the command-style subset verbatim — `description`, `argument-hint`,
-  `disable-model-invocation: false`, `model: opus`, `effort: medium`, `allowed-tools` — plus an
-  explicit `name: code-review`. Model-invocable; the invocation is unchanged because the skill
-  directory name matches the old command filename.
+  keeping the command-style subset — `description`, `argument-hint`, `model: opus`,
+  `effort: medium`, `allowed-tools` — plus an explicit `name: code-review` and
+  `disable-model-invocation: true`: user-only like the jira skills, invocable as `/code-review`
+  (unchanged, since the skill directory name matches the old command filename) but never
+  auto-loaded by Claude.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.
