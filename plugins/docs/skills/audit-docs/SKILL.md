@@ -1,6 +1,6 @@
 ---
 name: audit-docs
-description: Audit project docs (CLAUDE.md, READMEs, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links, provenance/attribution), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob. Use when the user asks to audit docs, check for stale or outdated documentation, verify CLAUDE.md / README claims against the code, or find doc drift.
+description: Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase. Extract concrete claims (tech stack, paths, scripts, symbols, cross-doc links, provenance/attribution), verify each against current state, and report findings grouped by file with suggested fixes. Offers to apply fixes per finding. Optionally scope the audit to a file, directory, or glob. Use when the user asks to audit docs, check for stale or outdated documentation, verify CLAUDE.md / README claims against the code, or find doc drift.
 argument-hint: "[file|dir|glob]"
 allowed-tools: Bash(find:*), Bash(ls:*), Bash(test:*), Bash(stat:*), Bash(jq:*), Bash(grep:*), Bash(rg:*), Bash(wc:*), Bash(git:*), Read, Edit, Write, Grep, Glob, AskUserQuestion
 model: opus
@@ -39,9 +39,12 @@ Locate every file matching these globs, all relative to the scope root determine
 - `.claude/rules/*.md`
 - `**/README.md`
 - `**/CLAUDE.md`
+- `**/docs/**/*.md`
 - `**/*[Aa]rchitecture*.md`
 
 Do not include files under `.claude/skills/*/agents/` or `.claude/skills/*/references/` — those are internal specialist prompts, not project documentation.
+
+The `**/docs/**/*.md` glob exists because `docs/` directories are the conventional home for hand-written documentation (operations guides, deployment notes, API docs) whose filenames rarely match the README/CLAUDE/architecture patterns — yet they drift just as fast, and a claim that lives only in `docs/OPERATIONS.md` would otherwise never be audited. Generated doc trees mostly live under the excluded directories below, and the >50-file guard later in this step catches the rest.
 
 Exclude these directories from the scan: `node_modules`, `.git`, `dist`, `build`, `vendor`, `.next`, `target`, `out`, `coverage`, and `.claude/worktrees/` (git-worktree copies of the repo — auditing them duplicates findings from the real working tree). Also exclude the plugin's own scratch workspace `docs-workspace/` if present.
 
@@ -49,7 +52,7 @@ Use exactly one `find` invocation. Prune excluded directories with `-name <dir> 
 
 ```bash
 find "$ROOT" \( -name node_modules -o -name .git -o -name dist -o -name build -o -name vendor -o -name .next -o -name target -o -name out -o -name coverage -o -name docs-workspace -o -path '*/.claude/worktrees' \) -prune -o \
-  -type f \( -path "$ROOT/.claude/commands/*.md" -o -path "$ROOT/.claude/skills/*/SKILL.md" -o -path "$ROOT/.claude/rules/*.md" -o -name 'README.md' -o -name 'CLAUDE.md' -o -iname '*architecture*.md' \) -print
+  -type f \( -path "$ROOT/.claude/commands/*.md" -o -path "$ROOT/.claude/skills/*/SKILL.md" -o -path "$ROOT/.claude/rules/*.md" -o -name 'README.md' -o -name 'CLAUDE.md' -o \( -path '*/docs/*' -name '*.md' \) -o -iname '*architecture*.md' \) -print
 ```
 
 Do not retry with alternate pruning syntax to "double-check" — if the first result set looks wrong, examine it rather than re-running an equivalent query. If the total file count exceeds 50, list the files, then call the **AskUserQuestion** tool (`multiSelect: false`, header `Scope`) naming the count (e.g. "Audit 73 documentation files?") with three options:
