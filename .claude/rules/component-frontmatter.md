@@ -86,6 +86,11 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `create-tests`) migrated from `commands/*.md` keeping the command-style subset — `description`,
   `argument-hint`, `allowed-tools`, `model`, `effort` — plus `disable-model-invocation: true`:
   the repo's first user-only skills, invocable via `/jira:*` but never auto-loaded by Claude.
+- `plugins/code-review/skills/code-review/SKILL.md` migrated from `commands/code-review.md`
+  keeping the command-style subset verbatim — `description`, `argument-hint`,
+  `disable-model-invocation: false`, `model: opus`, `effort: medium`, `allowed-tools` — plus an
+  explicit `name: code-review`. Model-invocable; the invocation is unchanged because the skill
+  directory name matches the old command filename.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.

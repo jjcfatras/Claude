@@ -151,7 +151,7 @@ func TestBuild_StubSummary_EmptyAndSingle(t *testing.T) {
 
 // TestBuild_MigrationHistoryGated verifies migration-history.json is only
 // rendered when present, matching the gated section semantics in
-// commands/code-review.md step 2b.
+// skills/code-review/SKILL.md step 2b.
 func TestBuild_MigrationHistoryGated(t *testing.T) {
 	dir := t.TempDir()
 	seedMinimalArtifacts(t, dir)

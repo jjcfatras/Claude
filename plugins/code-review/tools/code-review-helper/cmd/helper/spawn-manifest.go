@@ -16,7 +16,7 @@ import (
 //
 //	{{ROLE}}, {{TMP}}, {{PR_NUMBER}}, {{HEAD_SHA}}, {{REPO_ROOT}}, {{OWNER}}, {{REPO}}
 //
-// The wording mirrors the legacy inline template in commands/code-review.md
+// The wording mirrors the legacy inline template in skills/code-review/SKILL.md
 // §[3b/5]; keep them in sync if either side is edited.
 const promptTemplate = "Read {{TMP}}/spawn-context.md once at startup " +
 	"(use offset:0, limit:200 and paginate — the bundle may exceed the 25,000-token Read cap on large PRs) " +

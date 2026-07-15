@@ -47,7 +47,7 @@ type Input struct {
 
 // Build reads the on-disk artifacts in ReviewTmpDir and emits the spawn-context
 // bundle as a string. The shape matches the template in
-// commands/code-review.md step 2b verbatim — keep them in sync.
+// skills/code-review/SKILL.md step 2b verbatim — keep them in sync.
 func Build(in Input) (string, error) {
 	if in.ReviewTmpDir == "" {
 		return "", fmt.Errorf("ReviewTmpDir is required")
