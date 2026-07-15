@@ -1,4 +1,6 @@
 ---
+name: create-tests
+disable-model-invocation: true
 description: Generate a runnable Postman QA collection from a JIRA ticket — mine its acceptance criteria for happy-path and containment/negative scenarios, pin the real API contract (endpoints, auth, request/response shapes, failure semantics) from the codebase, then author a chained, self-verifying collection into a Postman workspace via the Postman MCP after approval. Use whenever the user wants QA tests, a Postman/API test collection, or executable test cases from a ticket (e.g. "create tests for BAU-1810", "make a QA collection for PROJ-42").
 argument-hint: <JIRA-key> (e.g. PROJ-1234); optionally a sample request/workflow file to seed from
 model: opus

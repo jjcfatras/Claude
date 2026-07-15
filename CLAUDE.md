@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Development Environment
 
@@ -17,7 +17,7 @@ All scripts live in `package.json` and are invoked with `pnpm <script>`:
 - `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across both Go modules (`plugins/code-review/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
 - `pnpm build:go` — `make release` for the `code-review` helper; cross-compiles prebuilts into `plugins/code-review/bin/` (darwin/linux/windows × amd64/arm64; Windows binaries get a `.exe` suffix). Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
 - `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json`
-- `pnpm test` — runs the `code-review` Go test suite via `make -C plugins/code-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the other Go modules' tests run via their own `make test`. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change
+- `pnpm test` — runs the `code-review` Go test suite via `make -C plugins/code-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change
 - `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
 
 To build the Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review/tools/code-review-helper/`.
@@ -37,7 +37,7 @@ This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.j
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
-- `jira` — JIRA workflow commands (`create-ticket`, `implement-ticket`, `create-tests`)
+- `jira` — JIRA workflow skills (`create-ticket`, `implement-ticket`, `create-tests`), all user-only (`disable-model-invocation: true`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
 - `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships .md agent files, references, a Go helper, and prebuilt binaries
 
@@ -48,8 +48,8 @@ Per-plugin layout:
 ```
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
-  commands/<command>.md                           # slash command(s); usually `<plugin-name>.md`, but `jira` ships `create-ticket.md`/`implement-ticket.md`/`create-tests.md`
-  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships six, and `simplify` ships two (`simplify-code`, `simplify-prose`) instead of commands
+  commands/<command>.md                           # single slash command, named `<plugin-name>.md`
+  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships six, `simplify` ships two (`simplify-code`, `simplify-prose`), and `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`) instead of commands
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 

@@ -1,4 +1,6 @@
 ---
+name: implement-ticket
+disable-model-invocation: true
 description: Take a JIRA ticket by key, understand its intent, verify every claim it makes about the codebase to catch false positives, design an implementation plan (reconciling any solution the ticket proposed with one designed independently), present it for approval, then implement. Use whenever the user wants to pick up, start, action, or implement a JIRA ticket/issue by key (e.g. "implement PROJ-1234", "pick up ABC-42", "let's action this ticket").
 argument-hint: <JIRA-key> (e.g. PROJ-1234)
 model: opus
