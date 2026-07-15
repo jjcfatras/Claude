@@ -11,13 +11,6 @@
       "category": "git"
     },
     {
-      "name": "test-driven-fix",
-      "source": "./plugins/test-driven-fix",
-      "description": "Autonomously fix failing tests by iterating patch → test → revert-on-regression, with a 10-iteration cap",
-      "version": "1.0.2",
-      "category": "testing"
-    },
-    {
       "name": "respond-to-review",
       "source": "./plugins/respond-to-review",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones",

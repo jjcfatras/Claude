@@ -31,9 +31,9 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping eleven plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping ten plugins under `plugins/`:
 
-- `test-driven-fix`, `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
+- `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
