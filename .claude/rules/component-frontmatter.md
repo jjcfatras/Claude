@@ -113,7 +113,8 @@ These govern the `effort` row above for both skills and slash commands.
 ### Slash-command specifics
 
 **Repo enforcement:** the `validate-command-frontmatter.sh` PostToolUse hook requires every
-`plugins/*/commands/*.md` to start with `---` and include a `description:` field.
+`plugins/*/commands/*.md`, `plugins/*/skills/*/SKILL.md`, and `.claude/skills/*/SKILL.md` to start
+with `---` and include a `description:` field.
 
 **`allowed-tools` formats** — single, comma-separated, YAML array, `Bash(...)` command filters, or
 the (discouraged) all-tools wildcard:

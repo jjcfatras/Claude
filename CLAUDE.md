@@ -26,7 +26,7 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 - **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `go mod edit -fmt` for `go.mod`, `prettier --write` for everything else. Don't run formatters manually.
 - **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
-- **Command frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md` must start with `---` and include a `description:` field.
+- **Frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md`, `plugins/*/skills/*/SKILL.md`, and `.claude/skills/*/SKILL.md` must start with `---` and include a `description:` field.
 - **Version-sync validator** (`PostToolUse`): a plugin's `plugin.json` `version` must match its entry in `.claude-plugin/marketplace.json`; editing either file triggers the check.
 
 ## Project Structure
