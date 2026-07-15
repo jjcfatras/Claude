@@ -1,6 +1,6 @@
 {
   "name": "debate",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Adversarial debate plugin. Two subagents (pro and con) generate opening arguments on a user claim, then attack and defend each other's findings across up to 5 rounds until convergence, conceding points they cannot defend. A neutral judge then declares a verdict. Orchestrator renders an inline markdown report of the verdict plus surviving, negated, and disputed arguments.",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

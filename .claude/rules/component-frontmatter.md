@@ -92,6 +92,11 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `disable-model-invocation: true`: user-only like the jira skills, invocable as `/code-review`
   (unchanged, since the skill directory name matches the old command filename) but never
   auto-loaded by Claude.
+- `plugins/debate/skills/debate/SKILL.md` migrated from `commands/debate.md` keeping the
+  command-style subset — `description`, `argument-hint`, `model: opus`, `effort: high`,
+  `allowed-tools` — plus an explicit `name: debate` and `disable-model-invocation: true`:
+  user-only like the jira and code-review skills, invocable as `/debate` (unchanged, since the
+  skill directory name matches the old command filename) but never auto-loaded by Claude.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.

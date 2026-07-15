@@ -35,7 +35,7 @@
       "name": "debate",
       "source": "./plugins/debate",
       "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 5 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
-      "version": "0.2.0",
+      "version": "1.0.0",
       "category": "reasoning"
     },
     {

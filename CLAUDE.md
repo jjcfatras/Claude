@@ -33,7 +33,8 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 
 This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping ten plugins under `plugins/`:
 
-- `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
+- `respond-to-review` — single slash command; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
+- `debate` — adversarial pro/con debate via parallel subagents (opening, rebuttal, judge agents); ships the orchestrator as a user-only skill (`skills/debate/SKILL.md`, `disable-model-invocation: true`)
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
@@ -49,7 +50,7 @@ Per-plugin layout:
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # single slash command, named `<plugin-name>.md`
-  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships six, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `code-review` ships one (`code-review`) instead of commands
+  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships six, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `code-review` and `debate` ship one each (`code-review`, `debate`) instead of commands
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 
