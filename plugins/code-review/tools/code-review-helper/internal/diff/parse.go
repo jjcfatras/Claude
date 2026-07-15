@@ -45,7 +45,7 @@ func (r *Run) UnmarshalJSON(data []byte) error {
 	text := strings.Trim(string(data), "[] ")
 	parts := strings.Split(text, ",")
 	if len(parts) != 2 {
-		return strconvErr(text)
+		return &strconv.NumError{Func: "Atoi", Num: text, Err: strconv.ErrSyntax}
 	}
 	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 	if err != nil {
@@ -58,10 +58,6 @@ func (r *Run) UnmarshalJSON(data []byte) error {
 	r.Start = start
 	r.End = end
 	return nil
-}
-
-func strconvErr(text string) error {
-	return &strconv.NumError{Func: "Atoi", Num: text, Err: strconv.ErrSyntax}
 }
 
 var (

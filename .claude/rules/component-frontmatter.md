@@ -79,6 +79,9 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `clean_gone`, `cherry-pick`, `merge`) migrated from `commands/*.md` keeping the command-style
   subset — `description`, `argument-hint` (cherry-pick/merge only), `allowed-tools` (all but
   clean_gone), `model`, `effort` — and are model-invocable.
+- The two `plugins/simplify/skills/*/SKILL.md` skills (`simplify-code`, `simplify-prose`) migrated from
+  `commands/*.md` keeping the command-style subset — `description`, `argument-hint`,
+  `allowed-tools`, `model`, `effort` — and are model-invocable.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.

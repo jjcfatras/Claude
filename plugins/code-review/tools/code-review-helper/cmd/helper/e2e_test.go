@@ -28,6 +28,26 @@ var fixtures = []struct {
 	{id: "prisma-29514", roles: "security,quality,errors,perf"},
 }
 
+// finalizeArgv returns the full finalize flag set for a fixture, writing all
+// outputs under outDir. Callers append extra flags (e.g. --include-finding-ids).
+func finalizeArgv(tdRoot, outDir, id, roles string) []string {
+	return []string{
+		"--diff", filepath.Join(tdRoot, "diffs", id+".diff"),
+		"--findings-dir", filepath.Join(tdRoot, "findings", id),
+		"--prior-issues", filepath.Join(tdRoot, "prior-issues", id+".json"),
+		"--head-sha", "0000000000000000000000000000000000000000",
+		"--owner", "test-owner",
+		"--repo", "test-repo",
+		"--pr-number", "1",
+		"--expected-roles", roles,
+		"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
+		"--out-payload", filepath.Join(outDir, "payload.json"),
+		"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
+		"--out-body", filepath.Join(outDir, "payload-body.json"),
+		"--out-fallback", filepath.Join(outDir, "fallback.md"),
+	}
+}
+
 // TestE2E_FinalizePipeline runs the helper's finalize entrypoint against each
 // fixture and compares the three output files (consolidated.json, payload.json,
 // fallback.md) byte-for-byte against the captured goldens. The goldens encode
@@ -45,21 +65,7 @@ func TestE2E_FinalizePipeline(t *testing.T) {
 			tdRoot := filepath.Join(repoRoot, "testdata")
 			outDir := t.TempDir()
 
-			argv := []string{
-				"--diff", filepath.Join(tdRoot, "diffs", fx.id+".diff"),
-				"--findings-dir", filepath.Join(tdRoot, "findings", fx.id),
-				"--prior-issues", filepath.Join(tdRoot, "prior-issues", fx.id+".json"),
-				"--head-sha", "0000000000000000000000000000000000000000",
-				"--owner", "test-owner",
-				"--repo", "test-repo",
-				"--pr-number", "1",
-				"--expected-roles", fx.roles,
-				"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
-				"--out-payload", filepath.Join(outDir, "payload.json"),
-				"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
-				"--out-body", filepath.Join(outDir, "payload-body.json"),
-				"--out-fallback", filepath.Join(outDir, "fallback.md"),
-			}
+			argv := finalizeArgv(tdRoot, outDir, fx.id, fx.roles)
 			if err := runFinalize(argv); err != nil {
 				t.Fatalf("runFinalize: %v", err)
 			}
@@ -106,22 +112,8 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 
 	t.Run("include-keeps-only-named-id", func(t *testing.T) {
 		outDir := t.TempDir()
-		argv := []string{
-			"--diff", filepath.Join(tdRoot, "diffs", fx+".diff"),
-			"--findings-dir", filepath.Join(tdRoot, "findings", fx),
-			"--prior-issues", filepath.Join(tdRoot, "prior-issues", fx+".json"),
-			"--head-sha", "0000000000000000000000000000000000000000",
-			"--owner", "test-owner",
-			"--repo", "test-repo",
-			"--pr-number", "1",
-			"--expected-roles", "security,errors,perf,quality",
-			"--include-finding-ids", "errors-err-2",
-			"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
-			"--out-payload", filepath.Join(outDir, "payload.json"),
-			"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
-			"--out-body", filepath.Join(outDir, "payload-body.json"),
-			"--out-fallback", filepath.Join(outDir, "fallback.md"),
-		}
+		argv := append(finalizeArgv(tdRoot, outDir, fx, "security,errors,perf,quality"),
+			"--include-finding-ids", "errors-err-2")
 		if err := runFinalize(argv); err != nil {
 			t.Fatalf("runFinalize: %v", err)
 		}
@@ -176,22 +168,8 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 
 	t.Run("unknown-id-is-hard-error", func(t *testing.T) {
 		outDir := t.TempDir()
-		argv := []string{
-			"--diff", filepath.Join(tdRoot, "diffs", fx+".diff"),
-			"--findings-dir", filepath.Join(tdRoot, "findings", fx),
-			"--prior-issues", filepath.Join(tdRoot, "prior-issues", fx+".json"),
-			"--head-sha", "0000000000000000000000000000000000000000",
-			"--owner", "test-owner",
-			"--repo", "test-repo",
-			"--pr-number", "1",
-			"--expected-roles", "security,errors,perf,quality",
-			"--include-finding-ids", "does-not-exist",
-			"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
-			"--out-payload", filepath.Join(outDir, "payload.json"),
-			"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
-			"--out-body", filepath.Join(outDir, "payload-body.json"),
-			"--out-fallback", filepath.Join(outDir, "fallback.md"),
-		}
+		argv := append(finalizeArgv(tdRoot, outDir, fx, "security,errors,perf,quality"),
+			"--include-finding-ids", "does-not-exist")
 		err := runFinalize(argv)
 		if err == nil {
 			t.Fatal("expected runFinalize to return error for unknown finding ID, got nil")

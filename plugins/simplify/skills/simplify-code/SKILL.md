@@ -1,5 +1,6 @@
 ---
-description: Propose targeted simplifications to recently modified code — or the whole project when no scope is given — and apply on approval
+name: simplify-code
+description: Propose targeted simplifications to recently modified code — or the whole project when no scope is given — and apply on approval. Use when the user asks to "simplify this code", "clean up this code", "propose simplifications", or wants behavior-preserving refactors shown as diffs and applied only on approval.
 argument-hint: "[path|--staged|--since=<ref>]"
 allowed-tools: Bash(git *), Read, Edit, Grep, Glob, AskUserQuestion
 model: opus
@@ -8,7 +9,7 @@ effort: xhigh
 
 Propose targeted simplifications to recently modified code. Behavior preservation is the absolute hard constraint — show diffs first, apply only on user approval.
 
-This command recreates the pre-2.1.147 `/simplify` workflow as a propose-then-apply pass.
+This skill recreates the pre-2.1.147 `/simplify` workflow as a propose-then-apply pass.
 
 ## Step 0: Determine scope
 
@@ -17,7 +18,7 @@ Pick the file set in this order:
 1. **`$1` is `--staged`**: run `git diff --name-only --cached` and use that file set.
 2. **`$1` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
 3. **`$1` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it via `Glob`. If it is a glob, expand it.
-4. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify:prose`'s job.
+4. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify:simplify-prose`'s job.
 
 After collecting candidates, drop anything that is obviously out of scope:
 
@@ -95,10 +96,10 @@ Print a final summary:
 - Files touched.
 - Hunks applied vs hunks declined, grouped by file.
 - Any hunks that failed to apply and why.
-- A single-line reminder to run the project's test suite before committing — this command does not run tests.
+- A single-line reminder to run the project's test suite before committing — this skill does not run tests.
 
 ## Notes
 
 - Single-thread by design. No subagents, no parallel file analysis. Refactoring without behavior changes is the kind of task where one careful pass beats five hasty ones.
-- `--auto` (skip the approval prompt) is intentionally not in this version. The propose-then-apply contract is the whole point of this command's existence after v2.1.147.
-- This command never commits. The user does that.
+- `--auto` (skip the approval prompt) is intentionally not in this version. The propose-then-apply contract is the whole point of this skill's existence after v2.1.147.
+- This skill never commits. The user does that.

@@ -28,7 +28,7 @@
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "1.9.3",
+      "version": "1.9.4",
       "category": "code-review"
     },
     {
@@ -48,15 +48,15 @@
     {
       "name": "simplify",
       "source": "./plugins/simplify",
-      "description": "Propose and apply targeted simplifications — behavior-preserving code cleanups (/simplify:code) and lossless prose distillation (/simplify:prose)",
-      "version": "1.0.0",
+      "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose)",
+      "version": "2.0.0",
       "category": "code-quality"
     },
     {
       "name": "transcript",
       "source": "./plugins/transcript",
-      "description": "Print the filepath of the current Claude Code session's .jsonl transcript with size and line count",
-      "version": "0.2.0",
+      "description": "Print the filepath of the current Claude Code session's .jsonl transcript",
+      "version": "0.3.0",
       "category": "session-tools"
     },
     {

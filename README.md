@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping nine slash commands and nine skills the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping seven slash commands and eleven skills the author uses for everyday Git, testing, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -11,17 +11,17 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 ## Plugins
 
-| Plugin              | Slash command                                                                                                      | What it does                                                                                                                                                                                                                                                                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge` | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution. All six ship as skills, so Claude can auto-invoke them in addition to the `/` commands.                                                                                                        |
-| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                                                                                   | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                                                                                                                                                                                                                                   |
-| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                      | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                                                                                                                                                                                                                   |
-| `code-review`       | `/code-review [pr-number]`                                                                                         | Multi-specialist PR review (security, quality, errors, perf, plus conditional typescript, react, infra, claude-md) using parallel native Claude Code subagents. Posts inline comments.                                                                                                                                                                                               |
-| `docs`              | `/audit-docs` · `/enrich-claude-md`                                                                                | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / `.claude/rules` / architecture docs for stale claims and reports findings with suggested fixes; or investigates the codebase for useful, non-obvious facts missing from CLAUDE.md / `.claude/rules` and proposes additions. Both ship as skills, so Claude can auto-invoke them in addition to the `/` commands. |
-| `debate`            | `/debate <claim>`                                                                                                  | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                                                                                                                                  |
-| `simplify`          | `/simplify:code [path\|--staged\|--since=<ref>]` · `/simplify:prose [text\|path\|--staged\|--since=<ref>]`         | Proposes targeted, behavior-preserving simplifications to recently modified code (`code`) or lossless distillation of verbose prose (`prose`) — or the whole project when no scope is given; shows diffs per file and applies only on approval.                                                                                                                                      |
-| `transcript`        | `/transcript`                                                                                                      | Prints the filepath of the current Claude Code session's `.jsonl` transcript, with size and line count. Shipped as a skill, so Claude can also invoke it automatically when it needs the path.                                                                                                                                                                                       |
-| `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>` · `/jira:create-tests <JIRA-key>`                      | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it; or generate a runnable Postman QA collection from a ticket's acceptance criteria.                                                                                      |
+| Plugin              | Slash command                                                                                                                | What it does                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `git`               | `/git:commit` · `/git:commit-push` · `/git:commit-push-pr` · `/git:clean_gone` · `/git:cherry-pick` · `/git:merge`           | Git workflow: auto-message commit, commit + push (refreshes an open PR), commit + push + open PR, prune local `[gone]` branches, plus cherry-pick and merge with conflict resolution. All six ship as skills, so Claude can auto-invoke them in addition to the `/` commands.                                                                                                        |
+| `test-driven-fix`   | `/test-driven-fix <spec-or-bug>`                                                                                             | Autonomous patch → test → revert-on-regression loop, hard-capped at 10 iterations.                                                                                                                                                                                                                                                                                                   |
+| `respond-to-review` | `/respond-to-review <pr-number> [comment-id]`                                                                                | Triages every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones.                                                                                                                                                                                                                                                   |
+| `code-review`       | `/code-review [pr-number]`                                                                                                   | Multi-specialist PR review (security, quality, errors, perf, plus conditional typescript, react, infra, claude-md) using parallel native Claude Code subagents. Posts inline comments.                                                                                                                                                                                               |
+| `docs`              | `/audit-docs` · `/enrich-claude-md`                                                                                          | Scans CLAUDE.md / READMEs / `.claude/commands` / `.claude/skills` / `.claude/rules` / architecture docs for stale claims and reports findings with suggested fixes; or investigates the codebase for useful, non-obvious facts missing from CLAUDE.md / `.claude/rules` and proposes additions. Both ship as skills, so Claude can auto-invoke them in addition to the `/` commands. |
+| `debate`            | `/debate <claim>`                                                                                                            | Adversarial pro/con debate — opening arguments, then up to 5 rounds of attack/defend, then an inline markdown report of surviving, negated, and disputed arguments.                                                                                                                                                                                                                  |
+| `simplify`          | `/simplify:simplify-code [path\|--staged\|--since=<ref>]` · `/simplify:simplify-prose [text\|path\|--staged\|--since=<ref>]` | Proposes targeted, behavior-preserving simplifications to recently modified code (`simplify-code`) or lossless distillation of verbose prose (`simplify-prose`) — or the whole project when no scope is given; shows diffs per file and applies only on approval. Both ship as skills, so Claude can auto-invoke them in addition to the `/` commands.                               |
+| `transcript`        | `/transcript`                                                                                                                | Prints the filepath of the current Claude Code session's `.jsonl` transcript. Shipped as a skill, so Claude can also invoke it automatically when it needs the path.                                                                                                                                                                                                                 |
+| `jira`              | `/jira:create-ticket` · `/jira:implement-ticket <JIRA-key>` · `/jira:create-tests <JIRA-key>`                                | Create a structured JIRA ticket (summary, acceptance criteria, QA steps) from a diff/PR/description; pick up a ticket by key — verify its codebase claims, reconcile a plan, get approval, then implement it; or generate a runnable Postman QA collection from a ticket's acceptance criteria.                                                                                      |
 
 Install only the plugins you want — each is independent.
 
@@ -40,7 +40,7 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 **What happens:**
 
 1. Preflight: validates the working tree is clean and the source branch exists.
-2. Determines commits to apply — uses the SHA / range you passed, or lists the 15 most recent commits on the source branch and asks you to pick.
+2. Determines commits to apply — uses the SHA / range you passed, or lists the 20 most recent commits on the source branch and asks you to pick.
 3. Shows a summary (target, source, commit list) and asks you to confirm.
 4. Applies commits one at a time in chronological order.
 5. On conflict: reads each conflicted file, resolves it by combining intent from both sides, strips conflict markers, `git add`s, then runs `git cherry-pick --continue`.
@@ -97,17 +97,17 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 ### `/code-review`
 
-**Invoke:** `/code-review <pr-number>` — the PR number is required (the command treats an absent or non-integer argument as a hard error).
+**Invoke:** `/code-review <pr-number> [--auto|--dry-run]` — the PR number is required (an absent or non-integer argument is a hard error). `--auto` posts all eligible findings without prompting (CI / unattended runs); `--dry-run` runs the full review but never posts (`--dry-run` wins if both are passed).
 
 **Prereqs:** `gh` CLI authenticated for the repo; `/tmp` (or `$TMPDIR`) writable for the scratch workspace under `pr-review-<number>-<epoch>/`. This plugin uses native Claude Code subagents (`Agent` with `subagent_type`) only — no experimental flag required.
 
 **What happens:**
 
 1. Fetches PR metadata, the full diff, and the most recent prior Claude-Code review (for dedup) via `gh`.
-2. Parses the diff with the bundled Go `code-review-helper` and builds the specialist roster — always-on: `security`, `quality`, `errors`, `perf`; conditional by changed-file extension/path: `typescript` (`.ts/.tsx/.cts/.mts`), `react` (`.tsx/.jsx` or component/pages paths), `infra` (`.sql`, `.tf`, `.hcl`, `Dockerfile`, `docker-compose`, `k8s/`, `terraform/`, …).
+2. Parses the diff with the bundled Go `code-review-helper` and builds the specialist roster — always-on: `security`, `quality`, `errors`, `perf`; conditional by changed-file extension/path: `typescript` (`.ts/.tsx/.cts/.mts`, plus tsconfig/framework configs), `react` (`.tsx/.jsx`, plus framework/bundler configs), `infra` (`.sql`, `.tf`, `.hcl`, `Dockerfile`, `docker-compose`, `k8s/`, `terraform/`, …), `claude-md` (any changed file with a `CLAUDE.md` ancestor).
 3. The helper synthesizes the `## Summary` section deterministically from changed-file metadata — no pre-pass subagent runs.
 4. Spawns all roster specialists in parallel against a shared `spawn-context.md` bundle and a separate `rubric.md`.
-5. The helper finalizes — dedup, severity/confidence gating, line-snapping, payload rendering — and you're shown the findings summary with a `Post review? [Y]es/[n]o/[i]ds <csv>` prompt. You can post all, skip, or filter to specific finding IDs.
+5. The helper finalizes — dedup, severity/confidence gating, line-snapping, payload rendering — and you're shown the findings summary and asked via an interactive **Post review** question whether to post (the default mode; `--auto` posts without prompting, `--dry-run` never posts).
 6. On approval: posts via a three-tier fallback (batched review → pending-then-submit → plain PR comment), then removes the scratch dir.
 
 ### `/audit-docs`
@@ -127,9 +127,9 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 **Note:** `audit-docs` and `enrich-claude-md` now ship as skills (`plugins/docs/skills/`), so besides `/audit-docs` / `/enrich-claude-md` Claude can auto-invoke them when it judges the docs need auditing or enriching.
 
-### `/simplify:code`
+### `/simplify:simplify-code`
 
-**Invoke:** `/simplify:code [path|--staged|--since=<ref>]` — no argument audits the whole project. The prose counterpart, `/simplify:prose [text|path|--staged|--since=<ref>]`, follows the same flow for prose files (or inline text) with a lossless-distillation rubric.
+**Invoke:** `/simplify:simplify-code [path|--staged|--since=<ref>]` — no argument audits the whole project. The prose counterpart, `/simplify:simplify-prose [text|path|--staged|--since=<ref>]`, follows the same flow for prose files (or inline text) with a lossless-distillation rubric.
 
 **Prereqs:** Inside a git repo for `--staged` / `--since=` modes. The plugin's `PostToolUse` formatter hooks (Prettier, gofmt) handle reformatting after edits, so don't run formatters manually.
 
@@ -144,6 +144,8 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 **Notes:** single-threaded by design (no subagents); no `--auto` mode — the propose-then-apply checkpoint is the whole point.
 
+**Note:** both simplify workflows ship as skills (`plugins/simplify/skills/`), so besides the `/simplify:*` commands Claude can auto-invoke them when asked in natural language (e.g. "simplify this code").
+
 ### `/transcript`
 
 **Invoke:** `/transcript` (no arguments).
@@ -153,8 +155,8 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 **What happens:**
 
 1. Resolves the transcript path as `$HOME/.claude/projects/<encoded-cwd>/$CLAUDE_CODE_SESSION_ID.jsonl`, where `<encoded-cwd>` replaces every `/` and `.` in `$PWD` with `-`.
-2. If the expected file is missing but the encoded directory exists, falls back to the most-recently-modified `*.jsonl` in that directory and labels the output `path (fallback):`.
-3. Prints three lines: the path, size in MB, and line count. Nothing else.
+2. If the expected file is missing but the encoded directory exists, falls back to the most-recently-modified `*.jsonl` in that directory.
+3. Prints one line: the transcript path. Nothing else.
 
 Use this to hand the file to `/plugin-session-auditor` or any other transcript-consuming workflow.
 
@@ -230,8 +232,8 @@ The repo also ships skills under `.claude/skills/`. These are **not** part of th
 .claude-plugin/marketplace.json                # marketplace manifest
 plugins/<name>/                                 # one directory per plugin
   .claude-plugin/plugin.json
-  commands/<file>.md                            # usually <plugin>.md (jira and simplify ship several)
-  skills/<name>/SKILL.md                        # a plugin may ship skills instead (e.g. transcript, docs, git)
+  commands/<file>.md                            # usually <plugin>.md (jira ships several)
+  skills/<name>/SKILL.md                        # a plugin may ship skills instead (e.g. transcript, docs, git, simplify)
   agents/, references/, bin/, tools/, hooks/    # only where the plugin needs them
 .claude/skills/<name>/                          # repo-internal skills (not marketplace plugins)
 ```

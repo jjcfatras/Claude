@@ -1,5 +1,6 @@
 ---
-description: Propose lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and apply on approval
+name: simplify-prose
+description: Propose lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and apply on approval. Use when the user asks to "distill this text", "make this more concise", "tighten this prose/writing", or wants verbose prose compressed losslessly with diffs shown for approval.
 argument-hint: "[text|path|--staged|--since=<ref>]"
 allowed-tools: Bash(git *), Read, Edit, Grep, Glob, AskUserQuestion
 model: opus
@@ -8,7 +9,7 @@ effort: medium
 
 Distill overly verbose prose to its concentrated essence. Lossless compression is the absolute hard constraint — every fact, qualification, and nuance in the original survives. Show diffs first, apply only on user approval.
 
-This command is the prose counterpart of `/simplify:code`: the same propose-then-apply contract, applied to natural language instead of code.
+This skill is the prose counterpart of `/simplify:simplify-code`: the same propose-then-apply contract, applied to natural language instead of code.
 
 ## Step 0: Determine scope
 
@@ -92,7 +93,7 @@ Print a final summary:
 - Hunks applied vs hunks declined, grouped by file.
 - Any hunks that failed to apply and why.
 - If any cut required interpreting ambiguous meaning, note it.
-- This command never commits. The user does that.
+- This skill never commits. The user does that.
 
 ## Notes
 

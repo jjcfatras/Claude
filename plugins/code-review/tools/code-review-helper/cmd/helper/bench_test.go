@@ -21,21 +21,7 @@ func BenchmarkFinalizePipeline(b *testing.B) {
 		b.Run(fx.id, func(b *testing.B) {
 			tdRoot := filepath.Join(repoRoot, "testdata")
 			outDir := b.TempDir()
-			argv := []string{
-				"--diff", filepath.Join(tdRoot, "diffs", fx.id+".diff"),
-				"--findings-dir", filepath.Join(tdRoot, "findings", fx.id),
-				"--prior-issues", filepath.Join(tdRoot, "prior-issues", fx.id+".json"),
-				"--head-sha", "0000000000000000000000000000000000000000",
-				"--owner", "test-owner",
-				"--repo", "test-repo",
-				"--pr-number", "1",
-				"--expected-roles", fx.roles,
-				"--out-consolidated", filepath.Join(outDir, "consolidated.json"),
-				"--out-payload", filepath.Join(outDir, "payload.json"),
-				"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
-				"--out-body", filepath.Join(outDir, "payload-body.json"),
-				"--out-fallback", filepath.Join(outDir, "fallback.md"),
-			}
+			argv := finalizeArgv(tdRoot, outDir, fx.id, fx.roles)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if err := runFinalize(argv); err != nil {

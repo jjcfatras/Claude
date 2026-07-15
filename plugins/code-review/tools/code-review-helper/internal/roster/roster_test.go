@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -58,13 +59,7 @@ func TestBuild_InfraVariants(t *testing.T) {
 	}
 	for p, label := range cases {
 		got := Build([]string{p}, 0)
-		hasInfra := false
-		for _, r := range got {
-			if r == "infra" {
-				hasInfra = true
-			}
-		}
-		if !hasInfra {
+		if !slices.Contains(got, "infra") {
 			t.Errorf("%s (%s) did not produce infra role; got %v", p, label, got)
 		}
 	}
@@ -91,15 +86,8 @@ func TestBuild_ConfigFileTriggers(t *testing.T) {
 	}
 	for _, c := range cases {
 		got := Build([]string{c.file}, 0)
-		hasTS, hasReact := false, false
-		for _, r := range got {
-			switch r {
-			case "typescript":
-				hasTS = true
-			case "react":
-				hasReact = true
-			}
-		}
+		hasTS := slices.Contains(got, "typescript")
+		hasReact := slices.Contains(got, "react")
 		if hasTS != c.wantTS || hasReact != c.wantReact {
 			t.Errorf("%s: got typescript=%v react=%v; want typescript=%v react=%v (roster %v)",
 				c.file, hasTS, hasReact, c.wantTS, c.wantReact, got)

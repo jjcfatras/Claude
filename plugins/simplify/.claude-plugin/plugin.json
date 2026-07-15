@@ -1,7 +1,7 @@
 {
   "name": "simplify",
-  "version": "1.0.0",
-  "description": "Propose and apply targeted simplifications — behavior-preserving code cleanups (/simplify:code) and lossless prose distillation (/simplify:prose) — with diffs shown first and applied on approval",
+  "version": "2.0.0",
+  "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose) — diffs shown first, applied on approval",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",

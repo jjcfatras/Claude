@@ -59,11 +59,7 @@ func Classify(in []findings.Finding, parsed *diff.Parsed) Result {
 		}
 
 		nearest, ok := parsed.NearestValid(finding.File, finding.Line)
-		if !ok {
-			res.SummaryOnly = append(res.SummaryOnly, finding)
-			continue
-		}
-		if intmath.Abs(nearest-finding.Line) > snapWindow {
+		if !ok || intmath.Abs(nearest-finding.Line) > snapWindow {
 			res.SummaryOnly = append(res.SummaryOnly, finding)
 			continue
 		}

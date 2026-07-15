@@ -39,6 +39,21 @@ func runSpawnManifestOK(t *testing.T, dir, rosterPath string) string {
 	return out
 }
 
+// spawnArgs returns a complete valid flag set for runSpawnManifest pointing at
+// rosterPath, writing the manifest to dir/out.json.
+func spawnArgs(dir, rosterPath string) []string {
+	return []string{
+		"--roster", rosterPath,
+		"--review-tmpdir", "/tmp/x",
+		"--head-sha", "abc",
+		"--pr-number", "1",
+		"--owner", "o",
+		"--repo", "r",
+		"--repo-root", "/r",
+		"--out", filepath.Join(dir, "out.json"),
+	}
+}
+
 func TestRunSpawnManifest_MissingRequiredFlags(t *testing.T) {
 	err := runSpawnManifest([]string{"--roster", "x.json"})
 	if err == nil {
@@ -51,16 +66,7 @@ func TestRunSpawnManifest_MissingRequiredFlags(t *testing.T) {
 
 func TestRunSpawnManifest_BadRosterPath(t *testing.T) {
 	dir := t.TempDir()
-	err := runSpawnManifest([]string{
-		"--roster", filepath.Join(dir, "missing.json"),
-		"--review-tmpdir", "/tmp/x",
-		"--head-sha", "abc",
-		"--pr-number", "1",
-		"--owner", "o",
-		"--repo", "r",
-		"--repo-root", "/r",
-		"--out", filepath.Join(dir, "out.json"),
-	})
+	err := runSpawnManifest(spawnArgs(dir, filepath.Join(dir, "missing.json")))
 	if err == nil {
 		t.Fatal("expected error for missing roster file")
 	}
@@ -75,16 +81,7 @@ func TestRunSpawnManifest_MalformedRoster(t *testing.T) {
 	if err := os.WriteFile(p, []byte("not json"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	err := runSpawnManifest([]string{
-		"--roster", p,
-		"--review-tmpdir", "/tmp/x",
-		"--head-sha", "abc",
-		"--pr-number", "1",
-		"--owner", "o",
-		"--repo", "r",
-		"--repo-root", "/r",
-		"--out", filepath.Join(dir, "out.json"),
-	})
+	err := runSpawnManifest(spawnArgs(dir, p))
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -96,16 +93,7 @@ func TestRunSpawnManifest_MalformedRoster(t *testing.T) {
 func TestRunSpawnManifest_EmptyRosterErrors(t *testing.T) {
 	dir := t.TempDir()
 	p := writeRoster(t, dir)
-	err := runSpawnManifest([]string{
-		"--roster", p,
-		"--review-tmpdir", "/tmp/x",
-		"--head-sha", "abc",
-		"--pr-number", "1",
-		"--owner", "o",
-		"--repo", "r",
-		"--repo-root", "/r",
-		"--out", filepath.Join(dir, "out.json"),
-	})
+	err := runSpawnManifest(spawnArgs(dir, p))
 	if err == nil {
 		t.Fatal("expected error for empty roster")
 	}
@@ -117,16 +105,7 @@ func TestRunSpawnManifest_EmptyRosterErrors(t *testing.T) {
 func TestRunSpawnManifest_EmptyRoleNameErrors(t *testing.T) {
 	dir := t.TempDir()
 	p := writeRoster(t, dir, "security", "")
-	err := runSpawnManifest([]string{
-		"--roster", p,
-		"--review-tmpdir", "/tmp/x",
-		"--head-sha", "abc",
-		"--pr-number", "1",
-		"--owner", "o",
-		"--repo", "r",
-		"--repo-root", "/r",
-		"--out", filepath.Join(dir, "out.json"),
-	})
+	err := runSpawnManifest(spawnArgs(dir, p))
 	if err == nil {
 		t.Fatal("expected error for empty role name")
 	}
