@@ -1,6 +1,8 @@
 ---
+name: debate
 description: Adversarial debate on a claim or question. Spawns parallel pro and con subagents for opening arguments, then runs up to 5 rebuttal rounds until convergence. Renders an inline markdown report of surviving, negated, and disputed arguments.
 argument-hint: <claim or question>
+disable-model-invocation: true
 model: opus
 effort: high
 allowed-tools: Bash, Read, Write, Agent
