@@ -82,6 +82,10 @@ description: This skill should be used when the user asks to "specific phrase 1"
 - The two `plugins/simplify/skills/*/SKILL.md` skills (`simplify-code`, `simplify-prose`) migrated from
   `commands/*.md` keeping the command-style subset — `description`, `argument-hint`,
   `allowed-tools`, `model`, `effort` — and are model-invocable.
+- The three `plugins/jira/skills/*/SKILL.md` skills (`create-ticket`, `implement-ticket`,
+  `create-tests`) migrated from `commands/*.md` keeping the command-style subset — `description`,
+  `argument-hint`, `allowed-tools`, `model`, `effort` — plus `disable-model-invocation: true`:
+  the repo's first user-only skills, invocable via `/jira:*` but never auto-loaded by Claude.
 - Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
   `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
   fields.
