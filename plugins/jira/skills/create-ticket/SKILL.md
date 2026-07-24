@@ -28,7 +28,12 @@ From a diff or PR, read past the mechanics: a renamed variable is noise, but a n
 
 ## Step 2: Draft the ticket
 
-Use this exact structure. Show the draft to the user in the conversation **before** touching JIRA — they'll often tweak wording, and it's far cheaper to fix here than after filing.
+Use this exact structure. Show the draft to the user in the conversation **before** touching JIRA — they'll often tweak wording, and it's far cheaper to fix here than after filing. After showing the draft, call the **AskUserQuestion** tool (`multiSelect: false`, header `Draft`) with two options:
+
+- `Looks good` — "Proceed to choosing the JIRA destination."
+- `Edit wording` — "Change the draft first — I'll ask what to change."
+
+On `Edit wording` (or a free-text reply via Other), apply the changes, show the revised draft, and ask again. Don't move to Step 3 until the user picks `Looks good`. Ask with the tool, not with a plain-text question at the end of the message.
 
 ```
 ## Summary

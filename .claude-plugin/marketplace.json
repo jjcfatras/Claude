@@ -56,7 +56,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, and pick up a ticket by key to verify claims, plan, and implement it.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "project-management"
     },
     {
