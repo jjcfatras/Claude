@@ -36,7 +36,7 @@ This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.j
 - `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
-- `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
+- `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `push`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
 - `jira` — JIRA workflow skills (`create-ticket`, `implement-ticket`, `create-tests`), all user-only (`disable-model-invocation: true`)
 - `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, prefer-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
 - `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships the orchestrator as a user-only skill (`skills/code-review/SKILL.md`, `disable-model-invocation: true`), plus .md agent files, references, a Go helper, and prebuilt binaries
@@ -49,7 +49,7 @@ Per-plugin layout:
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # single slash command, named `<plugin-name>.md`
-  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships six, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `code-review` ships one (`code-review`) instead of commands
+  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships seven, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `code-review` ships one (`code-review`) instead of commands
   agents/, references/, bin/, tools/, hooks/      # only where needed
 ```
 

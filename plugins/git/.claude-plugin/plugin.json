@@ -1,7 +1,7 @@
 {
   "name": "git",
-  "version": "0.5.0",
-  "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, clean-gone (prune stale local branches), cherry-pick, and merge (both with conflict resolution)",
+  "version": "0.6.0",
+  "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push (push + PR-description refresh, no commit), clean-gone (prune stale local branches), cherry-pick, and merge (both with conflict resolution)",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",
