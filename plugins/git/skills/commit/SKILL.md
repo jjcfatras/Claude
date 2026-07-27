@@ -1,6 +1,7 @@
 ---
 name: commit
-description: Create a git commit with an auto-generated message matching the repo's style. Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message. Commits only — does not push.
+description: Create a git commit with an auto-generated message matching the repo's style. Commits only — does not push.
+when_to_use: Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git switch:*), Bash(git commit:*), AskUserQuestion
 model: sonnet
 effort: low

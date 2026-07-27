@@ -79,7 +79,9 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `push`, `clean_gone`, `cherry-pick`, `merge`) use the command-style subset — `description`,
   `argument-hint` (cherry-pick/merge only), `allowed-tools` (all but clean_gone), `model`,
   `effort` — and are model-invocable. Six migrated from `commands/*.md`; `push` (push +
-  PR-description refresh, no commit) was authored as a skill directly.
+  PR-description refresh, no commit) was authored as a skill directly. `commit` and `push` also
+  carry `when_to_use` (their trigger phrases extracted out of `description`) — the repo's first
+  use of a `(skills only)` field.
 - The two `plugins/simplify/skills/*/SKILL.md` skills (`simplify-code`, `simplify-prose`) migrated from
   `commands/*.md` keeping the command-style subset — `description`, `argument-hint`,
   `allowed-tools`, `model`, `effort` — and are model-invocable.
@@ -93,9 +95,10 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `disable-model-invocation: true`: user-only like the jira skills, invocable as `/code-review`
   (unchanged, since the skill directory name matches the old command filename) but never
   auto-loaded by Claude.
-- Every slash command in this repo uses only the common subset — `description`, `argument-hint`,
-  `disable-model-invocation`, `model`, `effort`, `allowed-tools` — and none of the `(skills only)`
-  fields.
+- Every plain `commands/*.md` slash command in this repo uses only the common subset —
+  `description`, `argument-hint`, `disable-model-invocation`, `model`, `effort`, `allowed-tools` —
+  and none of the `(skills only)` fields; among skills, only the git `commit`/`push`
+  `when_to_use` breaks that pattern.
 
 ### `model` tier semantics
 

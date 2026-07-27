@@ -1,6 +1,7 @@
 ---
 name: push
-description: Push already-committed work to the current branch's origin; refresh an open PR's description if one exists. Use when the user asks to "push", "just push", "push without committing", or wants the remote updated with existing commits. Does not commit — use commit-push for that.
+description: Push already-committed work to the current branch's origin; refresh an open PR's description if one exists. Does not commit — use commit-push for that.
+when_to_use: Use when the user asks to "push", "just push", "push without committing", or wants the remote updated with existing commits.
 allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*)
 model: sonnet
 effort: low
