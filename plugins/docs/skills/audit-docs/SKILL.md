@@ -9,7 +9,7 @@ effort: high
 
 Audit project documentation for stale claims about the codebase. The user is asking because docs drift — over time, CLAUDE.md / README / architecture notes accumulate statements that were once true but no longer match the code. Your job: find those statements, verify each, and produce an actionable report.
 
-You audit a fixed set of file globs in the repo, extract only **concrete, verifiable claims** (file paths, versions, scripts, symbols, cross-doc links — not subjective prose like "this codebase is well-tested"), check each claim against current code, and present findings grouped by source file. Then you offer to apply fixes one finding at a time.
+You audit a fixed set of file globs in the repo, extract only **concrete, verifiable claims** (file paths, versions, scripts, symbols, cross-doc links, provenance/attribution — not subjective prose like "this codebase is well-tested"), check each claim against current code, and present findings grouped by source file. Then you offer to apply fixes one finding at a time.
 
 This skill is a one-shot read-and-report. Do not modify any files until the user explicitly approves a specific fix in step 5.
 
@@ -19,7 +19,7 @@ Run `git rev-parse --show-toplevel` to capture the repo root as `$REPO_ROOT`. Re
 
 ## Step 0.5: Determine audit scope
 
-Resolve the audit scope from `$1` (trimmed). This is an optional positional argument; when absent the command behaves exactly as before — a whole-repo audit.
+Resolve the audit scope from `$1` (trimmed), an optional positional argument.
 
 1. **`$1` is empty** — whole-repo audit. Use the default globs in Step 1 rooted at `$REPO_ROOT`, as today.
 2. **`$1` resolves to an existing file** (`test -f`, relative to `$REPO_ROOT` or the current working directory) — audit **only that file**, even if its name does not match the default doc globs (the user named it deliberately, so target `docs/setup.md`, `CONTRIBUTING.md`, etc.). The file set is just this one path; skip Step 1 discovery and skip the >50-file count guard.
@@ -84,7 +84,7 @@ For each claim, record:
 
 - `file` — source markdown path
 - `line` — line number (or range)
-- `category` — one of the five above
+- `category` — one of the six above
 - `claim_text` — verbatim quote of the statement (1 sentence max)
 - `assertion` — the precise factual question to verify (e.g., "file `src/auth/middleware.ts` exists and exports `AuthMiddleware`")
 

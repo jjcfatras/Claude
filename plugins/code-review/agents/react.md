@@ -3,6 +3,7 @@ name: react
 description: React/frontend specialist for /code-review. Reviews PR diffs for hook dependency correctness, re-render and memoization, accessibility, effect cleanup, and Rules of Hooks. Conditional specialist; spawned by the /code-review orchestrator when the diff touches .tsx or .jsx files.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
+effort: high
 color: cyan
 ---
 
@@ -81,7 +82,7 @@ useEffect(() => {
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/react.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "react"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "react"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

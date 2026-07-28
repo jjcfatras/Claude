@@ -1,7 +1,7 @@
 {
   "name": "docs",
-  "version": "1.5.0",
-  "description": "Maintain project documentation: /audit-docs verifies CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, and architecture docs for stale claims about the codebase; /enrich-claude-md investigates the codebase for useful, non-obvious facts missing from CLAUDE.md or .claude/rules and proposes additions, including suggesting a new nested CLAUDE.md for subtree-specific facts. Both report findings and offer to apply fixes per finding",
+  "version": "1.5.1",
+  "description": "Maintain project documentation: /docs:audit-docs verifies CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, and architecture docs for stale claims about the codebase; /docs:enrich-claude-md investigates the codebase for useful, non-obvious facts missing from CLAUDE.md or .claude/rules and proposes additions, including suggesting a new nested CLAUDE.md for subtree-specific facts. Both report findings and offer to apply fixes per finding",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",

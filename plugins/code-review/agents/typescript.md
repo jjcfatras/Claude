@@ -3,6 +3,7 @@ name: typescript
 description: TypeScript type-safety specialist for /code-review. Reviews PR diffs for type narrowing, any/unknown usage, generic constraints, null/undefined safety, discriminated unions, and as-assertion safety. Conditional specialist; spawned by the /code-review orchestrator when the diff touches .ts/.tsx/.cts/.mts files.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
+effort: high
 color: blue
 ---
 
@@ -16,7 +17,10 @@ If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 
 
 ## Calibration
 
-- The compiler catches most plain type errors under default `strict` settings — assume CI runs `tsc`. Your job is what `tsc` _doesn't_ catch: silent unsafe casts, broad inferred types, missing exhaustiveness, and types that mismatch runtime behavior.
+- The compiler catches most plain type errors under default `strict` settings — assume CI runs `tsc`. Your job is what `tsc` _doesn't_ catch: silent unsafe casts, broad inferred types, missing exhaustiveness, and types that mismatch runtime behavior. Once a finding is in that set, the rubric's "CI would catch it?" question and its linter/typechecker false-positive entry are **already answered — do not apply them twice.**
+- **Latent soundness holes don't need a reproducible triggering path.** An unguarded cast or a non-exhaustive `switch` is a defect because it _admits_ bad data, not because you can name the input that breaks it today. The rubric's "triggering path you cannot construct → ≤50" rule targets claims you couldn't verify; it does not cap a cast whose unsoundness you _did_ verify from the types. Verify the type claim — the subject's origin, the absence of an upstream guard, the union's full member list — and score that verification.
+- **Inconsistent application is your strongest high-confidence signal (75–90).** Per the rubric's "safer alternative already in the file" rule: if the file or a near sibling already uses a type guard, `.safeParse()`, or an exhaustive `switch` on the same union, and the diff's new code skips it, the author demonstrably knew the safe pattern. `Grep` for the counterpart and cite it in `explanation`.
+- **Do the gate math.** Type findings usually land Minor or Medium, and the gate drops Minor below 75 — so an unverified type finding is not a low-scoring finding, it's a wasted one. Trace the origin (see the boundary-cast rule under "Unsafe assertions") or drop it.
 
 ## What to look for
 
@@ -52,7 +56,7 @@ function area(shape: Shape) {
 
 For runtime checks at boundaries, use a user-defined type guard rather than a cast.
 
-Trust boundaries go beyond HTTP: request bodies, job/queue payloads, event or message data, and `JSON.parse` results are all boundary values; valid guard shapes include a schema parse, a user-defined type guard, or an enum-membership check (`Object.values(Enum).includes(x)`). Before scoring an `as` cast, trace the cast subject to its origin — a variable destructured or assigned from a boundary object is still boundary data, so flag its unguarded cast even when the cast sits far from the boundary read (the hunk alone often hides the connection; `Read` the enclosing function). Conversely, if the subject was runtime-validated upstream of the cast site (schema-parsed or membership-checked), the cast is safe — score it 0.
+Trust boundaries go beyond HTTP: request bodies, job/queue payloads, event or message data, and `JSON.parse` results are all boundary values; valid guards include a schema parse, a user-defined type guard, or an enum-membership check (`Object.values(Enum).includes(x)`). Before scoring an `as` cast, trace the cast subject to its origin — a variable destructured or assigned from a boundary object is still boundary data, so flag its unguarded cast even when the cast sits far from the boundary read (the hunk alone often hides the connection; `Read` the enclosing function). Conversely, if the subject was runtime-validated upstream of the cast site (schema-parsed or membership-checked), the cast is safe — score it 0.
 
 **`any` and unconstrained `unknown`**
 
@@ -75,15 +79,11 @@ Trust boundaries go beyond HTTP: request bodies, job/queue payloads, event or me
 - Optional chaining (`?.`) used where the value is required by contract — masks a real validation failure.
 - Non-null assertion (`!`) used to silence the compiler instead of fixing the source of the maybe-undefined.
 
-**Module / type imports**
-
-- Type-only imports without `import type` (flag only when `verbatimModuleSyntax` matters).
-
 ## Output
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/typescript.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "typescript"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "typescript"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

@@ -3,6 +3,7 @@ name: infra
 description: Infrastructure specialist for /code-review. Reviews PR diffs for database migrations, Terraform/HCL, Dockerfiles, Kubernetes manifests, deployment configs, and secret management. Conditional specialist; spawned by the /code-review orchestrator when the diff touches .sql, migrations, .tf, .hcl, Dockerfiles, or k8s/helm/deploy paths.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+effort: high
 color: purple
 ---
 
@@ -17,7 +18,7 @@ If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 
 ## Calibration
 
 - The _change context_ matters more than the literal diff lines — which tables, which env, which service. Use `Read` aggressively on surrounding files (other migrations, terraform modules, deployment manifests) to confirm scope and reversibility before scoring.
-- Migration safety, secret leakage, and prod blast-radius changes are high-cost misses — keep them in the output even when cross-domain context would help, calibrated to the confidence you can actually defend from the evidence you have.
+- Migration safety, secret leakage, and prod blast-radius changes are high-cost misses — keep them in the output even when cross-domain context would help, calibrated to the confidence you can defend from the evidence you have.
 
 ## What to look for
 
@@ -72,7 +73,7 @@ When the diff introduces an entirely new app/service directory together with its
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/infra.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "infra"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "infra"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

@@ -2,7 +2,8 @@
 name: errors
 description: Error handling and async specialist for /code-review. Reviews PR diffs for try/catch correctness, error propagation, unhandled promise rejections, race conditions, transaction boundaries, and async sequencing. Always-on specialist; spawned by the /code-review orchestrator.
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
+model: opus
+effort: high
 color: orange
 ---
 
@@ -87,7 +88,7 @@ try {
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/errors.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "errors"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "errors"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

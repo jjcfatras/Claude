@@ -64,17 +64,16 @@ Before spawning specialists, you (the lead) skim `parsed.json` to:
 
 - Note `plugins_used` — the specialists should focus their fix proposals on these plugins.
 - Note unusual signals — high `tool_failure_rate`, long `permission_denial_runs`, many repeated `slash_commands`, big `turn_duration_ms_p95`.
-- Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/code-review` — point the orchestration specialist at `plugins/code-review/commands/code-review.md` and the specialist agents under `plugins/code-review/agents/*.md`").
+- Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/code-review` — point the orchestration specialist at `plugins/code-review/skills/code-review/SKILL.md` and the specialist agents under `plugins/code-review/agents/*.md`").
 
 ### Step 4 — Run the four specialists
 
 Preferred: single message with four parallel `Agent` tool calls (one per
 category). If the `Agent` tool is unavailable in the current harness — for
-example, when this skill is being evaluated from inside a subagent that does
-not expose Agent — fall back to running each specialist inline in sequence:
-read its instruction file, do the analysis acting as that specialist, and
-write the findings file. Either path is acceptable; the four findings files
-must always exist.
+example, when evaluated inside a subagent that doesn't expose Agent — fall
+back to running each specialist inline in sequence: read its instruction
+file, analyze as that specialist, and write the findings file. Either path
+is acceptable; the four findings files must always exist.
 
 Each specialist gets:
 

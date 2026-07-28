@@ -7,7 +7,7 @@ model: opus
 effort: high
 ---
 
-Investigate the codebase for useful, durable, non-obvious facts that would help a future Claude session but aren't yet captured in the project's memory files (the root `CLAUDE.md`, directory-scoped nested `CLAUDE.md` files, and `.claude/rules/*.md`). This is the inverse of `/audit-docs`: that command finds claims in the docs that are now _wrong_; this one finds facts in the _code_ that are missing from the docs and worth adding.
+Investigate the codebase for useful, durable, non-obvious facts that would help a future Claude session but aren't yet captured in the project's memory files (the root `CLAUDE.md`, directory-scoped nested `CLAUDE.md` files, and `.claude/rules/*.md`). This is the inverse of `/docs:audit-docs`: that command finds claims in the docs that are now _wrong_; this one finds facts in the _code_ that are missing from the docs and worth adding.
 
 The bar is high on purpose. A memory file earns its value by being short and high-signal — every line a future session must read. So you are not transcribing the codebase; you are hunting for the handful of facts that are **durable** (won't churn next week), **non-obvious** (a fresh session would waste time or get it wrong without being told), and **project-specific** (not generic best practice the model already knows). Most of what you find will not clear that bar, and that's expected.
 

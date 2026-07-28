@@ -8,12 +8,11 @@ their own set (§2).
 
 Sources: §1 (skills & slash commands) is verified against the official skills docs
 (`code.claude.com/docs/en/skills#configure-skills`, checked 2026-07-08) and the slash-commands docs
-(`code.claude.com/docs/en/slash-commands`, checked 2026-07-10) — which confirm custom commands were
-integrated into skills and share the same frontmatter, with `SKILL.md` the recommended authoring
-format and plain command files still operational; §2 (agents) against the official subagents docs
-(`code.claude.com/docs/en/sub-agents#supported-frontmatter-fields`, checked 2026-07-09). Repo-local
-tier semantics are defined here (root `CLAUDE.md` links to this file); "in practice" notes from the
-actual component files in this repo.
+(`code.claude.com/docs/en/slash-commands`, checked 2026-07-10) — which confirm the unification above;
+§2 (agents) against the official subagents docs
+(`code.claude.com/docs/en/sub-agents#supported-frontmatter-fields`, checked 2026-07-09). This file
+defines the repo-local tier semantics (root `CLAUDE.md` links here); "in practice" notes from this
+repo's component files.
 
 Plugin manifests (`plugins/<name>/.claude-plugin/plugin.json`) are separate config, not component
 frontmatter — out of scope here. Use `${CLAUDE_PLUGIN_ROOT}` inside any component to resolve
@@ -23,39 +22,36 @@ plugin-relative paths at runtime.
 
 ## 1. Skills & slash commands
 
-Skills and slash commands share one frontmatter set. Files in `.claude/skills/<name>/SKILL.md`,
-`.claude/commands/*.md`, and plugin `commands/*.md` all create a `/command`; `SKILL.md` is the
-recommended authoring format and plain command files remain operational. All fields are optional;
-only `description` is recommended, so Claude knows when to load the skill/command.
+Files in `.claude/skills/<name>/SKILL.md`, `.claude/commands/*.md`, and plugin `commands/*.md` all
+create a `/command`; `SKILL.md` is the recommended authoring format and plain command files remain
+operational. All fields are optional; only `description` is recommended, so Claude knows when to
+load the skill/command.
 
-Every field below is **accepted** on both, but a few only _do_ something for a skill's automatic
-invocation — those carry a `(skills only)` tag (accepted ≠ always useful).
+Every field below is **accepted** on both, but a few carry a `(skills only)` tag — _the field drives
+automatic or background-knowledge behavior that an explicitly-invoked `/command` never uses._
 
-_`(skills only)` = the field drives automatic or background-knowledge behavior that an
-explicitly-invoked `/command` never uses._
-
-| Field                            | Purpose                                                                                                                                                                                                                                                                                         | Values / example                                | Required?   |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------- |
-| `name`                           | Display name in skill listings; defaults to the directory name. For a slash command the name derives from the filename, so this is inert on `commands/*.md`; only a plugin-root `SKILL.md` uses it as the command name.                                                                         | `plugin-session-auditor`                        | No          |
-| `description`                    | The triggering field — decides when Claude applies the skill/command. Falls back to the first body paragraph if omitted. Combined with `when_to_use`, truncated at **1,536 chars** in the listing, so put the key use case first. Write third-person and pack it with concrete trigger phrases. | see below                                       | Recommended |
-| `when_to_use` `(skills only)`    | Extra trigger context (phrases / example requests). Appended to `description`; counts toward the 1,536-char cap. Feeds auto-trigger ranking, so it does nothing for an explicitly-invoked `/command`.                                                                                           | trigger phrases                                 | No          |
-| `argument-hint`                  | Autocomplete hint for expected args.                                                                                                                                                                                                                                                            | `[issue-number]`, `[filename] [format]`         | No          |
-| `arguments`                      | Named positional args for `$name` substitution. Space-separated string or YAML list; names map to positions in order.                                                                                                                                                                           | `[issue, branch]`                               | No          |
-| `disable-model-invocation`       | `true` = user-only (`/name`); Claude won't auto-load it, it's dropped from Claude's context, and it's not preloaded into subagents.                                                                                                                                                             | `true` \| `false` (default `false`)             | No          |
-| `user-invocable` `(skills only)` | `false` = hide from the `/` menu (Claude-only background knowledge). Antithetical to a slash command, whose purpose is `/`-invocation.                                                                                                                                                          | `true` (default) \| `false`                     | No          |
-| `allowed-tools`                  | Tools pre-approved (no prompt) while the skill/command is active. Does **not** restrict the pool. Space/comma string or YAML list.                                                                                                                                                              | `Bash(git add *) Bash(git commit *)`            | No          |
-| `disallowed-tools`               | Tools removed from the pool while active; clears on your next message.                                                                                                                                                                                                                          | `AskUserQuestion`                               | No          |
-| `model`                          | Model while the skill/command is active (rest of the turn; not saved to settings). Same values as `/model`, or `inherit`.                                                                                                                                                                       | `haiku` \| `sonnet` \| `opus` \| `inherit`      | No          |
-| `effort`                         | Effort level while active; overrides the session effort.                                                                                                                                                                                                                                        | `low` \| `medium` \| `high` \| `xhigh` \| `max` | No          |
-| `context`                        | `fork` runs the skill/command in a forked subagent — the file body becomes the prompt, with no conversation history. Applies to both (per the changelog: "Skills and slash commands can now be executed within a forked sub-agent context").                                                    | `fork`                                          | No          |
-| `agent`                          | Subagent type when `context: fork` is set. Built-in (`Explore` / `Plan` / `general-purpose`) or a custom agent; defaults to `general-purpose`.                                                                                                                                                  | `Explore`                                       | No          |
-| `hooks`                          | Hooks scoped to the skill/command's lifecycle.                                                                                                                                                                                                                                                  | see hooks docs                                  | No          |
-| `paths` `(skills only)`          | Globs that gate auto-activation to matching files. Comma string or YAML list. A `/command` is invoked explicitly, never path-gated.                                                                                                                                                             | `src/**/*.ts`                                   | No          |
-| `shell`                          | Shell for `` !`cmd` `` injection. `powershell` needs `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`.                                                                                                                                                                                                       | `bash` (default) \| `powershell`                | No          |
+| Field                            | Purpose                                                                                                                                                                                                                                                                                         | Values / example                                      | Required?   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------- |
+| `name`                           | Display name in skill listings; defaults to the directory name. For a slash command the name derives from the filename, so this is inert on `commands/*.md`; only a plugin-root `SKILL.md` uses it as the command name.                                                                         | `plugin-session-auditor`                              | No          |
+| `description`                    | The triggering field — decides when Claude applies the skill/command. Falls back to the first body paragraph if omitted. Combined with `when_to_use`, truncated at **1,536 chars** in the listing, so put the key use case first. Write third-person and pack it with concrete trigger phrases. | see below                                             | Recommended |
+| `when_to_use` `(skills only)`    | Extra trigger context (phrases / example requests). Appended to `description`; counts toward the 1,536-char cap. Feeds auto-trigger ranking, so it does nothing for an explicitly-invoked `/command`.                                                                                           | trigger phrases                                       | No          |
+| `argument-hint`                  | Autocomplete hint for expected args.                                                                                                                                                                                                                                                            | `[issue-number]`, `[filename] [format]`               | No          |
+| `arguments`                      | Named positional args for `$name` substitution. Space-separated string or YAML list; names map to positions in order.                                                                                                                                                                           | `[issue, branch]`                                     | No          |
+| `disable-model-invocation`       | `true` = user-only (`/name`); Claude won't auto-load it, it's dropped from Claude's context, and it's not preloaded into subagents.                                                                                                                                                             | `true` \| `false` (default `false`)                   | No          |
+| `user-invocable` `(skills only)` | `false` = hide from the `/` menu (Claude-only background knowledge). Antithetical to a slash command, whose purpose is `/`-invocation.                                                                                                                                                          | `true` (default) \| `false`                           | No          |
+| `allowed-tools`                  | Tools pre-approved (no prompt) while the skill/command is active. Does **not** restrict the pool. Space/comma string or YAML list.                                                                                                                                                              | `Bash(git add *) Bash(git commit *)`                  | No          |
+| `disallowed-tools`               | Tools removed from the pool while active; clears on your next message.                                                                                                                                                                                                                          | `AskUserQuestion`                                     | No          |
+| `model`                          | Model while the skill/command is active (rest of the turn; not saved to settings). Same values as `/model`, or `inherit`.                                                                                                                                                                       | `haiku` \| `sonnet` \| `opus` \| `fable` \| `inherit` | No          |
+| `effort`                         | Effort level while active; overrides the session effort.                                                                                                                                                                                                                                        | `low` \| `medium` \| `high` \| `xhigh` \| `max`       | No          |
+| `context`                        | `fork` runs the skill/command in a forked subagent — the file body becomes the prompt, with no conversation history. Applies to both (per the changelog: "Skills and slash commands can now be executed within a forked sub-agent context").                                                    | `fork`                                                | No          |
+| `agent`                          | Subagent type when `context: fork` is set. Built-in (`Explore` / `Plan` / `general-purpose`) or a custom agent; defaults to `general-purpose`.                                                                                                                                                  | `Explore`                                             | No          |
+| `hooks`                          | Hooks scoped to the skill/command's lifecycle.                                                                                                                                                                                                                                                  | see hooks docs                                        | No          |
+| `paths` `(skills only)`          | Globs that gate auto-activation to matching files. Comma string or YAML list. A `/command` is invoked explicitly, never path-gated.                                                                                                                                                             | `src/**/*.ts`                                         | No          |
+| `shell`                          | Shell for `` !`cmd` `` injection. `powershell` needs `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`.                                                                                                                                                                                                       | `bash` (default) \| `powershell`                      | No          |
 
 **Not a Claude Code skill field:** `version` comes from the [Agent Skills](https://agentskills.io)
 open standard and appears in some upstream examples, but it is absent from the Claude Code skills
-frontmatter reference and is ignored — none of this repo's `SKILL.md` files use it.
+frontmatter reference and ignored — none of this repo's `SKILL.md` files use it.
 
 ```yaml
 ---
@@ -67,10 +63,10 @@ description: This skill should be used when the user asks to "specific phrase 1"
 ### In practice
 
 - `.claude/skills/plugin-session-auditor/SKILL.md` carries `argument-hint`
-  (`<jsonl-path-or-dir-or-glob>`) — a documented skill field, used exactly as intended.
+  (`<jsonl-path-or-dir-or-glob>`) — a documented skill field used as intended.
 - `plugins/transcript/skills/transcript/SKILL.md` is the repo's first plugin-shipped skill
   (model-invocable), using the command-style subset — `description`, `allowed-tools`,
-  `model: haiku`, `effort: low` — since skills and commands share one frontmatter set.
+  `model: haiku`, `effort: low`.
 - `plugins/docs/skills/audit-docs/SKILL.md` and `plugins/docs/skills/enrich-claude-md/SKILL.md`
   are plugin-shipped skills using the fuller command-style subset — `description`,
   `argument-hint`, `model: opus`, `effort: high`, `allowed-tools` — and are model-invocable (no
@@ -104,10 +100,11 @@ description: This skill should be used when the user asks to "specific phrase 1"
 
 These govern the `model` row above for both skills and slash commands.
 
-- `model` — which Claude model executes the command. Three values (if unset, inherits the session model; omit unless a command has a specific need):
+- `model` — which Claude model executes the command. Four values (if unset, inherits the session model; omit unless a command has a specific need):
   - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands or skills (e.g. the `transcript` skill). Typically pairs with `effort: low`.
   - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
-  - `opus` — most capable and most expensive. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
+  - `opus` — most capable and most expensive of the standard tiers. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
+  - `fable` — Mythos-class tier above Opus (Claude Fable 5); the most capable model, for the hardest, longest-running tasks. Never a default. Cybersecurity/bio content trips its input classifiers and falls back to Opus automatically, and Fable's documented code-review gains explicitly exclude security analysis for the same reason — so it is the wrong pin for security-domain work despite being the top tier. Unused in this repo (the code-review `security` agent ran on it until 2026-07-28, now `opus`).
 
 ### `effort` tier semantics
 
@@ -145,7 +142,8 @@ Example (from `plugins/git/skills/commit/SKILL.md`):
 ```yaml
 ---
 name: commit
-description: Create a git commit with an auto-generated message matching the repo's style. Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message. Commits only — does not push.
+description: Create a git commit with an auto-generated message matching the repo's style. Commits only — does not push.
+when_to_use: Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git switch:*), Bash(git commit:*), AskUserQuestion
 model: sonnet
 effort: low
@@ -156,7 +154,7 @@ effort: low
 
 ## 2. Agents — `agents/*.md`
 
-Only `name` and `description` are required; every other field is optional.
+Only `name` and `description` are required.
 
 | Field             | Purpose                                                                                                                                                                                                                           | Values / example                                                                                                                          | Required? |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------- |
@@ -183,10 +181,18 @@ plugin. If an agent needs them, copy its file into `.claude/agents/` or `~/.clau
 
 **In practice (this repo):**
 
-- Repo agents use only `name`/`description`/`tools`/`model`/`color` — none of the other 11 fields.
+- Repo agents use only `name`/`description`/`tools`/`model`/`effort`/`color` — none of the other 10
+  fields. `effort` is used by the eight code-review specialists only; the `debate` agents and the
+  `plugin-session-auditor` analyzers still pin `model` alone.
 - `color: magenta` (`plugins/debate/agents/rebuttal.md`) is the one value outside the documented
   set; `purple`, `orange`, and `pink` (also used here) are now officially documented.
-- `model` is pinned to `sonnet`/`opus` explicitly, never left to the `inherit` default.
+- `model` is pinned explicitly, never left to the `inherit` default — `sonnet`/`opus` throughout.
+  No agent uses `fable`; the code-review `security` specialist did until 2026-07-28 (see §1's
+  `fable` bullet for why security work in particular should not).
+- `effort` is pinned across all eight code-review specialists so review depth doesn't drift with
+  the invoking session's effort — `medium` for the mechanical `claude-md` compliance check, `high`
+  for six, `xhigh` for `security`. `security`'s `xhigh` pairs with `model: opus` exactly as §1
+  recommends — `xhigh` is Opus-only and falls back to `high` elsewhere.
 - `tools` as a comma-separated string mixing built-ins with MCP tool names matches the documented
   file format (the `["array"]` form belongs to the `--agents` CLI JSON, not agent files).
 
@@ -206,9 +212,9 @@ Repo example (`plugins/code-review/agents/security.md`, MCP tool names in `tools
 ```yaml
 ---
 name: security
-description: Security specialist for /code-review. Reviews PR diffs for authentication, authorization, input validation, injection vectors (SQL, command, prompt), secret handling, and API contract integrity. Always-on specialist; spawned by the /code-review orchestrator.
+description: Security specialist for /code-review. Reviews PR diffs for authentication, authorization, input validation, injection vectors (SQL, NoSQL, command, prompt), request forgery (SSRF/CSRF), path traversal, cryptography misuse, secret handling, and API contract integrity. Always-on specialist; spawned by the /code-review orchestrator.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: sonnet
+model: opus
 color: red
 ---
 ```

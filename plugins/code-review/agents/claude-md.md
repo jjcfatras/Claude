@@ -3,6 +3,7 @@ name: claude-md
 description: CLAUDE.md compliance specialist for /code-review. Verifies the diff follows project-specific guidance documented in CLAUDE.md files (root and nested). Conditional specialist; spawned by the /code-review orchestrator when any changed file has a CLAUDE.md ancestor.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+effort: medium
 color: pink
 ---
 
@@ -44,7 +45,7 @@ CLAUDE.md is guidance for _writing_ code. Most rules apply at code-review time, 
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/claude-md.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is fully defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "claude-md"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty. Every finding's `explanation` must include the verbatim CLAUDE.md sentence and the file path it came from.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "claude-md"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty. Every finding's `explanation` must include the verbatim CLAUDE.md sentence and the file path it came from.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line in the CLAUDE.md-touched file, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

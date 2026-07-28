@@ -6,8 +6,8 @@
     {
       "name": "git",
       "source": "./plugins/git",
-      "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, clean-gone, cherry-pick, and merge",
-      "version": "0.6.1",
+      "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, clean_gone, cherry-pick, and merge",
+      "version": "0.6.2",
       "category": "git"
     },
     {
@@ -21,14 +21,14 @@
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "category": "code-review"
     },
     {
       "name": "docs",
       "source": "./plugins/docs",
-      "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.5.0",
+      "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
+      "version": "1.5.1",
       "category": "documentation"
     },
     {
@@ -55,7 +55,7 @@
     {
       "name": "jira",
       "source": "./plugins/jira",
-      "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, and pick up a ticket by key to verify claims, plan, and implement it.",
+      "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria.",
       "version": "1.0.1",
       "category": "project-management"
     },
