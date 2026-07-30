@@ -73,7 +73,7 @@ func Semantic(in []findings.Finding, isInDiff inDiff) []findings.Finding {
 				continue
 			}
 			keep, drop := pickRep(left, right, isInDiff)
-			keep.CrossRefs = append(keep.CrossRefs, makeCrossRef(drop))
+			keep.CrossRefs = append(keep.CrossRefs, makeCrossRef(drop, findings.MergedBySemantic))
 			delete(current, drop.ID)
 			current[keep.ID] = keep
 			if drop.ID == idA {
@@ -101,7 +101,11 @@ func Semantic(in []findings.Finding, isInDiff inDiff) []findings.Finding {
 
 func semanticDup(left, right findings.Finding) bool {
 	if left.File == right.File && left.Line == right.Line {
-		// Already merged by positional pass; don't double-merge.
+		// The positional pass already ruled on this pair: it either folded them
+		// (in which case only one is here) or deliberately kept both because
+		// they showed no same-defect signal. Either way, re-deciding here would
+		// only ever undo that call — Rule 1's file-path check trivially matches
+		// a same-file pair whose explanation names its own file.
 		return false
 	}
 	// Rule 1: cross-file path mention with both >= Medium.

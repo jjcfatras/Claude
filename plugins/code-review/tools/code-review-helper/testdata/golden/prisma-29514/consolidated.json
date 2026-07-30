@@ -46,10 +46,15 @@
       "verifications": [],
       "cross_refs": [
         {
+          "id": "quality-qual-1",
           "specialist": "quality",
+          "category": "quality",
+          "severity": "Minor",
           "confidence": 65,
           "file": "package.json",
-          "line": 170
+          "line": 170,
+          "rationale": "override key naming inconsistent with the rest of the file",
+          "merged_by": "positional"
         }
       ]
     },
@@ -97,5 +102,32 @@
   "missing_roles": [],
   "unreadable_roles": [],
   "invalid_findings": [],
-  "last_review_date": null
+  "last_review_date": null,
+  "deduped": [
+    {
+      "id": "quality-qual-1",
+      "specialist": "quality",
+      "severity": "Minor",
+      "confidence": 65,
+      "file": "package.json",
+      "line": 170,
+      "rationale": "override key naming inconsistent with the rest of the file",
+      "merged_into": "quality-qual-2",
+      "merged_by": "positional"
+    }
+  ],
+  "accounting": {
+    "ok": true,
+    "loaded": 6,
+    "accounted": 6,
+    "by_bucket": {
+      "deduped": 1,
+      "dropped_by_gate": 0,
+      "dropped_prior_review": 0,
+      "inline_eligible": 5,
+      "invalid_findings": 0,
+      "summary_only": 0
+    },
+    "orphans": []
+  }
 }

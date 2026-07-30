@@ -47,7 +47,7 @@ func TestBuild_EndToEnd(t *testing.T) {
 		"## Roster",
 		"\"security\"",
 		"## Prior issues",
-		"## CLAUDE.md content",
+		"## CLAUDE.md files",
 		"## Rubric\n# Rubric\n\nRubric body.\n",
 	}
 	for _, want := range wantSections {
@@ -58,7 +58,7 @@ func TestBuild_EndToEnd(t *testing.T) {
 
 	// Sections appear in the documented order.
 	idx := func(s string) int { return strings.Index(out, s) }
-	order := []string{"## Per-PR", "## Summary", "## Changed files", "## Roster", "## Prior issues", "## CLAUDE.md content", "## Rubric"}
+	order := []string{"## Per-PR", "## Summary", "## Changed files", "## Roster", "## Prior issues", "## CLAUDE.md files", "## Rubric"}
 	for i := 1; i < len(order); i++ {
 		if idx(order[i-1]) > idx(order[i]) {
 			t.Errorf("section %q appears before %q (out-of-order)", order[i], order[i-1])

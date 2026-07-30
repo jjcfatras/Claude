@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -31,6 +32,18 @@ type consolidatedFile struct {
 	UnreadableRoles []string                  `json:"unreadable_roles"`
 	InvalidFindings []findings.InvalidFinding `json:"invalid_findings"`
 	LastReviewDate  *string                   `json:"last_review_date"`
+	// Deduped is the audit trail for the two dedup passes — the buckets above
+	// only account for what the *gate*, the *prior-review* filter and the schema
+	// validator dropped, so without this a finding folded by dedup appeared in no
+	// bucket at all and the summary looked internally consistent while
+	// under-counting. Shown in the terminal summary; never posted to GitHub.
+	Deduped []dedupedEntry `json:"deduped"`
+	// Accounting is the conservation check over everything above. Every loaded
+	// finding must land in exactly one bucket (or in Deduped); when it doesn't,
+	// Accounting.OK is false and the summary prints a MISMATCH line. This is what
+	// makes the rendered summary's "complete account" claim verifiable instead of
+	// assumed.
+	Accounting accounting `json:"accounting"`
 	// PostingFilter is the audit trail for the include/exclude subset; the
 	// consolidated counts above reflect the PRE-filter classification while
 	// payload.json reflects the POST-filter subset. omitempty keeps existing
@@ -52,6 +65,103 @@ type droppedGateEntry struct {
 	File       string            `json:"file"`
 	Line       int               `json:"line"`
 	Rationale  string            `json:"rationale"`
+}
+
+// dedupedEntry names a finding that a dedup pass folded into another, and which
+// one it folded into. Reconstructed from the survivors' CrossRefs, so it needs
+// no extra plumbing through the pipeline.
+type dedupedEntry struct {
+	ID         string            `json:"id"`
+	Specialist string            `json:"specialist"`
+	Severity   findings.Severity `json:"severity"`
+	Confidence int               `json:"confidence"`
+	File       string            `json:"file"`
+	Line       int               `json:"line"`
+	Rationale  string            `json:"rationale"`
+	MergedInto string            `json:"merged_into"`
+	MergedBy   string            `json:"merged_by"`
+}
+
+// accounting is the conservation ledger: Loaded must equal Accounted, and every
+// loaded ID must appear exactly once across the buckets. Orphans lists any ID
+// that vanished — a bug in the pipeline, surfaced rather than swallowed.
+type accounting struct {
+	OK        bool           `json:"ok"`
+	Loaded    int            `json:"loaded"`
+	Accounted int            `json:"accounted"`
+	ByBucket  map[string]int `json:"by_bucket"`
+	Orphans   []string       `json:"orphans"`
+}
+
+// collectDeduped walks every surviving finding's CrossRefs to reconstruct the
+// list of findings the dedup passes folded away. Buckets must include every
+// slice that can hold a survivor — a gate-dropped or prior-review-dropped
+// finding carries CrossRefs just as an inline-eligible one does, and missing one
+// would report its folded peers as orphans.
+func collectDeduped(buckets ...[]findings.Finding) []dedupedEntry {
+	var out []dedupedEntry
+	for _, bucket := range buckets {
+		for _, survivor := range bucket {
+			for _, ref := range survivor.CrossRefs {
+				out = append(out, dedupedEntry{
+					ID:         ref.ID,
+					Specialist: ref.Specialist,
+					Severity:   ref.Severity,
+					Confidence: ref.Confidence,
+					File:       ref.File,
+					Line:       ref.Line,
+					Rationale:  ref.Rationale,
+					MergedInto: survivor.ID,
+					MergedBy:   ref.MergedBy,
+				})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b dedupedEntry) int { return cmp.Compare(a.ID, b.ID) })
+	return out
+}
+
+// reconcile checks that every loaded finding is accounted for exactly once.
+// `loaded` is the post-validation set (invalid findings never reach the
+// pipeline, so they are counted separately via their own bucket).
+func reconcile(loaded []findings.Finding, invalid []findings.InvalidFinding, cf consolidatedFile) accounting {
+	seen := make(map[string]struct{}, len(loaded))
+	byBucket := map[string]int{
+		"inline_eligible":      len(cf.InlineEligible),
+		"summary_only":         len(cf.SummaryOnly),
+		"dropped_prior_review": len(cf.DroppedPriorReview),
+		"dropped_by_gate":      len(cf.DroppedByGate),
+		"deduped":              len(cf.Deduped),
+		"invalid_findings":     len(invalid),
+	}
+	for _, bucket := range [][]findings.Finding{cf.InlineEligible, cf.SummaryOnly, cf.DroppedPriorReview} {
+		for _, f := range bucket {
+			seen[f.ID] = struct{}{}
+		}
+	}
+	for _, e := range cf.DroppedByGate {
+		seen[e.ID] = struct{}{}
+	}
+	for _, e := range cf.Deduped {
+		seen[e.ID] = struct{}{}
+	}
+
+	var orphans []string
+	for _, f := range loaded {
+		if _, ok := seen[f.ID]; !ok {
+			orphans = append(orphans, f.ID)
+		}
+	}
+	slices.Sort(orphans)
+
+	accountedFindings := len(seen)
+	return accounting{
+		OK:        len(orphans) == 0 && accountedFindings == len(loaded),
+		Loaded:    len(loaded) + len(invalid),
+		Accounted: accountedFindings + len(invalid),
+		ByBucket:  byBucket,
+		Orphans:   coalesce(orphans),
+	}
 }
 
 func toDroppedGateEntries(in []findings.Finding) []droppedGateEntry {
@@ -187,7 +297,7 @@ func buildPostingFilter(includeIDs, excludeIDs string, classified lines.Result) 
 }
 
 func assembleConsolidated(classified lines.Result, droppedPrior, droppedGate []findings.Finding, loaded *findings.LoadResult, prior dedup.PriorIssuesFile, pf *postingFilter) consolidatedFile {
-	return consolidatedFile{
+	cf := consolidatedFile{
 		InlineEligible:     coalesce(classified.InlineEligible),
 		SummaryOnly:        coalesce(classified.SummaryOnly),
 		DroppedPriorReview: coalesce(droppedPrior),
@@ -200,6 +310,22 @@ func assembleConsolidated(classified lines.Result, droppedPrior, droppedGate []f
 		LastReviewDate:     prior.LastReviewDate,
 		PostingFilter:      pf,
 	}
+	cf.Deduped = coalesce(collectDeduped(classified.InlineEligible, classified.SummaryOnly, droppedPrior, droppedGate))
+	cf.Accounting = reconcile(loaded.Findings, loaded.InvalidFindings, cf)
+	return cf
+}
+
+// warnAccounting mirrors a failed conservation check to stderr so it is visible
+// in the bash output even before the summary jq runs. A mismatch means findings
+// entered the pipeline and left no trace in any bucket — a helper bug, and the
+// raw findings files are the only remaining copy.
+func warnAccounting(a accounting) {
+	if a.OK {
+		return
+	}
+	fmt.Fprintf(os.Stderr,
+		"code-review-helper: warning: accounting MISMATCH — %d finding(s) loaded, %d accounted for; orphans: %v\n",
+		a.Loaded, a.Accounted, a.Orphans)
 }
 
 func assembleBuildInput(opts finalizeOpts, classified lines.Result, specialists []string, pf *postingFilter) payload.BuildInput {
@@ -262,6 +388,7 @@ func runFinalize(argv []string) error {
 	}
 
 	cf := assembleConsolidated(classified, droppedPrior, droppedGate, loaded, prior, pf)
+	warnAccounting(cf.Accounting)
 	buildIn := assembleBuildInput(opts, classified, loaded.Specialists, pf)
 	return writeFinalizeOutputs(opts, cf, buildIn)
 }

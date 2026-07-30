@@ -16,6 +16,21 @@
       "verifications": []
     },
     {
+      "id": "errors-err-1",
+      "category": "errors",
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 55,
+      "startLine": null,
+      "confidence": 50,
+      "severity": "Critical",
+      "rationale": "decodeURIComponent throws but try/catch returns the encoded form silently",
+      "explanation": "When decodeURIComponent fails on a malformed sequence, the catch returns the original part. This is a silent fallback that hides the malformation from any caller — a more defensive option would be to throw an InvalidPathError or at least log a warning so observability picks up bad input.",
+      "code": "try { return encodeURIComponent(decodeURIComponent(part)) } catch { return part }",
+      "suggested_fix": null,
+      "language": "typescript",
+      "verifications": []
+    },
+    {
       "id": "security-sec-1",
       "category": "security",
       "file": "packages/next/src/client/route-params.ts",
@@ -31,10 +46,15 @@
       "verifications": [],
       "cross_refs": [
         {
+          "id": "security-sec-2",
           "specialist": "security",
+          "category": "security",
+          "severity": "Medium",
           "confidence": 78,
           "file": "packages/next/src/client/route-params.ts",
-          "line": 120
+          "line": 120,
+          "rationale": "context-line lookup adjacent to changed code",
+          "merged_by": "positional"
         }
       ]
     },
@@ -54,10 +74,15 @@
       "verifications": [],
       "cross_refs": [
         {
+          "id": "typescript-ts-1",
           "specialist": "typescript",
+          "category": "typescript",
+          "severity": "Medium",
           "confidence": 65,
           "file": "packages/next/src/client/route-params.ts",
-          "line": 55
+          "line": 55,
+          "rationale": "return type loses NormalizedPathname brand",
+          "merged_by": "semantic"
         }
       ]
     }
@@ -93,5 +118,43 @@
   "missing_roles": [],
   "unreadable_roles": [],
   "invalid_findings": [],
-  "last_review_date": "2026-04-30T12:00:00Z"
+  "last_review_date": "2026-04-30T12:00:00Z",
+  "deduped": [
+    {
+      "id": "security-sec-2",
+      "specialist": "security",
+      "severity": "Medium",
+      "confidence": 78,
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 120,
+      "rationale": "context-line lookup adjacent to changed code",
+      "merged_into": "security-sec-1",
+      "merged_by": "positional"
+    },
+    {
+      "id": "typescript-ts-1",
+      "specialist": "typescript",
+      "severity": "Medium",
+      "confidence": 65,
+      "file": "packages/next/src/client/route-params.ts",
+      "line": 55,
+      "rationale": "return type loses NormalizedPathname brand",
+      "merged_into": "react-1",
+      "merged_by": "semantic"
+    }
+  ],
+  "accounting": {
+    "ok": true,
+    "loaded": 7,
+    "accounted": 7,
+    "by_bucket": {
+      "deduped": 2,
+      "dropped_by_gate": 0,
+      "dropped_prior_review": 0,
+      "inline_eligible": 4,
+      "invalid_findings": 0,
+      "summary_only": 1
+    },
+    "orphans": []
+  }
 }

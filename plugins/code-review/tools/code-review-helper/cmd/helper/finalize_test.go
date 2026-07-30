@@ -207,6 +207,94 @@ func TestBuildPostingFilter(t *testing.T) {
 	})
 }
 
+// TestReconcile_ConservationInvariant is the check the pipeline lacked: every
+// loaded finding must land in exactly one output bucket. Before this existed, a
+// finding folded by dedup appeared in no bucket at all and the rendered summary
+// still looked internally consistent — which is how a review lost its
+// highest-value finding without a single count looking wrong.
+func TestReconcile_ConservationInvariant(t *testing.T) {
+	mk := func(id string) findings.Finding {
+		return findings.Finding{ID: id, Severity: findings.SeverityMedium, Confidence: 60, File: "a.ts", Line: 1}
+	}
+
+	t.Run("every finding accounted for", func(t *testing.T) {
+		loaded := []findings.Finding{mk("a"), mk("b"), mk("c"), mk("d")}
+		cf := consolidatedFile{
+			InlineEligible:     []findings.Finding{mk("a")},
+			SummaryOnly:        []findings.Finding{mk("b")},
+			DroppedPriorReview: []findings.Finding{mk("c")},
+			DroppedByGate:      []droppedGateEntry{{ID: "d"}},
+		}
+		got := reconcile(loaded, nil, cf)
+		if !got.OK {
+			t.Errorf("want OK, got %+v", got)
+		}
+		if got.Loaded != 4 || got.Accounted != 4 {
+			t.Errorf("want loaded=4 accounted=4, got loaded=%d accounted=%d", got.Loaded, got.Accounted)
+		}
+	})
+
+	t.Run("dedup-folded findings count via the ledger", func(t *testing.T) {
+		loaded := []findings.Finding{mk("a"), mk("b")}
+		cf := consolidatedFile{
+			InlineEligible: []findings.Finding{mk("a")},
+			Deduped:        []dedupedEntry{{ID: "b", MergedInto: "a", MergedBy: findings.MergedByPositional}},
+		}
+		if got := reconcile(loaded, nil, cf); !got.OK || got.Accounted != 2 {
+			t.Errorf("a folded finding must be accounted for by the ledger, got %+v", got)
+		}
+	})
+
+	t.Run("a vanished finding is reported as an orphan", func(t *testing.T) {
+		loaded := []findings.Finding{mk("a"), mk("b")}
+		cf := consolidatedFile{InlineEligible: []findings.Finding{mk("a")}} // b dropped silently
+		got := reconcile(loaded, nil, cf)
+		if got.OK {
+			t.Fatalf("want OK=false when a finding vanishes, got %+v", got)
+		}
+		if !slices.Equal(got.Orphans, []string{"b"}) {
+			t.Errorf("want orphans=[b], got %v", got.Orphans)
+		}
+		if got.Loaded != 2 || got.Accounted != 1 {
+			t.Errorf("want loaded=2 accounted=1, got loaded=%d accounted=%d", got.Loaded, got.Accounted)
+		}
+	})
+
+	t.Run("invalid findings count toward the total", func(t *testing.T) {
+		loaded := []findings.Finding{mk("a")}
+		invalid := []findings.InvalidFinding{{Role: "perf", ID: "p-1", Reason: "non-positive line 0"}}
+		cf := consolidatedFile{InlineEligible: []findings.Finding{mk("a")}}
+		got := reconcile(loaded, invalid, cf)
+		if !got.OK || got.Loaded != 2 || got.Accounted != 2 {
+			t.Errorf("want OK with loaded=2 accounted=2, got %+v", got)
+		}
+	})
+}
+
+func TestCollectDeduped_WalksEveryBucket(t *testing.T) {
+	withRef := func(id, refID string) findings.Finding {
+		return findings.Finding{ID: id, CrossRefs: []findings.CrossRef{{ID: refID, MergedBy: findings.MergedBySemantic}}}
+	}
+	// A gate-dropped survivor carries CrossRefs just like an inline-eligible one;
+	// skipping that bucket would report its folded peer as an orphan.
+	got := collectDeduped(
+		[]findings.Finding{withRef("inline", "folded-1")},
+		nil,
+		[]findings.Finding{withRef("prior", "folded-2")},
+		[]findings.Finding{withRef("gated", "folded-3")},
+	)
+	var ids []string
+	for _, e := range got {
+		ids = append(ids, e.ID)
+	}
+	if !slices.Equal(ids, []string{"folded-1", "folded-2", "folded-3"}) {
+		t.Errorf("want all three folded peers, got %v", ids)
+	}
+	if got[0].MergedInto != "inline" {
+		t.Errorf("want merged_into=inline, got %q", got[0].MergedInto)
+	}
+}
+
 func TestLoadPriorIssues(t *testing.T) {
 	t.Run("missing-file", func(t *testing.T) {
 		_, err := loadPriorIssues(filepath.Join(t.TempDir(), "nope.json"))

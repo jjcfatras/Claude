@@ -82,13 +82,31 @@ type Finding struct {
 	Specialist string `json:"-"`
 }
 
-// CrossRef is a peer finding folded into another by the dedup pipeline. The
-// fields here are exactly what the rendered note needs.
+// MergedBy names the dedup pass that folded a peer finding, so a surprising
+// merge can be traced back to the rule that made it.
+const (
+	MergedByPositional = "positional"
+	MergedBySemantic   = "semantic"
+)
+
+// CrossRef is a peer finding folded into another by the dedup pipeline. It is
+// the *only* surviving record of that folded finding, so it carries enough
+// identity to name it: finalize's accounting pass reconciles every loaded
+// finding against the buckets plus these cross-refs, and reports each one in
+// the `deduped` ledger. A stub with just specialist/confidence/file/line (what
+// this held before) left a merged-away finding unidentifiable — a Medium could
+// vanish under an unrelated Minor on the same line with nothing in the audit
+// trail naming it.
 type CrossRef struct {
-	Specialist string `json:"specialist"`
-	Confidence int    `json:"confidence"`
-	File       string `json:"file"`
-	Line       int    `json:"line"`
+	ID         string   `json:"id"`
+	Specialist string   `json:"specialist"`
+	Category   string   `json:"category"`
+	Severity   Severity `json:"severity"`
+	Confidence int      `json:"confidence"`
+	File       string   `json:"file"`
+	Line       int      `json:"line"`
+	Rationale  string   `json:"rationale"`
+	MergedBy   string   `json:"merged_by"`
 }
 
 type RoleFile struct {

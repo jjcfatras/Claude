@@ -16,10 +16,15 @@
       "verifications": [],
       "cross_refs": [
         {
+          "id": "perf-1",
           "specialist": "perf",
+          "category": "perf",
+          "severity": "Minor",
           "confidence": 55,
           "file": "pkg/scheduler/framework/runtime/batch.go",
-          "line": 175
+          "line": 175,
+          "rationale": "extra branch on the hot path",
+          "merged_by": "positional"
         }
       ]
     },
@@ -39,10 +44,15 @@
       "verifications": [],
       "cross_refs": [
         {
+          "id": "errors-err-1",
           "specialist": "errors",
+          "category": "errors",
+          "severity": "Critical",
           "confidence": 75,
           "file": "pkg/scheduler/framework/runtime/framework.go",
-          "line": 358
+          "line": 358,
+          "rationale": "duplicate of security finding at the same call site",
+          "merged_by": "positional"
         }
       ]
     }
@@ -85,5 +95,43 @@
   "missing_roles": [],
   "unreadable_roles": [],
   "invalid_findings": [],
-  "last_review_date": null
+  "last_review_date": null,
+  "deduped": [
+    {
+      "id": "errors-err-1",
+      "specialist": "errors",
+      "severity": "Critical",
+      "confidence": 75,
+      "file": "pkg/scheduler/framework/runtime/framework.go",
+      "line": 358,
+      "rationale": "duplicate of security finding at the same call site",
+      "merged_into": "security-sec-1",
+      "merged_by": "positional"
+    },
+    {
+      "id": "perf-1",
+      "specialist": "perf",
+      "severity": "Minor",
+      "confidence": 55,
+      "file": "pkg/scheduler/framework/runtime/batch.go",
+      "line": 175,
+      "rationale": "extra branch on the hot path",
+      "merged_into": "errors-err-2",
+      "merged_by": "positional"
+    }
+  ],
+  "accounting": {
+    "ok": true,
+    "loaded": 6,
+    "accounted": 6,
+    "by_bucket": {
+      "deduped": 2,
+      "dropped_by_gate": 1,
+      "dropped_prior_review": 0,
+      "inline_eligible": 2,
+      "invalid_findings": 0,
+      "summary_only": 1
+    },
+    "orphans": []
+  }
 }

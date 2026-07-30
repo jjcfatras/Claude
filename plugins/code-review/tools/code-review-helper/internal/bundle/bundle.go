@@ -127,7 +127,7 @@ func Build(in Input) (string, error) {
 	writeSection(&b, "## Changed files\n", changedFilesRaw)
 	writeSection(&b, "## Roster (active specialists)\n", rosterRaw)
 	writeSection(&b, "## Prior issues (most recent prior Claude Code review on this PR; may be empty)\n", priorIssuesRaw)
-	writeSection(&b, "## CLAUDE.md content (paths + contents from step 1b; may be empty `{}`)\n", claudeMDRaw)
+	writeSection(&b, "## CLAUDE.md files (JSON array of repo-relative paths; may be empty `[]`)\n", claudeMDRaw)
 	if hasMigration {
 		writeSection(&b, "## Migration history\n", migrationRaw)
 	}

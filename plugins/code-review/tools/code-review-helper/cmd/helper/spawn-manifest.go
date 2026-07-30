@@ -17,7 +17,7 @@ import (
 //	{{ROLE}}, {{TMP}}, {{PR_NUMBER}}, {{HEAD_SHA}}, {{REPO_ROOT}}, {{OWNER}}, {{REPO}}
 //
 // The wording mirrors the legacy inline template in skills/code-review/SKILL.md
-// §[3b/5]; keep them in sync if either side is edited.
+// §[3/5]; keep them in sync if either side is edited.
 const promptTemplate = "Read {{TMP}}/spawn-context.md once at startup " +
 	"(use offset:0, limit:200 and paginate — the bundle may exceed the 25,000-token Read cap on large PRs) " +
 	"and Read {{TMP}}/rubric.md once. " +
@@ -64,24 +64,50 @@ func runSpawnManifest(argv []string) error {
 	if err := json.Unmarshal(raw, &roles); err != nil {
 		return fmt.Errorf("parse --roster: %w", err)
 	}
-	if len(roles) == 0 {
-		return fmt.Errorf("spawn-manifest: roster is empty; nothing to spawn")
+
+	entries, err := buildSpawnEntries(roles, spawnSubs{
+		reviewTmpDir: *reviewTmpDir,
+		headSHA:      *headSHA,
+		prNumber:     *prNumber,
+		owner:        *owner,
+		repo:         *repo,
+		repoRoot:     *repoRoot,
+	})
+	if err != nil {
+		return err
 	}
+	return writeJSON(*out, entries)
+}
 
-	prNumberStr := fmt.Sprintf("%d", *prNumber)
+// spawnSubs carries the per-run values substituted into promptTemplate.
+type spawnSubs struct {
+	reviewTmpDir string
+	headSHA      string
+	prNumber     int
+	owner        string
+	repo         string
+	repoRoot     string
+}
+
+// buildSpawnEntries renders one Agent payload per roster role. Shared by the
+// `spawn-manifest` subcommand and by `prepare`, which produces the same manifest
+// without a separate process round-trip.
+func buildSpawnEntries(roles []string, s spawnSubs) ([]spawnEntry, error) {
+	if len(roles) == 0 {
+		return nil, fmt.Errorf("spawn-manifest: roster is empty; nothing to spawn")
+	}
 	subs := strings.NewReplacer(
-		"{{TMP}}", *reviewTmpDir,
-		"{{PR_NUMBER}}", prNumberStr,
-		"{{HEAD_SHA}}", *headSHA,
-		"{{REPO_ROOT}}", *repoRoot,
-		"{{OWNER}}", *owner,
-		"{{REPO}}", *repo,
+		"{{TMP}}", s.reviewTmpDir,
+		"{{PR_NUMBER}}", fmt.Sprintf("%d", s.prNumber),
+		"{{HEAD_SHA}}", s.headSHA,
+		"{{REPO_ROOT}}", s.repoRoot,
+		"{{OWNER}}", s.owner,
+		"{{REPO}}", s.repo,
 	)
-
 	entries := make([]spawnEntry, 0, len(roles))
 	for _, role := range roles {
 		if role == "" {
-			return fmt.Errorf("spawn-manifest: roster contains an empty role name")
+			return nil, fmt.Errorf("spawn-manifest: roster contains an empty role name")
 		}
 		rolePrompt := strings.ReplaceAll(promptTemplate, "{{ROLE}}", role)
 		entries = append(entries, spawnEntry{
@@ -90,6 +116,5 @@ func runSpawnManifest(argv []string) error {
 			Prompt:       subs.Replace(rolePrompt),
 		})
 	}
-
-	return writeJSON(*out, entries)
+	return entries, nil
 }

@@ -18,6 +18,20 @@ canonicalizeURLPart now runs on every catchall and dynamic segment for every nav
 // Pathname parts come from URL.pathname.split('/')
 ```
 
+**packages/next/src/client/route-params.ts:55**
+
+🔴 **Critical** (Confidence: 50/100) - decodeURIComponent throws but try/catch returns the encoded form silently
+
+<!-- cr-finding id="67c29b9b9337" snippet64="dHJ5IHsgcmV0dXJuIGVuY29kZVVSSUNvbXBvbmVudChkZWNvZGVVUklDb21wb25lbnQocGFydCkpIH0gY2F0Y2ggeyByZXR1cm4gcGFydCB9" -->
+
+**Issue & impact:** When decodeURIComponent fails on a malformed sequence, the catch returns the original part. This is a silent fallback that hides the malformation from any caller — a more defensive option would be to throw an InvalidPathError or at least log a warning so observability picks up bad input.
+
+**Code:**
+
+```typescript
+try { return encodeURIComponent(decodeURIComponent(part)) } catch { return part }
+```
+
 **packages/next/src/client/route-params.ts:121**
 
 🟡 **Medium** (Confidence: 78/100) - decoded user-controlled URL parts re-encoded without explicit allow-list

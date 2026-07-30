@@ -2,7 +2,7 @@
 
 Shared by every `code-review-*` specialist agent. Defines the scoring rubric, the findings file schema, and the false-positive list. The skill (`${CLAUDE_PLUGIN_ROOT}/skills/code-review/SKILL.md`) references this from each agent and from the posting step.
 
-The orchestrator invokes `code-review-helper bundle-context --rubric-out $REVIEW_TMPDIR/rubric.md` so this file is copied verbatim to a per-run path that specialists Read once on startup; it is not concatenated into `spawn-context.md` (the all-in-one bundle exceeded the Read tool's 256 KB byte cap on non-trivial PRs). The bundle's Per-PR header carries a `RUBRIC_PATH:` pointer so specialists know where to find the file.
+The orchestrator invokes `code-review-helper prepare`, which copies this file verbatim to `$REVIEW_TMPDIR/rubric.md` — a per-run path that specialists Read once on startup; it is not concatenated into `spawn-context.md` (the all-in-one bundle exceeded the Read tool's 256 KB byte cap on non-trivial PRs). The bundle's Per-PR header carries a `RUBRIC_PATH:` pointer so specialists know where to find the file.
 
 ## Confidence scale (0–100)
 

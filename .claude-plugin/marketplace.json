@@ -21,7 +21,7 @@
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "category": "code-review"
     },
     {

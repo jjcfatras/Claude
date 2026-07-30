@@ -5,8 +5,8 @@ import (
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/intmath"
 )
 
-// PriorIssue is the schema persisted by the skill's step 1c (prep agent for
-// prior-review fetching). Mirrors the rubric's `prior-issues.json` shape.
+// PriorIssue is the schema the `prepare` subcommand projects the PR's GraphQL
+// review threads into. Mirrors the rubric's `prior-issues.json` shape.
 type PriorIssue struct {
 	Path            string `json:"path"`
 	Line            int    `json:"line"`
@@ -17,7 +17,7 @@ type PriorIssue struct {
 	IsOutdated      bool   `json:"is_outdated"`
 	AuthorDismissed bool   `json:"author_dismissed"`
 	// Fingerprint is the 12-hex id extracted from this plugin's hidden
-	// `<!-- cr-finding id="…" -->` marker (skill step 1c). When present it is
+	// `<!-- cr-finding id="…" -->` marker. When present it is
 	// the highest-precision match signal: it pins identity to file+line+category
 	// exactly, so two distinct findings within the ±5 line window don't false-match.
 	Fingerprint string `json:"fingerprint"`
