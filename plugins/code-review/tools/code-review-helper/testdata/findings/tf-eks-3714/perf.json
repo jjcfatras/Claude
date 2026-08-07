@@ -1,0 +1,21 @@
+{
+  "specialist": "perf",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "node_groups.tf",
+      "line": 509,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Minor",
+      "rationale": "each.value lookup repeated per attribute in a wide for_each",
+      "explanation": "This module call already resolves several dozen attributes off each.value, and the block scales with the number of groups. The cost is small per attribute but the pattern is what makes plan time grow linearly with group count.",
+      "code": "  network_performance_options        = each.value.network_performance_options",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    }
+  ]
+}

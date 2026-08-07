@@ -1,0 +1,111 @@
+diff --git a/tests/migrations/test_base.py b/tests/migrations/base.py
+similarity index 100%
+rename from tests/migrations/test_base.py
+rename to tests/migrations/base.py
+diff --git a/tests/migrations/test_commands.py b/tests/migrations/test_commands.py
+index e9929c1eafa9..61336f553328 100644
+--- a/tests/migrations/test_commands.py
++++ b/tests/migrations/test_commands.py
+@@ -38,9 +38,9 @@
+ from django.utils import timezone
+ from django.utils.version import get_docs_version
+ 
++from .base import MigrationTestBase
+ from .models import UnicodeModel, UnserializableModel
+ from .routers import TestRouter
+-from .test_base import MigrationTestBase
+ 
+ HAS_BLACK = shutil.which("black")
+ 
+diff --git a/tests/migrations/test_deprecated_fields.py b/tests/migrations/test_deprecated_fields.py
+index 63975514f656..e75521eafaf3 100644
+--- a/tests/migrations/test_deprecated_fields.py
++++ b/tests/migrations/test_deprecated_fields.py
+@@ -1,7 +1,7 @@
+ from django.core.management import call_command
+ from django.test import override_settings
+ 
+-from .test_base import MigrationTestBase
++from .base import MigrationTestBase
+ 
+ 
+ class Tests(MigrationTestBase):
+diff --git a/tests/migrations/test_executor.py b/tests/migrations/test_executor.py
+index 30ef63c662e5..10cf505d039d 100644
+--- a/tests/migrations/test_executor.py
++++ b/tests/migrations/test_executor.py
+@@ -16,7 +16,7 @@
+ )
+ from django.test.utils import isolate_lru_cache
+ 
+-from .test_base import MigrationTestBase
++from .base import MigrationTestBase
+ 
+ 
+ @modify_settings(INSTALLED_APPS={"append": "migrations2"})
+diff --git a/tests/migrations/test_loader.py b/tests/migrations/test_loader.py
+index 52aeb8c21bbd..ba10e7ce935a 100644
+--- a/tests/migrations/test_loader.py
++++ b/tests/migrations/test_loader.py
+@@ -17,7 +17,7 @@
+ from django.db.migrations.recorder import MigrationRecorder
+ from django.test import TestCase, modify_settings, override_settings
+ 
+-from .test_base import MigrationTestBase
++from .base import MigrationTestBase
+ 
+ 
+ class RecorderTests(TestCase):
+diff --git a/tests/migrations/test_multidb.py b/tests/migrations/test_multidb.py
+index 14667bbdc38d..b239e7c5ea25 100644
+--- a/tests/migrations/test_multidb.py
++++ b/tests/migrations/test_multidb.py
+@@ -2,7 +2,7 @@
+ from django.db.migrations.state import ProjectState
+ from django.test import override_settings
+ 
+-from .test_base import OperationTestBase
++from .base import OperationTestBase
+ 
+ 
+ class AgnosticRouter:
+diff --git a/tests/migrations/test_operations.py b/tests/migrations/test_operations.py
+index b3d5481267aa..939520d79245 100644
+--- a/tests/migrations/test_operations.py
++++ b/tests/migrations/test_operations.py
+@@ -19,8 +19,8 @@
+ )
+ from django.test.utils import CaptureQueriesContext
+ 
++from .base import OperationTestBase
+ from .models import FoodManager, FoodQuerySet, UnicodeModel
+-from .test_base import OperationTestBase
+ 
+ 
+ class Mixin:
+diff --git a/tests/migrations/test_optimizer.py b/tests/migrations/test_optimizer.py
+index 195a74072a56..c2c80d309e82 100644
+--- a/tests/migrations/test_optimizer.py
++++ b/tests/migrations/test_optimizer.py
+@@ -3,8 +3,8 @@
+ from django.db.migrations.optimizer import MigrationOptimizer
+ from django.db.models.functions import Abs
+ 
++from .base import OptimizerTestBase
+ from .models import EmptyManager, UnicodeModel
+-from .test_base import OptimizerTestBase
+ 
+ 
+ class OptimizerTests(OptimizerTestBase):
+diff --git a/tests/postgres_tests/test_operations.py b/tests/postgres_tests/test_operations.py
+index 551898c80a23..7372101e4009 100644
+--- a/tests/postgres_tests/test_operations.py
++++ b/tests/postgres_tests/test_operations.py
+@@ -1,6 +1,6 @@
+ import unittest
+ 
+-from migrations.test_base import OperationTestBase, OptimizerTestBase
++from migrations.base import OperationTestBase, OptimizerTestBase
+ 
+ from django.db import IntegrityError, NotSupportedError, connection, transaction
+ from django.db.migrations.operations import RemoveIndex, RenameIndex

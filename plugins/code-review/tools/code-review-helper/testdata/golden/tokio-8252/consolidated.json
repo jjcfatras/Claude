@@ -1,0 +1,71 @@
+{
+  "inline_eligible": [],
+  "summary_only": [],
+  "dropped_prior_review": [],
+  "dropped_by_gate": [
+    {
+      "id": "security-sec-2",
+      "severity": "Minor",
+      "confidence": 60,
+      "file": "tokio/src/runtime/time_alt/entry.rs",
+      "line": 213,
+      "rationale": "assert! on cancel_tx replacement panics while holding the lock"
+    },
+    {
+      "id": "security-sec-1",
+      "severity": "Critical",
+      "confidence": 30,
+      "file": "tokio/src/runtime/time_alt/wheel/mod.rs",
+      "line": 73,
+      "rationale": "speculative: early return could strand a caller-owned handle"
+    }
+  ],
+  "specialists_used": [
+    "errors",
+    "quality",
+    "security"
+  ],
+  "timed_out_roles": [
+    "errors"
+  ],
+  "missing_roles": [
+    "perf",
+    "typescript"
+  ],
+  "unreadable_roles": [
+    "perf"
+  ],
+  "invalid_findings": [
+    {
+      "role": "quality",
+      "id": "qual-1",
+      "reason": "specialist quality finding qual-1: non-positive line 0"
+    },
+    {
+      "role": "quality",
+      "id": "qual-2",
+      "reason": "specialist quality finding qual-2: unknown severity \"Blocker\""
+    },
+    {
+      "role": "quality",
+      "id": "qual-3",
+      "reason": "specialist quality finding qual-3: empty code"
+    }
+  ],
+  "last_review_date": null,
+  "deduped": [],
+  "accounting": {
+    "ok": true,
+    "loaded": 5,
+    "accounted": 5,
+    "by_bucket": {
+      "deduped": 0,
+      "dropped_by_gate": 2,
+      "dropped_prior_review": 0,
+      "inline_eligible": 0,
+      "invalid_findings": 3,
+      "summary_only": 0
+    },
+    "orphans": []
+  }
+}

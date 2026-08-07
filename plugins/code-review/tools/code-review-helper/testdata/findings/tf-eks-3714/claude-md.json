@@ -1,0 +1,21 @@
+{
+  "specialist": "claude-md",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "cmd-1",
+      "category": "claude-md",
+      "file": "modules/self-managed-node-group/README.md",
+      "line": 170,
+      "startLine": null,
+      "confidence": 75,
+      "severity": "Medium",
+      "rationale": "generated input table edited without regenerating the sibling module's",
+      "explanation": "Project guidance requires the input tables to be regenerated rather than hand-edited, and the two node-group modules now expose an identical block that must be kept in lockstep by hand. Only one of the two tables gained the row in this commit.",
+      "code": "| <a name=\"input_network_performance_options\"></a> [network\\_performance\\_options](#input\\_network\\_performance\\_options) | The network performance options for the instance |",
+      "suggested_fix": null,
+      "language": "markdown",
+      "verifications": []
+    }
+  ]
+}

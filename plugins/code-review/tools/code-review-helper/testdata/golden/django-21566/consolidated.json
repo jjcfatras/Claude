@@ -1,0 +1,92 @@
+{
+  "inline_eligible": [],
+  "summary_only": [
+    {
+      "id": "security-sec-1",
+      "category": "security",
+      "file": "tests/migrations/base.py",
+      "line": 12,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "renamed test helper writes into a caller-supplied path without validation",
+      "explanation": "The helper module moved by this rename builds filesystem paths from arguments the calling test controls and never checks that the result stays inside the temp directory. A test passing an absolute or dot-dot segment would escape it. Because the rename is content-identical, none of the module body appears in this diff.",
+      "code": "def assertTableExists(self, table, using=\"default\"):",
+      "suggested_fix": null,
+      "language": "python",
+      "verifications": []
+    },
+    {
+      "id": "quality-qual-1",
+      "category": "quality",
+      "file": "tests/migrations/base.py",
+      "line": 40,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "three unrelated base classes share one module after the rename",
+      "explanation": "MigrationTestBase, OperationTestBase and OptimizerTestBase all live side by side in the module this PR renames, and the eight importers each pull a different subset. Splitting them would let each test file depend only on what it uses. Nothing about the bodies changed here, so the range is unanchored in the diff.",
+      "code": "class OperationTestBase(MigrationTestBase):",
+      "suggested_fix": null,
+      "language": "python",
+      "verifications": []
+    },
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "tests/migrations/test_commands.py",
+      "line": 120,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "shutil.which(\"black\") runs at import time on every collection",
+      "explanation": "HAS_BLACK is evaluated while the module is imported, so a PATH scan happens during collection even for runs that never touch the formatter tests. Caching it behind functools.cache would defer the cost. The anchor sits well past the import block this PR edited.",
+      "code": "HAS_BLACK = shutil.which(\"black\")",
+      "suggested_fix": null,
+      "language": "python",
+      "verifications": []
+    },
+    {
+      "id": "quality-qual-2",
+      "category": "quality",
+      "file": "tests/postgres_tests/test_operations.py",
+      "line": 80,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Minor",
+      "rationale": "cross-package absolute import where every sibling uses a relative one",
+      "explanation": "This file reaches into the sibling package with an absolute `migrations.base` import while the other seven updated call sites use the relative form. The inconsistency makes the shared helper look like two different modules when grepping.",
+      "code": "from migrations.base import OperationTestBase, OptimizerTestBase",
+      "suggested_fix": "from django.test import modify_settings\n\nfrom migrations.base import OperationTestBase, OptimizerTestBase  # noqa: E402",
+      "language": "python",
+      "verifications": []
+    }
+  ],
+  "dropped_prior_review": [],
+  "dropped_by_gate": [],
+  "specialists_used": [
+    "perf",
+    "quality",
+    "security"
+  ],
+  "timed_out_roles": [],
+  "missing_roles": [],
+  "unreadable_roles": [],
+  "invalid_findings": [],
+  "last_review_date": null,
+  "deduped": [],
+  "accounting": {
+    "ok": true,
+    "loaded": 4,
+    "accounted": 4,
+    "by_bucket": {
+      "deduped": 0,
+      "dropped_by_gate": 0,
+      "dropped_prior_review": 0,
+      "inline_eligible": 0,
+      "invalid_findings": 0,
+      "summary_only": 4
+    },
+    "orphans": []
+  }
+}

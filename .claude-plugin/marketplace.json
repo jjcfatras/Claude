@@ -6,22 +6,22 @@
     {
       "name": "git",
       "source": "./plugins/git",
-      "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, clean_gone, cherry-pick, and merge",
-      "version": "0.6.2",
+      "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, and merge",
+      "version": "0.9.0",
       "category": "git"
     },
     {
       "name": "respond-to-review",
       "source": "./plugins/respond-to-review",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones",
-      "version": "1.3.3",
+      "version": "1.4.0",
       "category": "code-review"
     },
     {
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.2.0",
+      "version": "2.2.1",
       "category": "code-review"
     },
     {
@@ -55,8 +55,8 @@
     {
       "name": "jira",
       "source": "./plugins/jira",
-      "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria.",
-      "version": "1.0.1",
+      "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
+      "version": "1.1.0",
       "category": "project-management"
     },
     {

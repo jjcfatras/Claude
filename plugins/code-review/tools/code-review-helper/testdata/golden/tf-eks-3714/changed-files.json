@@ -1,0 +1,10 @@
+[
+  "modules/eks-managed-node-group/README.md",
+  "modules/eks-managed-node-group/main.tf",
+  "modules/eks-managed-node-group/variables.tf",
+  "modules/self-managed-node-group/README.md",
+  "modules/self-managed-node-group/main.tf",
+  "modules/self-managed-node-group/variables.tf",
+  "node_groups.tf",
+  "variables.tf"
+]

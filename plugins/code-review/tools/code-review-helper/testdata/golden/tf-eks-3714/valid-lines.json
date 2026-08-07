@@ -1,0 +1,58 @@
+{
+  "modules/eks-managed-node-group/README.md": [
+    [
+      170,
+      176
+    ]
+  ],
+  "modules/eks-managed-node-group/main.tf": [
+    [
+      322,
+      335
+    ]
+  ],
+  "modules/eks-managed-node-group/variables.tf": [
+    [
+      259,
+      272
+    ]
+  ],
+  "modules/self-managed-node-group/README.md": [
+    [
+      167,
+      173
+    ]
+  ],
+  "modules/self-managed-node-group/main.tf": [
+    [
+      443,
+      456
+    ]
+  ],
+  "modules/self-managed-node-group/variables.tf": [
+    [
+      231,
+      244
+    ]
+  ],
+  "node_groups.tf": [
+    [
+      359,
+      365
+    ],
+    [
+      506,
+      512
+    ]
+  ],
+  "variables.tf": [
+    [
+      1134,
+      1142
+    ],
+    [
+      1426,
+      1434
+    ]
+  ]
+}

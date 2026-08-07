@@ -1,0 +1,51 @@
+{
+  "specialist": "quality",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "railties/test/application/active_job_adapter_test.rb",
+      "line": 42,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Medium",
+      "rationale": "railtie fixture hardcodes a backend the framework does not vendor",
+      "explanation": "The generated production environment names a queue backend that ships as a separate gem, so this fixture only passes where that gem happens to be installed. A backend bundled with the framework keeps the fixture self-contained.",
+      "code": "config.active_job.queue_adapter = :solid_queue",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "qual-2",
+      "category": "quality",
+      "file": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 130,
+      "startLine": null,
+      "confidence": 90,
+      "severity": "Minor",
+      "rationale": "the lookup example in the doc comment now advertises the async adapter as the canonical choice",
+      "explanation": "Two other tables in this same file were edited to drop a row, but the prose above them still counts the adapters inline, so the numbers no longer agree with the rows beneath them.",
+      "code": "      #   # => ActiveJob::QueueAdapters::AsyncAdapter",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "qual-3",
+      "category": "quality",
+      "file": "activejob/test/cases/test_case_test.rb",
+      "line": 41,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "case/when ladder duplicates the adapter registry it should be reading",
+      "explanation": "Each removal from the registry forces a matching edit in this ladder, which is the third place the same mapping is written out. Deriving the constant from the symbol would make the ladder unnecessary.",
+      "code": "               when :sneakers",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    }
+  ]
+}

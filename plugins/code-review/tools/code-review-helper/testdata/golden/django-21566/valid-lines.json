@@ -1,0 +1,50 @@
+{
+  "tests/migrations/test_commands.py": [
+    [
+      38,
+      46
+    ]
+  ],
+  "tests/migrations/test_deprecated_fields.py": [
+    [
+      1,
+      7
+    ]
+  ],
+  "tests/migrations/test_executor.py": [
+    [
+      16,
+      22
+    ]
+  ],
+  "tests/migrations/test_loader.py": [
+    [
+      17,
+      23
+    ]
+  ],
+  "tests/migrations/test_multidb.py": [
+    [
+      2,
+      8
+    ]
+  ],
+  "tests/migrations/test_operations.py": [
+    [
+      19,
+      26
+    ]
+  ],
+  "tests/migrations/test_optimizer.py": [
+    [
+      3,
+      10
+    ]
+  ],
+  "tests/postgres_tests/test_operations.py": [
+    [
+      1,
+      6
+    ]
+  ]
+}

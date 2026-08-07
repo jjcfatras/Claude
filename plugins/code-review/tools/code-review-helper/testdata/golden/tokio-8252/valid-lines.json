@@ -1,0 +1,36 @@
+{
+  "tokio/src/runtime/time_alt/entry.rs": [
+    [
+      210,
+      225
+    ]
+  ],
+  "tokio/src/runtime/time_alt/tests.rs": [
+    [
+      12,
+      23
+    ],
+    [
+      70,
+      76
+    ],
+    [
+      95,
+      191
+    ],
+    [
+      232,
+      238
+    ]
+  ],
+  "tokio/src/runtime/time_alt/wheel/mod.rs": [
+    [
+      54,
+      60
+    ],
+    [
+      70,
+      79
+    ]
+  ]
+}

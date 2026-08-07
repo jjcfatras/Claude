@@ -1,0 +1,36 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "tokio/src/runtime/time_alt/wheel/mod.rs",
+      "line": 73,
+      "startLine": null,
+      "confidence": 30,
+      "severity": "Critical",
+      "rationale": "speculative: early return could strand a caller-owned handle",
+      "explanation": "When register_cancel_tx returns false, insert bails out before taking ownership of hdl. If a caller elsewhere relied on insert always consuming the handle, the handle would be dropped here instead. No such caller was found in the diff, so confidence is low.",
+      "code": "if !hdl.register_cancel_tx(cancel_tx) {\n    // `hdl` has been cancelled or woken up concurrently\n    return;\n}",
+      "suggested_fix": null,
+      "language": "rust",
+      "verifications": []
+    },
+    {
+      "id": "sec-2",
+      "category": "security",
+      "file": "tokio/src/runtime/time_alt/entry.rs",
+      "line": 213,
+      "startLine": null,
+      "confidence": 60,
+      "severity": "Minor",
+      "rationale": "assert! on cancel_tx replacement panics while holding the lock",
+      "explanation": "The existing assert!(old_tx.is_none()) fires while state.lock() is held, poisoning the mutex. The comment says that is deliberate, so this is a note rather than a defect.",
+      "code": "assert!(old_tx.is_none(), \"cancel_tx is already registered\");",
+      "suggested_fix": null,
+      "language": "rust",
+      "verifications": []
+    }
+  ]
+}

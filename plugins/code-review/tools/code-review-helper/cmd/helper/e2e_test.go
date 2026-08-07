@@ -17,8 +17,15 @@ var updateGoldens = flag.Bool("update", false, "rewrite golden files instead of 
 
 // fixtures table-drives the e2e cases. Each entry mirrors a real OSS PR. To
 // add a new case: drop a unified diff in testdata/diffs/, populate per-role
-// JSON in testdata/findings/<id>/, supply prior-issues/<id>.json, and add the
-// row here. Run `go test -update` once to capture the initial golden.
+// JSON in testdata/findings/<id>/, supply prior-issues/<id>.json, create
+// testdata/golden/<id>/ (the -update writer does not mkdir), and add the row
+// here. Run `go test -update` once to capture the initial goldens — the five
+// finalize outputs plus the two diff-subcommand ones.
+//
+// The set deliberately spans more than the happy path: tokio-8252 is a degraded
+// run (timed-out, unreadable, and missing roles; every finding dropped),
+// django-21566 lands every finding off-diff so no inline comment is possible,
+// and rails-56518 exercises the prior-review filter's drop arms.
 var fixtures = []struct {
 	id    string
 	roles string
@@ -26,6 +33,12 @@ var fixtures = []struct {
 	{id: "k8s-138754", roles: "security,errors,perf,quality"},
 	{id: "nextjs-93491", roles: "security,typescript,react,errors,perf,quality"},
 	{id: "prisma-29514", roles: "security,quality,errors,perf"},
+	// typescript is intentionally absent from this fixture's findings dir — it
+	// is what populates missing_roles.
+	{id: "tokio-8252", roles: "security,errors,perf,quality,typescript"},
+	{id: "rails-56518", roles: "security,errors,perf,quality"},
+	{id: "django-21566", roles: "security,perf,quality"},
+	{id: "tf-eks-3714", roles: "security,errors,perf,quality,infra,claude-md"},
 }
 
 // finalizeArgv returns the full finalize flag set for a fixture, writing all
@@ -45,6 +58,45 @@ func finalizeArgv(tdRoot, outDir, id, roles string) []string {
 		"--out-pending-payload", filepath.Join(outDir, "payload-pending.json"),
 		"--out-body", filepath.Join(outDir, "payload-body.json"),
 		"--out-fallback", filepath.Join(outDir, "fallback.md"),
+	}
+}
+
+// diffArgv returns the `diff` subcommand flag set for a fixture. Note the input
+// flag is --in here, not --diff as finalize uses. Shared with bench_test.go so
+// the benchmark and the golden test can't drift apart.
+func diffArgv(tdRoot, outDir, id string) []string {
+	return []string{
+		"--in", filepath.Join(tdRoot, "diffs", id+".diff"),
+		"--out-changed-files", filepath.Join(outDir, "changed-files.json"),
+		"--out-valid-lines", filepath.Join(outDir, "valid-lines.json"),
+	}
+}
+
+// compareGoldens byte-compares each named file in outDir against its twin in
+// goldenDir, or rewrites the golden when -update is set. Shared by the finalize
+// and diff e2e tests.
+func compareGoldens(t *testing.T, outDir, goldenDir string, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		got, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatalf("read produced %s: %v", name, err)
+		}
+		wantPath := filepath.Join(goldenDir, name)
+		if *updateGoldens {
+			if err := os.WriteFile(wantPath, got, 0o644); err != nil {
+				t.Fatalf("update golden %s: %v", name, err)
+			}
+			continue
+		}
+		want, err := os.ReadFile(wantPath)
+		if err != nil {
+			t.Fatalf("read golden %s: %v (run `go test -update` to seed)", name, err)
+		}
+		if string(got) != string(want) {
+			t.Errorf("%s differs from golden — first diverging line:\n%s",
+				name, firstDivergence(string(want), string(got)))
+		}
 	}
 }
 
@@ -70,29 +122,35 @@ func TestE2E_FinalizePipeline(t *testing.T) {
 				t.Fatalf("runFinalize: %v", err)
 			}
 
-			goldenDir := filepath.Join(tdRoot, "golden", fx.id)
-			for _, name := range []string{"consolidated.json", "payload.json", "payload-pending.json", "payload-body.json", "fallback.md"} {
-				gotPath := filepath.Join(outDir, name)
-				wantPath := filepath.Join(goldenDir, name)
-				got, err := os.ReadFile(gotPath)
-				if err != nil {
-					t.Fatalf("read produced %s: %v", name, err)
-				}
-				if *updateGoldens {
-					if err := os.WriteFile(wantPath, got, 0o644); err != nil {
-						t.Fatalf("update golden %s: %v", name, err)
-					}
-					continue
-				}
-				want, err := os.ReadFile(wantPath)
-				if err != nil {
-					t.Fatalf("read golden %s: %v (run `go test -update` to seed)", name, err)
-				}
-				if string(got) != string(want) {
-					t.Errorf("%s differs from golden — first diverging line:\n%s",
-						name, firstDivergence(string(want), string(got)))
-				}
+			compareGoldens(t, outDir, filepath.Join(tdRoot, "golden", fx.id),
+				"consolidated.json", "payload.json", "payload-pending.json", "payload-body.json", "fallback.md")
+		})
+	}
+}
+
+// TestE2E_DiffSubcommand pins the `diff` subcommand's two outputs per fixture.
+// The parser's own branches are unit-tested in internal/diff, but only a golden
+// captures the whole-file consequences on a real diff — notably that a pure
+// rename (django-21566) or a deleted file (rails-56518) lands in changed-files
+// while being absent from valid-lines, which is what makes a finding anchored
+// there summary-only downstream.
+func TestE2E_DiffSubcommand(t *testing.T) {
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("locate repo root: %v", err)
+	}
+
+	for _, fx := range fixtures {
+		t.Run(fx.id, func(t *testing.T) {
+			tdRoot := filepath.Join(repoRoot, "testdata")
+			outDir := t.TempDir()
+
+			if err := runDiff(diffArgv(tdRoot, outDir, fx.id)); err != nil {
+				t.Fatalf("runDiff: %v", err)
 			}
+
+			compareGoldens(t, outDir, filepath.Join(tdRoot, "golden", fx.id),
+				"changed-files.json", "valid-lines.json")
 		})
 	}
 }

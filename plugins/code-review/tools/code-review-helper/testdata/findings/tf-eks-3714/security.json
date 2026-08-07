@@ -1,0 +1,21 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "variables.tf",
+      "line": 1137,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Medium",
+      "rationale": "root object schema widens without a matching allow-list",
+      "explanation": "Callers supply this map wholesale, so a new free-form attribute here reaches the launch template unfiltered. Anything a consumer can set on the instance profile should be enumerated at the boundary rather than forwarded blindly.",
+      "code": "    network_performance_options = optional(object({\n      bandwidth_weighting = optional(string)\n    }))",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    }
+  ]
+}

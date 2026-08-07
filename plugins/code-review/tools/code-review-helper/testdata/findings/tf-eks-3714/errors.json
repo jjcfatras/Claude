@@ -1,0 +1,21 @@
+{
+  "specialist": "errors",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "err-1",
+      "category": "errors",
+      "file": "modules/self-managed-node-group/variables.tf",
+      "line": 234,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "null default makes the nested attribute unreachable without a guard",
+      "explanation": "Because the whole object defaults to null, any expression reading the nested attribute directly errors out instead of yielding null. Every consumer therefore needs its own presence check before dereferencing.",
+      "code": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n}",
+      "suggested_fix": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n}\n",
+      "language": "hcl",
+      "verifications": []
+    }
+  ]
+}

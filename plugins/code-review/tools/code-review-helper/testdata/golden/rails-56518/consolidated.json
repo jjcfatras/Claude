@@ -1,0 +1,139 @@
+{
+  "inline_eligible": [
+    {
+      "id": "quality-qual-2",
+      "category": "quality",
+      "file": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 130,
+      "startLine": null,
+      "confidence": 90,
+      "severity": "Minor",
+      "rationale": "the lookup example in the doc comment now advertises the async adapter as the canonical choice",
+      "explanation": "Two other tables in this same file were edited to drop a row, but the prose above them still counts the adapters inline, so the numbers no longer agree with the rows beneath them.\n\n_Note: This issue was flagged in a prior review but the code has since changed._",
+      "code": "      #   # =\u003e ActiveJob::QueueAdapters::AsyncAdapter",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "quality-qual-3",
+      "category": "quality",
+      "file": "activejob/test/cases/test_case_test.rb",
+      "line": 41,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "case/when ladder duplicates the adapter registry it should be reading",
+      "explanation": "Each removal from the registry forces a matching edit in this ladder, which is the third place the same mapping is written out. Deriving the constant from the symbol would make the ladder unnecessary.",
+      "code": "               when :sneakers",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "errors-err-2",
+      "category": "errors",
+      "file": "activejob/test/integration/queuing_test.rb",
+      "line": 34,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "delayed_job block inherits a jobs_manager teardown that no longer runs",
+      "explanation": "Three tests that called jobs_manager.stop_workers were deleted just above, and that manager was what restored worker state between cases. The block starting here reuses the same manager without an equivalent reset.",
+      "code": "  if adapter_is?(:delayed_job)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    }
+  ],
+  "summary_only": [],
+  "dropped_prior_review": [
+    {
+      "id": "security-sec-1",
+      "category": "security",
+      "file": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 129,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Critical",
+      "rationale": "lookup builds a constant name from an unvalidated caller string",
+      "explanation": "Removing one autoload entry narrows the set of resolvable constants but leaves const_get reachable with whatever name a caller hands in. Any symbol that happens to name a loaded class is still resolvable through this path.",
+      "code": "      #   ActiveJob::QueueAdapters.lookup(:async)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "activejob/test/cases/adapter_test.rb",
+      "line": 11,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "adapter_is? re-runs a linear scan per test case",
+      "explanation": "Deleting the sidekiq branch leaves the surrounding adapter_is? guards doing a linear string comparison for every adapter on every single test case. Hoisting the resolved adapter name into a memoized helper would collapse that to one comparison per file.",
+      "code": "  if adapter_is?(:sneakers)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "errors-err-1",
+      "category": "errors",
+      "file": "activejob/test/integration/queuing_test.rb",
+      "line": 77,
+      "startLine": null,
+      "confidence": 75,
+      "severity": "Medium",
+      "rationale": "provider_job_id assertion now runs against three backends that never set it",
+      "explanation": "Trimming the adapter list from this guard changes which backends reach the body below it. Two of the remaining three populate provider_job_id lazily, so the assertion can observe nil before the enqueue round-trip settles.",
+      "code": "  if adapter_is?(:async, :delayed_job, :queue_classic)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "quality-qual-1",
+      "category": "quality",
+      "file": "railties/test/application/active_job_adapter_test.rb",
+      "line": 42,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Medium",
+      "rationale": "railtie fixture hardcodes a backend the framework does not vendor",
+      "explanation": "The generated production environment names a queue backend that ships as a separate gem, so this fixture only passes where that gem happens to be installed. A backend bundled with the framework keeps the fixture self-contained.",
+      "code": "config.active_job.queue_adapter = :solid_queue",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    }
+  ],
+  "dropped_by_gate": [],
+  "specialists_used": [
+    "errors",
+    "perf",
+    "quality",
+    "security"
+  ],
+  "timed_out_roles": [],
+  "missing_roles": [],
+  "unreadable_roles": [],
+  "invalid_findings": [],
+  "last_review_date": "2026-07-14T09:12:44Z",
+  "deduped": [],
+  "accounting": {
+    "ok": true,
+    "loaded": 7,
+    "accounted": 7,
+    "by_bucket": {
+      "deduped": 0,
+      "dropped_by_gate": 0,
+      "dropped_prior_review": 4,
+      "inline_eligible": 3,
+      "invalid_findings": 0,
+      "summary_only": 0
+    },
+    "orphans": []
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "specialist": "quality",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "tokio/src/runtime/time_alt/wheel/mod.rs",
+      "line": 0,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "doc comment lost its terminating period",
+      "explanation": "The doc comment on Wheel::insert dropped its trailing period, which is inconsistent with every other doc comment in this module. Rejected here because the finding carries no usable line anchor.",
+      "code": "/// Inserts an entry into the timing wheel",
+      "suggested_fix": null,
+      "language": "rust",
+      "verifications": []
+    },
+    {
+      "id": "qual-2",
+      "category": "quality",
+      "file": "tokio/src/runtime/time_alt/tests.rs",
+      "line": 100,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Blocker",
+      "rationale": "duplicated far_future literal across two tests",
+      "explanation": "Both insert_of_already_cancelled_entry_does_not_enter_wheel and cancel_races_with_insert declare their own far_future = 10_000_000 local instead of sharing one const.",
+      "code": "let far_future = 10_000_000;",
+      "suggested_fix": null,
+      "language": "rust",
+      "verifications": []
+    },
+    {
+      "id": "qual-3",
+      "category": "quality",
+      "file": "tokio/src/runtime/time_alt/entry.rs",
+      "line": 215,
+      "startLine": null,
+      "confidence": 55,
+      "severity": "Minor",
+      "rationale": "boolean return would read better as a dedicated enum",
+      "explanation": "register_cancel_tx now returns a bare bool, so callers must consult the doc comment to learn which way is success. A two-variant enum would carry that at the type level.",
+      "code": "   ",
+      "suggested_fix": null,
+      "language": "rust",
+      "verifications": []
+    }
+  ]
+}

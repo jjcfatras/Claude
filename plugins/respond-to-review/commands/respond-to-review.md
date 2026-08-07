@@ -6,7 +6,7 @@ model: opus
 effort: high
 ---
 
-Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix, **commit and push it before posting any reply**, and reply confirming the change — so reviewers never see a "Fixed" reply that points at code still sitting in the local working tree.
+Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix, **commit and push it before posting any reply**, refresh the PR description to match the branch as it now stands, and reply confirming the change — so reviewers never see a "Fixed" reply that points at code still sitting in the local working tree, or a PR description that predates the fixes.
 
 **Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The rules that still matter cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops); the condensed version is included in every agent preamble below.
 
@@ -233,6 +233,10 @@ Otherwise, every "Fixed — …" reply in Step 6 must point at code that is alre
 6. **Push:** `git push`. On any normal PR checkout the branch already tracks `origin/<headRefName>`, so a bare `git push` is correct. If push fails with non-fast-forward, **stop and surface** — do not force-push, do not rebase silently. The user must resolve the divergence before the skill continues.
 7. **Verify the push landed:** local `git rev-parse HEAD` must match `gh api repos/OWNER/REPO/git/refs/heads/<headRefName> --jq .object.sha`. If they differ, stop and surface — do not proceed to Step 6.
 8. **Capture the short SHA** with `git rev-parse --short HEAD`. Step 6's "Fixed" template embeds this SHA so each reply points at a specific commit on the PR.
+9. **Refresh the PR description.** Run `gh pr view $PR_NUMBER --json state,url,body,commits` — one call returns both the existing body to preserve and the branch's full commit list (`commits[].messageHeadline`), which now includes the fix commit just pushed. If `state` is not `OPEN`, skip this sub-step.
+   - Regenerate **only** the `## Summary` section, and base it on **all** commits on the branch — not just the fix commit — so the description reflects the whole branch as it now stands. Preserve every other part of the body verbatim: the `## Test plan` section, any manually-added sections or notes, and the `🤖 Generated with [Claude Code](https://claude.com/claude-code)` footer. If the body has no `## Summary` heading, add one at the top without disturbing the rest.
+   - Write the updated body to `$TMPDIR/pr-body.md` with the Write tool, then apply it with `gh pr edit $PR_NUMBER --body-file $TMPDIR/pr-body.md` — never inline `--body`, so multi-line markdown isn't mangled by shell quoting.
+   - **This sub-step is non-fatal**, unlike every other stop in Step 5. A failed `gh pr view` or `gh pr edit` must **not** block Step 6: the fixes are already on the remote, so every reply is still truthful and a stale description is cosmetic. Record the failure for the Step 6 summary and continue.
 
 ## Step 6: Post replies to all items
 
@@ -336,7 +340,10 @@ After all replies are posted, display a summary:
 - Replied to N inline comments + M review-body findings across K reviews
   (X preexisting, Y false positives, Z fixes applied, W noted for follow-up)
 - Files modified: list of files changed
+- PR description: Summary section refreshed | not refreshed (<reason>)
 ```
+
+Include the PR-description line only when Step 5 ran (it is skipped wholesale when there were no edits). State `not refreshed` with the reason when Step 5.9 skipped or failed — a closed/merged PR, or a `gh` error.
 
 ## Step 7: Emit the completion marker (always the last line)
 

@@ -1,0 +1,21 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "tests/migrations/base.py",
+      "line": 12,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "renamed test helper writes into a caller-supplied path without validation",
+      "explanation": "The helper module moved by this rename builds filesystem paths from arguments the calling test controls and never checks that the result stays inside the temp directory. A test passing an absolute or dot-dot segment would escape it. Because the rename is content-identical, none of the module body appears in this diff.",
+      "code": "def assertTableExists(self, table, using=\"default\"):",
+      "suggested_fix": null,
+      "language": "python",
+      "verifications": []
+    }
+  ]
+}

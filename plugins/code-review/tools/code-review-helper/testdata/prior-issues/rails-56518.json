@@ -1,0 +1,61 @@
+{
+  "last_review_date": "2026-07-14T09:12:44Z",
+  "last_review_commit": "4f1c2b9a77de3e0c1b5a8d6f2e9c0417a3b8de52",
+  "issues": [
+    {
+      "path": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 0,
+      "start_line": 0,
+      "snippet": "",
+      "description": "",
+      "is_resolved": false,
+      "is_outdated": false,
+      "author_dismissed": true,
+      "fingerprint": "7378f6fbf43e"
+    },
+    {
+      "path": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 0,
+      "start_line": 0,
+      "snippet": "",
+      "description": "The lookup example in the doc comment now advertises the async adapter as the canonical choice, which contradicts the guides.",
+      "is_resolved": false,
+      "is_outdated": false,
+      "author_dismissed": false,
+      "fingerprint": ""
+    },
+    {
+      "path": "activejob/test/integration/queuing_test.rb",
+      "line": 79,
+      "start_line": 0,
+      "snippet": "",
+      "description": "",
+      "is_resolved": true,
+      "is_outdated": false,
+      "author_dismissed": false,
+      "fingerprint": ""
+    },
+    {
+      "path": "railties/test/application/active_job_adapter_test.rb",
+      "line": 0,
+      "start_line": 0,
+      "snippet": "          config.active_job.queue_adapter = :solid_queue\n        end",
+      "description": "",
+      "is_resolved": false,
+      "is_outdated": true,
+      "author_dismissed": false,
+      "fingerprint": ""
+    },
+    {
+      "path": "activejob/test/cases/adapter_test.rb",
+      "line": 0,
+      "start_line": 0,
+      "snippet": "",
+      "description": "Deleting the sidekiq branch leaves the surrounding adapter_is? guards doing a linear string comparison for every adapter on every single test case.",
+      "is_resolved": false,
+      "is_outdated": false,
+      "author_dismissed": false,
+      "fingerprint": ""
+    }
+  ]
+}

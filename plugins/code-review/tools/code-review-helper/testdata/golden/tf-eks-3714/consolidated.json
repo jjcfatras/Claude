@@ -1,0 +1,174 @@
+{
+  "inline_eligible": [
+    {
+      "id": "infra-1",
+      "category": "infra",
+      "file": "modules/eks-managed-node-group/main.tf",
+      "line": 325,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Medium",
+      "rationale": "identical dynamic block added twice instead of a shared local",
+      "explanation": "This dynamic block is byte-identical to the one added in modules/self-managed-node-group/main.tf, including the for_each guard. Two copies means a future change to the guard has to be found and applied twice, and the launch-template resources are already the pair that drifted last time.",
+      "code": "  dynamic \"network_performance_options\" {\n    for_each = var.network_performance_options != null ? [var.network_performance_options] : []\n\n    content {\n      bandwidth_weighting = network_performance_options.value.bandwidth_weighting\n    }\n  }",
+      "suggested_fix": "  dynamic \"network_performance_options\" {\n    for_each = local.network_performance_options[*]\n\n    content {\n      bandwidth_weighting = network_performance_options.value.bandwidth_weighting\n    }\n  }",
+      "language": "hcl",
+      "verifications": [],
+      "cross_refs": [
+        {
+          "id": "quality-qual-1",
+          "specialist": "quality",
+          "category": "quality",
+          "severity": "Medium",
+          "confidence": 70,
+          "file": "modules/self-managed-node-group/main.tf",
+          "line": 446,
+          "rationale": "copy of the launch-template block from the sibling module",
+          "merged_by": "semantic"
+        }
+      ]
+    },
+    {
+      "id": "infra-2",
+      "category": "infra",
+      "file": "modules/eks-managed-node-group/variables.tf",
+      "line": 262,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "new optional attribute accepts any string for bandwidth_weighting",
+      "explanation": "The declared object type constrains bandwidth_weighting to a string but not to the values EC2 accepts, so a typo surfaces as an API error during apply rather than at plan time. A validation block catches it before any infrastructure is touched.",
+      "code": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n}",
+      "suggested_fix": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n\n  validation {\n    condition     = try(contains([\"default\", \"vpc-1\", \"ebs-1\"], var.network_performance_options.bandwidth_weighting), true)\n    error_message = \"bandwidth_weighting must be one of: default, vpc-1, ebs-1.\"\n  }\n}",
+      "language": "hcl",
+      "verifications": []
+    },
+    {
+      "id": "errors-err-1",
+      "category": "errors",
+      "file": "modules/self-managed-node-group/variables.tf",
+      "line": 234,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "null default makes the nested attribute unreachable without a guard",
+      "explanation": "Because the whole object defaults to null, any expression reading the nested attribute directly errors out instead of yielding null. Every consumer therefore needs its own presence check before dereferencing.",
+      "code": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n}",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    },
+    {
+      "id": "quality-qual-2",
+      "category": "quality",
+      "file": "node_groups.tf",
+      "line": 362,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "pass-through wiring duplicated across both module invocations",
+      "explanation": "Adding one attribute here requires the identical line in the second module call further down, and the two node-group modules now expose an identical block that must be kept in lockstep by hand. A shared local would let both call sites read from one place.",
+      "code": "  network_performance_options        = each.value.network_performance_options",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": [],
+      "cross_refs": [
+        {
+          "id": "claude-md-cmd-1",
+          "specialist": "claude-md",
+          "category": "claude-md",
+          "severity": "Medium",
+          "confidence": 75,
+          "file": "modules/self-managed-node-group/README.md",
+          "line": 170,
+          "rationale": "generated input table edited without regenerating the sibling module's",
+          "merged_by": "semantic"
+        }
+      ]
+    },
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "node_groups.tf",
+      "line": 509,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Minor",
+      "rationale": "each.value lookup repeated per attribute in a wide for_each",
+      "explanation": "This module call already resolves several dozen attributes off each.value, and the block scales with the number of groups. The cost is small per attribute but the pattern is what makes plan time grow linearly with group count.",
+      "code": "  network_performance_options        = each.value.network_performance_options",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    },
+    {
+      "id": "security-sec-1",
+      "category": "security",
+      "file": "variables.tf",
+      "line": 1137,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Medium",
+      "rationale": "root object schema widens without a matching allow-list",
+      "explanation": "Callers supply this map wholesale, so a new free-form attribute here reaches the launch template unfiltered. Anything a consumer can set on the instance profile should be enumerated at the boundary rather than forwarded blindly.",
+      "code": "    network_performance_options = optional(object({\n      bandwidth_weighting = optional(string)\n    }))",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    }
+  ],
+  "summary_only": [],
+  "dropped_prior_review": [],
+  "dropped_by_gate": [],
+  "specialists_used": [
+    "claude-md",
+    "errors",
+    "infra",
+    "perf",
+    "quality",
+    "security"
+  ],
+  "timed_out_roles": [],
+  "missing_roles": [],
+  "unreadable_roles": [],
+  "invalid_findings": [],
+  "last_review_date": null,
+  "deduped": [
+    {
+      "id": "claude-md-cmd-1",
+      "specialist": "claude-md",
+      "severity": "Medium",
+      "confidence": 75,
+      "file": "modules/self-managed-node-group/README.md",
+      "line": 170,
+      "rationale": "generated input table edited without regenerating the sibling module's",
+      "merged_into": "quality-qual-2",
+      "merged_by": "semantic"
+    },
+    {
+      "id": "quality-qual-1",
+      "specialist": "quality",
+      "severity": "Medium",
+      "confidence": 70,
+      "file": "modules/self-managed-node-group/main.tf",
+      "line": 446,
+      "rationale": "copy of the launch-template block from the sibling module",
+      "merged_into": "infra-1",
+      "merged_by": "semantic"
+    }
+  ],
+  "accounting": {
+    "ok": true,
+    "loaded": 8,
+    "accounted": 8,
+    "by_bucket": {
+      "deduped": 2,
+      "dropped_by_gate": 0,
+      "dropped_prior_review": 0,
+      "inline_eligible": 6,
+      "invalid_findings": 0,
+      "summary_only": 0
+    },
+    "orphans": []
+  }
+}

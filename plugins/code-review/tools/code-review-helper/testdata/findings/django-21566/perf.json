@@ -1,0 +1,21 @@
+{
+  "specialist": "perf",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "tests/migrations/test_commands.py",
+      "line": 120,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "shutil.which(\"black\") runs at import time on every collection",
+      "explanation": "HAS_BLACK is evaluated while the module is imported, so a PATH scan happens during collection even for runs that never touch the formatter tests. Caching it behind functools.cache would defer the cost. The anchor sits well past the import block this PR edited.",
+      "code": "HAS_BLACK = shutil.which(\"black\")",
+      "suggested_fix": null,
+      "language": "python",
+      "verifications": []
+    }
+  ]
+}

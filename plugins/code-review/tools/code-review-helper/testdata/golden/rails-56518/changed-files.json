@@ -1,0 +1,8 @@
+[
+  "activejob/lib/active_job/queue_adapters.rb",
+  "activejob/test/adapters/sidekiq.rb",
+  "activejob/test/cases/adapter_test.rb",
+  "activejob/test/cases/test_case_test.rb",
+  "activejob/test/integration/queuing_test.rb",
+  "railties/test/application/active_job_adapter_test.rb"
+]

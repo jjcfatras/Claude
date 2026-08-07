@@ -42,13 +42,10 @@ func BenchmarkDiffParse(b *testing.B) {
 	}
 	for _, fx := range fixtures {
 		b.Run(fx.id, func(b *testing.B) {
-			path := filepath.Join(repoRoot, "testdata", "diffs", fx.id+".diff")
+			tdRoot := filepath.Join(repoRoot, "testdata")
+			path := filepath.Join(tdRoot, "diffs", fx.id+".diff")
 			outDir := b.TempDir()
-			argv := []string{
-				"--in", path,
-				"--out-changed-files", filepath.Join(outDir, "changed.json"),
-				"--out-valid-lines", filepath.Join(outDir, "valid.json"),
-			}
+			argv := diffArgv(tdRoot, outDir, fx.id)
 			// Dummy file existence check so failures surface before timing.
 			if _, err := os.Stat(path); err != nil {
 				b.Fatalf("missing fixture: %v", err)

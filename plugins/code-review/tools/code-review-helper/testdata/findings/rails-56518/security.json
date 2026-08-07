@@ -1,0 +1,21 @@
+{
+  "specialist": "security",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "sec-1",
+      "category": "security",
+      "file": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 129,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Critical",
+      "rationale": "lookup builds a constant name from an unvalidated caller string",
+      "explanation": "Removing one autoload entry narrows the set of resolvable constants but leaves const_get reachable with whatever name a caller hands in. Any symbol that happens to name a loaded class is still resolvable through this path.",
+      "code": "      #   ActiveJob::QueueAdapters.lookup(:async)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    }
+  ]
+}

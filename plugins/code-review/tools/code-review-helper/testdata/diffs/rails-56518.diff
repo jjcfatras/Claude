@@ -1,0 +1,154 @@
+diff --git a/activejob/lib/active_job/queue_adapters.rb b/activejob/lib/active_job/queue_adapters.rb
+index 1f02d37a5118f..8439b32fdd066 100644
+--- a/activejob/lib/active_job/queue_adapters.rb
++++ b/activejob/lib/active_job/queue_adapters.rb
+@@ -10,7 +10,6 @@ module ActiveJob
+   # * {Que}[https://github.com/chanks/que]
+   # * {queue_classic}[https://github.com/QueueClassic/queue_classic]
+   # * {Resque}[https://github.com/resque/resque]
+-  # * {Sidekiq}[https://sidekiq.org]
+   # * {Sneakers}[https://github.com/jondot/sneakers]
+   # * Please Note: We are not accepting pull requests for new adapters. See the {README}[link:files/activejob/README_md.html] for more details.
+   #
+@@ -29,7 +28,6 @@ module ActiveJob
+   #   | Que               | Yes   | Yes    | Yes        | Job        | No      | Job     |
+   #   | queue_classic     | Yes   | Yes    | Yes*       | No         | No      | No      |
+   #   | Resque            | Yes   | Yes    | Yes (Gem)  | Queue      | Global  | Yes     |
+-  #   | Sidekiq           | Yes   | Yes    | Yes        | Queue      | No      | Job     |
+   #   | Sneakers          | Yes   | Yes    | No         | Queue      | Queue   | No      |
+   #   | Active Job Async  | Yes   | Yes    | Yes        | No         | No      | No      |
+   #   | Active Job Inline | No    | Yes    | N/A        | N/A        | N/A     | N/A     |
+@@ -119,7 +117,6 @@ module QueueAdapters
+     autoload :DelayedJobAdapter
+     autoload :QueueClassicAdapter
+     autoload :ResqueAdapter
+-    autoload :SidekiqAdapter
+     autoload :SneakersAdapter
+     autoload :TestAdapter
+ 
+@@ -129,8 +126,8 @@ module QueueAdapters
+     class << self
+       # Returns adapter for specified name.
+       #
+-      #   ActiveJob::QueueAdapters.lookup(:sidekiq)
+-      #   # => ActiveJob::QueueAdapters::SidekiqAdapter
++      #   ActiveJob::QueueAdapters.lookup(:async)
++      #   # => ActiveJob::QueueAdapters::AsyncAdapter
+       def lookup(name)
+         const_get(name.to_s.camelize << ADAPTER)
+       end
+diff --git a/activejob/test/adapters/sidekiq.rb b/activejob/test/adapters/sidekiq.rb
+deleted file mode 100644
+index 7df1c364887b6..0000000000000
+--- a/activejob/test/adapters/sidekiq.rb
++++ /dev/null
+@@ -1,4 +0,0 @@
+-# frozen_string_literal: true
+-
+-require "sidekiq/testing/inline"
+-ActiveJob::Base.queue_adapter = :sidekiq
+diff --git a/activejob/test/cases/adapter_test.rb b/activejob/test/cases/adapter_test.rb
+index 2269222bca68e..2bb24dd25563f 100644
+--- a/activejob/test/cases/adapter_test.rb
++++ b/activejob/test/cases/adapter_test.rb
+@@ -7,22 +7,6 @@ class AdapterTest < ActiveSupport::TestCase
+     assert_equal "active_job/queue_adapters/#{ENV['AJ_ADAPTER']}_adapter".classify, ActiveJob::Base.queue_adapter.class.name
+   end
+ 
+-  if adapter_is?(:sidekiq)
+-    test "sidekiq adapter should be deprecated" do
+-      before_adapter = ActiveJob::Base.queue_adapter
+-
+-      msg = <<~MSG.squish
+-        The built-in `sidekiq` adapter is deprecated and will be removed in Rails 8.2.
+-        Please upgrade `sidekiq` gem to version 7.3.3 or later to use the `sidekiq` gem's adapter.
+-      MSG
+-      assert_deprecated(msg, ActiveJob.deprecator) do
+-        ActiveJob::Base.queue_adapter = :sidekiq
+-      end
+-    ensure
+-      ActiveJob::Base.queue_adapter = before_adapter
+-    end
+-  end
+-
+   if adapter_is?(:sneakers)
+     test "sneakers adapter should be deprecated" do
+       before_adapter = ActiveJob::Base.queue_adapter
+diff --git a/activejob/test/cases/test_case_test.rb b/activejob/test/cases/test_case_test.rb
+index d026b65dc3670..4330f3fa69bd5 100644
+--- a/activejob/test/cases/test_case_test.rb
++++ b/activejob/test/cases/test_case_test.rb
+@@ -37,8 +37,6 @@ def test_set_test_adapter
+                  ActiveJob::QueueAdapters::QueueClassicAdapter
+                when :resque
+                  ActiveJob::QueueAdapters::ResqueAdapter
+-               when :sidekiq
+-                 ActiveJob::QueueAdapters::SidekiqAdapter
+                when :sneakers
+                  ActiveJob::QueueAdapters::SneakersAdapter
+                else
+diff --git a/activejob/test/integration/queuing_test.rb b/activejob/test/integration/queuing_test.rb
+index 28839ebaa3085..8c4bfdd236507 100644
+--- a/activejob/test/integration/queuing_test.rb
++++ b/activejob/test/integration/queuing_test.rb
+@@ -30,38 +30,6 @@ class QueuingTest < ActiveSupport::TestCase
+     end
+   end
+ 
+-  if adapter_is?(:sidekiq)
+-    test "should supply a wrapped class name to Sidekiq" do
+-      Sidekiq::Testing.fake! do
+-        ::HelloJob.perform_later
+-        hash = ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper.jobs.first
+-        assert_equal "Sidekiq::ActiveJob::Wrapper", hash["class"]
+-        assert_equal "HelloJob", hash["wrapped"]
+-      end
+-    end
+-
+-    test "should access provider_job_id inside Sidekiq job" do
+-      Sidekiq::Testing.inline! do
+-        job = ::ProviderJidJob.perform_later
+-        assert_equal "Provider Job ID: #{job.provider_job_id}", JobBuffer.last_value
+-      end
+-    end
+-
+-    test "should interrupt jobs" do
+-      ContinuableTestJob.perform_later @id
+-      wait_for_jobs_to_finish_for(1.seconds)
+-
+-      jobs_manager.stop_workers
+-      wait_for_jobs_to_finish_for(1.seconds)
+-      assert_not job_executed
+-      assert continuable_job_started
+-
+-      jobs_manager.start_workers
+-      wait_for_jobs_to_finish_for(10.seconds)
+-      assert job_executed
+-    end
+-  end
+-
+   if adapter_is?(:delayed_job)
+     test "should supply a wrapped class name to DelayedJob" do
+       ::HelloJob.perform_later
+@@ -106,7 +74,7 @@ class QueuingTest < ActiveSupport::TestCase
+     pass
+   end
+ 
+-  if adapter_is?(:async, :delayed_job, :sidekiq, :queue_classic)
++  if adapter_is?(:async, :delayed_job, :queue_classic)
+     test "should supply a provider_job_id when available for immediate jobs" do
+       test_job = TestJob.perform_later @id
+       assert test_job.provider_job_id, "Provider job id should be set by provider"
+diff --git a/railties/test/application/active_job_adapter_test.rb b/railties/test/application/active_job_adapter_test.rb
+index 00c9614a951d7..3e811b741d8d0 100644
+--- a/railties/test/application/active_job_adapter_test.rb
++++ b/railties/test/application/active_job_adapter_test.rb
+@@ -39,7 +39,7 @@ def teardown
+     test "config is set for production, but test uses defaults" do
+       app_file "config/environments/production.rb", <<-RUBY
+         Rails.application.configure do
+-          config.active_job.queue_adapter = :sidekiq
++          config.active_job.queue_adapter = :solid_queue
+         end
+       RUBY
+       make_test_test_file

@@ -1,0 +1,36 @@
+{
+  "specialist": "quality",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "qual-1",
+      "category": "quality",
+      "file": "modules/self-managed-node-group/main.tf",
+      "line": 446,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "copy of the launch-template block from the sibling module",
+      "explanation": "The block inserted above the placement stanza here repeats what the managed-node-group module gained in the same commit. Neither copy is derived from the other, so nothing enforces that they stay the same.",
+      "code": "  dynamic \"network_performance_options\" {\n    for_each = var.network_performance_options != null ? [var.network_performance_options] : []\n\n    content {\n      bandwidth_weighting = network_performance_options.value.bandwidth_weighting\n    }\n  }",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    },
+    {
+      "id": "qual-2",
+      "category": "quality",
+      "file": "node_groups.tf",
+      "line": 362,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "pass-through wiring duplicated across both module invocations",
+      "explanation": "Adding one attribute here requires the identical line in the second module call further down, and the two node-group modules now expose an identical block that must be kept in lockstep by hand. A shared local would let both call sites read from one place.",
+      "code": "  network_performance_options        = each.value.network_performance_options",
+      "suggested_fix": null,
+      "language": "hcl",
+      "verifications": []
+    }
+  ]
+}

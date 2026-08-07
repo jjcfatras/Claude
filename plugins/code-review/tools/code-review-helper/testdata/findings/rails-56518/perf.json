@@ -1,0 +1,21 @@
+{
+  "specialist": "perf",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "perf-1",
+      "category": "perf",
+      "file": "activejob/test/cases/adapter_test.rb",
+      "line": 11,
+      "startLine": null,
+      "confidence": 65,
+      "severity": "Medium",
+      "rationale": "adapter_is? re-runs a linear scan per test case",
+      "explanation": "Deleting the sidekiq branch leaves the surrounding adapter_is? guards doing a linear string comparison for every adapter on every single test case. Hoisting the resolved adapter name into a memoized helper would collapse that to one comparison per file.",
+      "code": "  if adapter_is?(:sneakers)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    }
+  ]
+}

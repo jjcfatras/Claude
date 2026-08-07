@@ -1,0 +1,36 @@
+{
+  "specialist": "infra",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "infra-1",
+      "category": "infra",
+      "file": "modules/eks-managed-node-group/main.tf",
+      "line": 325,
+      "startLine": null,
+      "confidence": 85,
+      "severity": "Medium",
+      "rationale": "identical dynamic block added twice instead of a shared local",
+      "explanation": "This dynamic block is byte-identical to the one added in modules/self-managed-node-group/main.tf, including the for_each guard. Two copies means a future change to the guard has to be found and applied twice, and the launch-template resources are already the pair that drifted last time.",
+      "code": "  dynamic \"network_performance_options\" {\n    for_each = var.network_performance_options != null ? [var.network_performance_options] : []\n\n    content {\n      bandwidth_weighting = network_performance_options.value.bandwidth_weighting\n    }\n  }",
+      "suggested_fix": "  dynamic \"network_performance_options\" {\n    for_each = local.network_performance_options[*]\n\n    content {\n      bandwidth_weighting = network_performance_options.value.bandwidth_weighting\n    }\n  }",
+      "language": "hcl",
+      "verifications": []
+    },
+    {
+      "id": "infra-2",
+      "category": "infra",
+      "file": "modules/eks-managed-node-group/variables.tf",
+      "line": 262,
+      "startLine": null,
+      "confidence": 80,
+      "severity": "Medium",
+      "rationale": "new optional attribute accepts any string for bandwidth_weighting",
+      "explanation": "The declared object type constrains bandwidth_weighting to a string but not to the values EC2 accepts, so a typo surfaces as an API error during apply rather than at plan time. A validation block catches it before any infrastructure is touched.",
+      "code": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n}",
+      "suggested_fix": "variable \"network_performance_options\" {\n  description = \"The network performance options for the instance\"\n  type = object({\n    bandwidth_weighting = optional(string)\n  })\n  default = null\n\n  validation {\n    condition     = try(contains([\"default\", \"vpc-1\", \"ebs-1\"], var.network_performance_options.bandwidth_weighting), true)\n    error_message = \"bandwidth_weighting must be one of: default, vpc-1, ebs-1.\"\n  }\n}",
+      "language": "hcl",
+      "verifications": []
+    }
+  ]
+}

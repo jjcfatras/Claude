@@ -71,13 +71,14 @@ description: This skill should be used when the user asks to "specific phrase 1"
   are plugin-shipped skills using the fuller command-style subset — `description`,
   `argument-hint`, `model: opus`, `effort: high`, `allowed-tools` — and are model-invocable (no
   `disable-model-invocation`).
-- The seven `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
-  `push`, `clean_gone`, `cherry-pick`, `merge`) use the command-style subset — `description`,
-  `argument-hint` (cherry-pick/merge only), `allowed-tools` (all but clean_gone), `model`,
-  `effort` — and are model-invocable. Six migrated from `commands/*.md`; `push` (push +
-  PR-description refresh, no commit) was authored as a skill directly. `commit` and `push` also
-  carry `when_to_use` (their trigger phrases extracted out of `description`) — the repo's first
-  use of a `(skills only)` field.
+- The eight `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
+  `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`) use the command-style subset —
+  `description`, `argument-hint` (commit/cherry-pick/merge only), `allowed-tools` (all but clean_gone),
+  `model`, `effort` — and are model-invocable. Six migrated from `commands/*.md`; `push` (push +
+  PR-description refresh, no commit) and `pr` (open a PR for already-pushed work, extracted from
+  `commit-push-pr`) were authored as skills directly. `commit`, `push`, and `pr` also carry
+  `when_to_use` (their trigger phrases extracted out of `description`) — the repo's first use of
+  a `(skills only)` field.
 - The two `plugins/simplify/skills/*/SKILL.md` skills (`simplify-code`, `simplify-prose`) migrated from
   `commands/*.md` keeping the command-style subset — `description`, `argument-hint`,
   `allowed-tools`, `model`, `effort` — and are model-invocable.

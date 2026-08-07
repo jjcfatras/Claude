@@ -1,0 +1,11 @@
+[
+  "tests/migrations/base.py",
+  "tests/migrations/test_commands.py",
+  "tests/migrations/test_deprecated_fields.py",
+  "tests/migrations/test_executor.py",
+  "tests/migrations/test_loader.py",
+  "tests/migrations/test_multidb.py",
+  "tests/migrations/test_operations.py",
+  "tests/migrations/test_optimizer.py",
+  "tests/postgres_tests/test_operations.py"
+]

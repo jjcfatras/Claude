@@ -1,0 +1,36 @@
+{
+  "specialist": "errors",
+  "scan_status": "complete",
+  "findings": [
+    {
+      "id": "err-1",
+      "category": "errors",
+      "file": "activejob/test/integration/queuing_test.rb",
+      "line": 77,
+      "startLine": null,
+      "confidence": 75,
+      "severity": "Medium",
+      "rationale": "provider_job_id assertion now runs against three backends that never set it",
+      "explanation": "Trimming the adapter list from this guard changes which backends reach the body below it. Two of the remaining three populate provider_job_id lazily, so the assertion can observe nil before the enqueue round-trip settles.",
+      "code": "  if adapter_is?(:async, :delayed_job, :queue_classic)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    },
+    {
+      "id": "err-2",
+      "category": "errors",
+      "file": "activejob/test/integration/queuing_test.rb",
+      "line": 34,
+      "startLine": null,
+      "confidence": 70,
+      "severity": "Medium",
+      "rationale": "delayed_job block inherits a jobs_manager teardown that no longer runs",
+      "explanation": "Three tests that called jobs_manager.stop_workers were deleted just above, and that manager was what restored worker state between cases. The block starting here reuses the same manager without an equivalent reset.",
+      "code": "  if adapter_is?(:delayed_job)",
+      "suggested_fix": null,
+      "language": "ruby",
+      "verifications": []
+    }
+  ]
+}
