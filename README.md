@@ -1,6 +1,6 @@
 # jjcfatras-tools — Claude Code marketplace
 
-A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping two slash commands and sixteen skills the author uses for everyday Git, code-review, documentation, and reasoning workflows.
+A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces) shipping two slash commands and seventeen skills the author uses for everyday Git, code-review, documentation, and reasoning workflows.
 
 ## Install
 
@@ -24,7 +24,7 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 Install only the plugins you want — each is independent.
 
-Two additional hook-only plugins ship no slash command: `tool-discipline` (`PreToolUse` guardrails — no-cd-chaining, prefer-builtin-tools, plus a conditional ToolSearch shim that redirects Grep/Glob loads to the embedded Bash search on native builds that dropped those tools and self-disables elsewhere) and `tool-discipline-lsp` (the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry when `workspaceSymbol` returns empty).
+Two additional hook-only plugins ship no slash command: `tool-discipline` (`PreToolUse` guardrails — no-cd-chaining, enforce-builtin-tools, plus a conditional ToolSearch shim that redirects Grep/Glob loads to the embedded Bash search on native builds that dropped those tools and self-disables elsewhere) and `tool-discipline-lsp` (the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry when `workspaceSymbol` returns empty).
 
 ## Using the plugins
 
@@ -64,7 +64,7 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 **Escape hatch:** `git merge --abort`.
 
-**Note:** all seven git workflows ship as skills (`plugins/git/skills/`), so besides the `/git:*` commands Claude can auto-invoke them when asked in natural language (e.g. "commit and push this").
+**Note:** all eight git workflows ship as skills (`plugins/git/skills/`), so besides the `/git:*` commands Claude can auto-invoke them when asked in natural language (e.g. "commit and push this").
 
 ### `/respond-to-review`
 

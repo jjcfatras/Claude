@@ -94,7 +94,7 @@ description: This skill should be used when the user asks to "specific phrase 1"
   auto-loaded by Claude.
 - Every plain `commands/*.md` slash command in this repo uses only the common subset —
   `description`, `argument-hint`, `disable-model-invocation`, `model`, `effort`, `allowed-tools` —
-  and none of the `(skills only)` fields; among skills, only the git `commit`/`push`
+  and none of the `(skills only)` fields; among skills, only the git `commit`/`push`/`pr`
   `when_to_use` breaks that pattern.
 
 ### `model` tier semantics
@@ -144,7 +144,8 @@ Example (from `plugins/git/skills/commit/SKILL.md`):
 ---
 name: commit
 description: Create a git commit with an auto-generated message matching the repo's style. Commits only — does not push.
-when_to_use: Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message.
+when_to_use: Use when the user asks to "commit", "commit this", "make a commit", or wants current changes committed with a well-formed message. Pass `--staged` when the user asks to "commit staged", "commit only what I staged", "commit the index", or otherwise wants only the already-staged changes committed.
+argument-hint: [--staged]
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git switch:*), Bash(git commit:*), AskUserQuestion
 model: sonnet
 effort: low
