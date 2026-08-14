@@ -1,6 +1,6 @@
 {
   "skill_name": "jira:create-tests",
-  "notes": "Live Atlassian and Postman MCP are unavailable / non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treat as already-fetched) plus a minimal fixture codebase to pin the API contract against, and instructs the run to STOP at the approval gate [5/6] without calling createCollection. The graded value is phases [2/6]-[5/6]: deriving happy/sad scenarios from the acceptance criteria, pinning the real contract from the code (auth token field, nested request body, how failures surface), reconciling a flat sample against the real schema, and presenting the plan without authoring. Eval 1 targets the flat-vs-nested request-body trap; eval 2 the HTTP-200-with-failed failure signature; eval 3 end-to-end scenario derivation and request chaining.",
+  "notes": "Live Atlassian, GitHub and Postman MCP are unavailable / non-deterministic in eval subagents, so each prompt supplies the source as files (treat as already-fetched) plus a minimal fixture codebase to pin the API contract against, and instructs the run to STOP at the approval gate [5/6] without calling createCollection. The graded value is phases [2/6]-[5/6]: deriving happy/sad scenarios, pinning the real contract from the code (auth token field, nested request body, how failures surface), reconciling a flat sample against the real schema, and presenting the plan without authoring. Evals 1-3 are ticket-sourced: eval 1 targets the flat-vs-nested request-body trap; eval 2 the HTTP-200-with-failed failure signature; eval 3 end-to-end scenario derivation and request chaining. Eval 4 is PR-sourced with no ticket, targeting the inversion in [1/6]/[2/6] — reconstructing implicit acceptance criteria from a diff — and the 'a diff is not a contract' trap in [3/6], where the auth field and the real failure status live only in the unchanged surrounding code, never in the diff.",
   "evals": [
     {
       "id": 1,
@@ -78,6 +78,38 @@
         },
         {
           "text": "Stops at the approval gate, expresses the base URL as a variable, and does NOT hardcode a specific host"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "pr-sourced-scenarios",
+      "prompt": "You're creating a QA test collection from GitHub PR #4821 in acme/notifications-api. There is no JIRA ticket for it. The GitHub fetch has already been done — the PR title/body/metadata is in /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/pr.md and the diff is in /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/pr.diff (treat these as the fetched PR; pull_request_read and gh are unavailable here, so read the files). The surrounding codebase at the PR's head is /Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/codebase/. The Postman MCP is unavailable in this environment, so DO NOT create a collection — derive the scenarios and the request sequence and stop at the approval gate. Create the QA tests for this PR.",
+      "expected_output": "Recognizes there are no acceptance criteria and reconstructs them from the diff as observable behavior: a subscription can be created with a retryPolicy block (new capability), and http:// or private/loopback targets are now rejected (tightened validation). Treats the narrowed target-URL validation as sad-path/containment scenarios tagged to the removed cases. Crucially, does NOT stop at the diff for the contract: reads codebase/auth.routes.js for the login contract (x-tenant header required, JWT returned in `accessToken`, NOT `token`) and codebase/webhooks.controller.js for the real failure signature (a rejected subscription returns HTTP 202 with accepted:false and violations[], not a 4xx; only schema failures 400), with file:line evidence. Builds the create body from the schema hunk in the diff, respecting additionalProperties:false and nesting maxAttempts/backoffSeconds under retryPolicy. Surfaces the webhooks:write ability and the unmerged-PR environment prerequisite. Stops at the approval gate without authoring a collection.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/pr.md",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/pr.diff",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/codebase/auth.routes.js",
+        "/Users/jfatras/Projects/Claude/jira-create-tests-workspace/fixtures/eval-4-pr-sourced/codebase/webhooks.controller.js"
+      ],
+      "assertions": [
+        {
+          "text": "Reconstructs implicit acceptance criteria from the diff (no ticket exists) and phrases them as observable behavior rather than as changed functions or symbols"
+        },
+        {
+          "text": "Derives a happy-path scenario from the added retryPolicy capability and treats the tightened target-URL validation (http:// and private/loopback hosts now rejected) as sad-path/containment scenarios"
+        },
+        {
+          "text": "Pins the auth contract from codebase/auth.routes.js — the x-tenant header is required and the JWT is in `accessToken`, not `token` — rather than assuming it, with file:line evidence"
+        },
+        {
+          "text": "Pins the real failure signature from codebase/webhooks.controller.js — a rejected subscription returns HTTP 202 with accepted:false and violations[], NOT a 4xx — and writes the sad-path assertions against the body accordingly"
+        },
+        {
+          "text": "Builds the create request body from the schema hunk in the diff, nesting maxAttempts/backoffSeconds under retryPolicy and respecting additionalProperties:false"
+        },
+        {
+          "text": "Stops at the approval gate and does NOT create a Postman collection"
         }
       ]
     }

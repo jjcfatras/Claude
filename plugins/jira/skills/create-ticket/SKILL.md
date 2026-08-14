@@ -3,7 +3,7 @@ name: create-ticket
 disable-model-invocation: true
 description: Generate a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and file it in JIRA after confirmation
 argument-hint: "[PR url/number | branch | freeform description] (optional — infers from context if omitted)"
-allowed-tools: Bash(git *), Read, Grep, Glob, mcp__plugin_github_github__pull_request_read, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__claude_ai_Atlassian_Rovo__getVisibleJiraProjects, mcp__claude_ai_Atlassian_Rovo__getJiraProjectIssueTypesMetadata, mcp__claude_ai_Atlassian_Rovo__createJiraIssue, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, AskUserQuestion
+allowed-tools: Bash(git *), Read, Grep, Glob, mcp__plugin_github_github__pull_request_read, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__claude_ai_Atlassian_Rovo__getVisibleJiraProjects, mcp__claude_ai_Atlassian_Rovo__getJiraProjectIssueTypesMetadata, mcp__claude_ai_Atlassian_Rovo__searchJiraIssuesUsingJql, mcp__claude_ai_Atlassian_Rovo__createJiraIssue, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, AskUserQuestion
 model: opus
 effort: medium
 ---
@@ -39,6 +39,9 @@ On `Edit wording` (or a free-text reply via Other), apply the changes, show the 
 ## Summary
 <1–3 sentences: what changes and why, in user-facing terms>
 
+## Priority
+<level> — <one sentence naming the concrete harm that earned it, and what it's calibrated against>
+
 ## Acceptance Criteria
 - [ ] <testable, outcome-oriented statement — Given/When/Then where it sharpens it>
 - [ ] <each criterion is something you can definitively call met or not met>
@@ -52,6 +55,12 @@ On `Edit wording` (or a free-text reply via Other), apply the changes, show the 
 <!-- OR, when nothing is externally testable (see the doctrine below), the whole section is exactly one line instead of the numbered list: -->
 NA: <reason — e.g. tooling-only change, no user-/API-observable surface; verified developer-side / by automated tests in CI>
 ```
+
+### Grading the priority
+
+**Default to the project's floor level (usually `Low`) and grade up only when you can name the concrete harm.** "It would be nice to fix", "it's good hygiene", "it blocks a future upgrade" — and the urgency in how the user described the change — are none of them concrete harm; grade the change, not the framing. A real defect with demonstrated impact or a security/authorization gap clears the top band; a real defect with bounded blast radius and no live exposure sits in the middle. See `${CLAUDE_PLUGIN_ROOT}/references/ticket-priority.md` for the full ladder, the observed-vs-speculative discriminator, and why an ungraded default stamp is a wrong answer rather than a neutral one.
+
+At this point the destination project isn't chosen yet, so this first pass grades against the reference's fallback ladder — Step 3 calibrates it against the project's own gradings once you know where the ticket is going.
 
 ### Why the QA section is written the way it is
 
@@ -88,6 +97,18 @@ Don't hardcode or assume a project. Discover it at runtime:
 
 Present the project and issue-type choices with `AskUserQuestion` (recommend the obvious one if there's a clear default, but let the user pick). If the issue type has required fields beyond summary/description, surface them and collect values before filing.
 
+### Calibrate the priority against the chosen project
+
+Now that you know the destination, check the drafted `## Priority` against how that project actually uses the field — one `searchJiraIssuesUsingJql` call over its upper band:
+
+```
+project = <KEY> AND priority in (High, Highest) AND created > -180d ORDER BY created DESC
+```
+
+Read the summaries and see where the bar really sits. One page is enough — that tool caps at 5 issues per response and returns full descriptions regardless of the `fields` argument, so don't try to enumerate the project. If the ticket is going under a parent epic, scope to it instead (`parent = <EPIC-KEY> AND …`); the epic is the closer comparison.
+
+If the observed bar differs from the fallback ladder, revise the `## Priority` line and its justification, and say plainly what changed and why when you confirm in Step 4. If the query returns nothing usable (no history, no permission, the field isn't in play), keep the drafted level and move on — don't stall the ticket over it. Full method in `${CLAUDE_PLUGIN_ROOT}/references/ticket-priority.md`.
+
 ## Step 4: File it, only after explicit approval
 
 Filing a ticket is an outward-facing action that other people will see, so confirm before doing it — both the ticket text and the target project/issue type. Call the **AskUserQuestion** tool (`multiSelect: false`, header `File ticket`) with four options:
@@ -100,6 +121,9 @@ Filing a ticket is an outward-facing action that other people will see, so confi
 On `Edit text` or `Change destination` (or the user's Other-field reply), apply the requested change and re-confirm. On `Cancel`, stop without filing. Once the user approves (`Approve & file`):
 
 - Call `createJiraIssue` with the summary line (the `## Summary` distilled to one line if needed) and the full template as the description.
+- Set the graded level in the same call — priority has no dedicated parameter, so it goes through `additional_fields: { "priority": { "name": "<level>" } }`.
 - Report back the created issue key and its URL. Use `getJiraIssue` to confirm/fetch the link if the create response doesn't include it.
 
 If `createJiraIssue` fails, show the error **verbatim** and stop — don't silently retry with mangled fields. A common cause is a missing required field; if so, collect it and try once more with the user's go-ahead.
+
+The one exception is the priority field itself: not every project exposes it on every issue type, and level names vary by scheme. If the error points at `priority`, retry once **without** `additional_fields` so an approved ticket isn't lost to a field the project doesn't accept — then tell the user it filed at the project default and what level you'd intended.

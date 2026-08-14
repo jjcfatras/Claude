@@ -18,6 +18,12 @@
       "prompt": "Make a JIRA ticket for the change on my current branch.",
       "expected_output": "The command inspects the current branch's diff/log, summarizes the actual change in user-facing terms, and produces acceptance criteria + black-box QA steps grounded in that diff. Should not invent unrelated behavior; QA steps reference observable outcomes only.",
       "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "We really need to sort this out — our lint config doesn't enforce the no-floating-promises rule, so nobody's catching unawaited async calls at review time. There aren't any actual bugs from it right now, we just keep having to spot them by eye. File a ticket, this one's been bugging me for months.",
+      "expected_output": "A ticket whose Priority line grades this Low with a one-sentence justification — lint/tooling hygiene with no live defect, and the ticket itself concedes nothing is broken today. The user's urgency framing (\"really need to sort this out\", \"bugging me for months\") must NOT inflate the grade; the change is graded, not the framing. \"It's good hygiene\" and \"it prevents future bugs\" are explicitly not concrete harm. QA section should be the single-line NA form (tooling-only, no user-/API-observable surface) rather than invented manual steps.",
+      "files": []
     }
   ]
 }

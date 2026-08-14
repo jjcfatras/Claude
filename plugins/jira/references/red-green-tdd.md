@@ -70,6 +70,26 @@ before you touched anything, surface that instead of folding it into your change
 entirely in the observations being real; a fabricated green is worse than no test, because someone
 will trust it.
 
+## Retrofitting a test onto code that already works
+
+Phase 7 sweeps the finished changeset for behaviors nothing asserts, and closing those gaps breaks the
+loop's central rule: the code already exists, so the natural red is gone. Write the test and it passes on
+the first run — the exact situation "Why see red first" says proves nothing.
+
+The substitute is a **mutation check**. Once the retrofit test is green, deliberately break the specific
+change it's supposed to cover — revert that hunk, flip the condition, delete the guard, return the old
+value — and re-run. The retrofit test must fail. Then restore the change and confirm green again. You've
+manufactured the observation the natural loop would have given you for free: this test notices when this
+behavior regresses.
+
+Do read _why_ it failed, though. A mutation check where the module now throws on import, or where half the
+suite goes red, tells you nothing about grip — the test failed because everything failed. Break the change
+narrowly enough that the retrofit test is the one that goes red, and ideally the only one.
+
+If you couldn't run the mutation check (no runner, the behavior needs live state), report the test as
+**unverified** rather than counting it as coverage. An unverified retrofit test is a plausible guard, not a
+proven one, and the difference is the whole point of this doc.
+
 ## Relation to `superpowers:test-driven-development`
 
 Phase 6 of `implement-ticket` now drives testable changes by invoking that skill directly — it's a

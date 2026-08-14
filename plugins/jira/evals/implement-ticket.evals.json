@@ -1,6 +1,6 @@
 {
   "skill_name": "jira:implement-ticket",
-  "notes": "Live Atlassian MCP fetch is non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treated as already-fetched) plus a small fixture codebase to verify claims against. Evals 1-3 leave the approval gate intact, so autonomous runs stop at phase 5 (present-for-approval) without editing — phases 2-4 (intent, claim verification, plan reconciliation) are the differentiated value being graded there. Eval 4 is the exception: it pre-grants approval in the prompt so the run proceeds into phase 6 (implement) and works against a copy of the fixture, to exercise and grade the red/green TDD discipline that the other evals never reach.",
+  "notes": "Live Atlassian MCP fetch is non-deterministic in eval subagents, so each prompt supplies the ticket as a file (treated as already-fetched) plus a small fixture codebase to verify claims against. Evals 1-3 leave the approval gate intact, so autonomous runs stop at phase 5 (present-for-approval) without editing — phases 2-4 (intent, claim verification, plan reconciliation) are the differentiated value being graded there. Evals 4 and 5 are the exceptions: both pre-grant approval in the prompt so the run proceeds into phase 6 (implement) and works against a copy of the fixture, to exercise and grade the discipline the other evals never reach — eval 4 the red/green TDD loop, eval 5 the phase 7 coverage sweep. Eval 5's fixture is built so that TDD alone leaves a gap: the ticket asks only for percentage discount codes, but making a redeemed code actually reduce what the customer pays also requires changing formatReceipt, which the ticket never mentions and which pricing.test.js never imports. A run that stops at a green suite ships that gap; only the sweep catches it. Because the run works on a copy outside any git repo, eval 5 also exercises the sweep's non-git fallback (inventory from its own edit record) and the mutation check that substitutes for the unavailable natural RED.",
   "evals": [
     {
       "id": 1,
@@ -123,6 +123,44 @@
         },
         {
           "text": "Reports actual test-run output honestly (quotes the real red and green runs) rather than asserting an unobserved green"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "coverage-sweep",
+      "prompt": "You're picking up JIRA ticket SHOP-664. The Atlassian fetch has already been done — the full ticket content is in /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-5-coverage-sweep/ticket.md (treat it as the fetched ticket; getJiraIssue is unavailable in this environment, so read the file instead). The working codebase is the directory /Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-5-coverage-sweep/codebase/ (pricing.js is src/pricing.js, pricing.test.js is its test file). It is a zero-dependency Node 24 project; run the tests with `node --test pricing.test.js` (or `npm test`) from inside the codebase directory. IMPORTANT: do not edit the original fixture — copy the entire codebase/ directory into your designated output directory and make every change there, leaving the original pristine. You have approval to proceed all the way through implementation without pausing at the approval gate: treat the plan as pre-approved, briefly state it, then implement it and complete every remaining phase. Pick up and action this ticket.",
+      "expected_output": "Verifies the ticket's claims as TRUE with file:line evidence (DISCOUNT_CODES maps codes to bare dollar numbers; applyDiscount only subtracts, with no percentage branch). Premise is sound, so it implements percentage support test-first — a failing test for applyDiscount(100, 'SAVE15PCT') === 85 observed RED before editing pricing.js, then the minimal type-discriminated change, then GREEN with the four pre-existing tests still passing. Then, in phase 7, it stops trusting the plan's test list and audits what it actually changed: the discount calculation is covered, but formatReceipt still computes TOTAL from the raw subtotal, so a customer who redeems a code is shown (and charged) the undiscounted total — a required change the ticket never mentions and no test asserts, since pricing.test.js never imports formatReceipt. Percentage math also introduces fractional cents (15% off 19.99) that nothing pins. It reports a per-behavior coverage table, retrofits tests for the genuine gap(s), and mutation-checks each retrofit — breaks the covered change, observes that specific test go red, restores, observes green — because a test written after the code cannot be seen to fail naturally. It notes that git diff is unavailable in the copied directory and inventories its own edits instead. It does not add tests for pre-existing behavior unrelated to this change.",
+      "files": [
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-5-coverage-sweep/ticket.md",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-5-coverage-sweep/codebase/pricing.js",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-5-coverage-sweep/codebase/pricing.test.js",
+        "/Users/jfatras/Projects/Claude/jira-implement-workspace/fixtures/eval-5-coverage-sweep/codebase/package.json"
+      ],
+      "assertions": [
+        {
+          "text": "Verifies the ticket's claims (flat-only DISCOUNT_CODES, no percentage branch in applyDiscount) as confirmed/true with file:line evidence"
+        },
+        {
+          "text": "Implements percentage support test-first — writes a failing test for the SAVE15PCT case and observes RED before editing pricing.js"
+        },
+        {
+          "text": "After implementing, builds a coverage inventory from the changes it actually made (its own edit record, since the copied directory is not a git repo) rather than from the plan's test list — and does not report full coverage on the basis of an empty or unavailable git diff"
+        },
+        {
+          "text": "Audits formatReceipt's behavior specifically, identifying that it computes TOTAL from the raw subtotal so the receipt/amount charged ignores the discount, and that no test asserts it"
+        },
+        {
+          "text": "Retrofits a test for at least one genuine gap (formatReceipt's discounted total and/or fractional-cent rounding) instead of declaring the changeset fully covered"
+        },
+        {
+          "text": "Mutation-checks each retrofit test — deliberately breaks the change it covers, observes THAT test fail, then restores and observes green — rather than counting a never-red test as coverage"
+        },
+        {
+          "text": "Keeps scope to this run's changes; does not widen into adding tests for pre-existing behavior unrelated to the discount work"
+        },
+        {
+          "text": "Reports a coverage table with per-behavior verdicts (covered / uncovered / not testable) and quotes real test output rather than asserting an unobserved green"
         }
       ]
     }

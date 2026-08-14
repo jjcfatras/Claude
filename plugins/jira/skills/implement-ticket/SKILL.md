@@ -1,7 +1,7 @@
 ---
 name: implement-ticket
 disable-model-invocation: true
-description: Take a JIRA ticket by key, understand its intent, verify every claim it makes about the codebase to catch false positives, design an implementation plan (reconciling any solution the ticket proposed with one designed independently), present it for approval, then implement. Use whenever the user wants to pick up, start, action, or implement a JIRA ticket/issue by key (e.g. "implement PROJ-1234", "pick up ABC-42", "let's action this ticket").
+description: Take a JIRA ticket by key, understand its intent, verify every claim it makes about the codebase to catch false positives, design an implementation plan (reconciling any solution the ticket proposed with one designed independently), present it for approval, then implement — and finish by sweeping the final diff to confirm every change it made is covered by a test, retrofitting the missing ones. Use whenever the user wants to pick up, start, action, or implement a JIRA ticket/issue by key (e.g. "implement PROJ-1234", "pick up ABC-42", "let's action this ticket").
 argument-hint: <JIRA-key> (e.g. PROJ-1234)
 model: opus
 effort: xhigh
@@ -16,9 +16,10 @@ Work through the phases in order. Don't skip the verification phase even when th
 
 Whenever a step turns on how an _external_ library, framework, SDK, or API actually behaves — not how this repo's own code behaves — verify it against current docs with context7 instead of trusting the ticket or your own memory (which may be stale): call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. This is the same skepticism the phases below aim at the ticket, pointed at the libraries you depend on. It matters most in three places:
 
-- **[3/6] Verify claims** — a bucket (b) claim that hinges on library behavior ("the SDK already retries on 5xx", "`axios` throws on 4xx") is _checkable_ against docs, not "unverifiable". Confirm or refute it from the docs and cite the version.
-- **[4/6] Design** — confirm the API you intend to use exists with the signature and capability you're assuming, so the plan isn't built on a stale or imagined API.
-- **[6/6] Implement** — get current API names and signatures before writing the call, so the code isn't stale on arrival.
+- **[3/7] Verify claims** — a bucket (b) claim that hinges on library behavior ("the SDK already retries on 5xx", "`axios` throws on 4xx") is _checkable_ against docs, not "unverifiable". Confirm or refute it from the docs and cite the version.
+- **[4/7] Design** — confirm the API you intend to use exists with the signature and capability you're assuming, so the plan isn't built on a stale or imagined API.
+- **[6/7] Implement** — get current API names and signatures before writing the call, so the code isn't stale on arrival.
+- **[7/7] Verify coverage** — when a gap sits on library behavior you'd have to mock or assert against (a framework's test utilities, an SDK's error shape), confirm the current API from docs before writing the retrofit test.
 
 Skip context7 for project-internal logic, general programming patterns, or anything verifiable from the code in front of you — don't burn calls on claims that don't depend on external library behavior.
 
@@ -28,7 +29,7 @@ Skip context7 for project-internal logic, general programming patterns, or anyth
 - **cloudId** — `getAccessibleAtlassianResources` returns the Atlassian site(s). If there's exactly one, use it; if more than one, call the **AskUserQuestion** tool (`multiSelect: false`, header `Site`) populated with one option per site (name/URL) and use the chosen site's `cloudId`.
 - **Scratch dir** — `${TMPDIR:-/tmp}/jira-implement-ticket-$EPOCH` (one `date +%s` call). Use it only if you need to spawn investigator subagents that write findings to files; otherwise you may not need it at all.
 
-## [1/6] Fetch the ticket
+## [1/7] Fetch the ticket
 
 Call `getJiraIssue` with the key and cloudId. Read **everything**, not just the description:
 
@@ -39,7 +40,7 @@ Call `getJiraIssue` with the key and cloudId. Read **everything**, not just the 
 
 If `getJiraIssue` fails, show the error **verbatim** and stop — don't guess at the ticket contents from the key alone.
 
-## [2/6] Understand intent
+## [2/7] Understand intent
 
 Distill what the ticket is actually trying to achieve — the outcome a person or system should get — not just its literal wording. A ticket titled "add a retry" might really be about "stop dropping orders when the payment provider blips." Aim for the underlying goal, because that's what your plan has to satisfy.
 
@@ -51,7 +52,7 @@ Then sort everything the ticket says into three buckets. Keeping these separate 
 
 Some tickets have no bucket (c) at all — that's fine and common. Don't invent one.
 
-## [3/6] Verify every codebase claim
+## [3/7] Verify every codebase claim
 
 This is the phase that earns its keep. Go through bucket (b) and check each claim against the **actual current code** — Grep, Glob, Read, and the LSP tools if available. Don't trust the ticket; trust the code in front of you.
 
@@ -72,7 +73,7 @@ When there are many independent claims, spawn parallel investigator subagents (o
 
 Act on the selection, or take the user's redirect from the Other field — don't pick one and plow ahead. Don't plan around a phantom. See `${CLAUDE_PLUGIN_ROOT}/references/claim-verification.md` for how to extract atomic claims and handle the premise-invalidation case.
 
-## [4/6] Design the plan
+## [4/7] Design the plan
 
 **Design your own plan first, before you let the ticket's proposed solution anchor you.** This ordering is deliberate: if you read bucket (c) and start from there, you inherit its blind spots and your search for alternatives narrows to "is this approach okay?" instead of "what's the best approach?". So set the proposed solution aside and design from the goal (bucket a) and the verified facts (the confirmed/partial claims from phase 3): what changes, where, in what order, what the tests look like, what could break.
 
@@ -80,7 +81,7 @@ Then, **if** the ticket had a proposed solution (bucket c), compare it against y
 
 If there was no proposed solution, your independent plan _is_ the plan — skip the comparison.
 
-## [5/6] Present for approval
+## [5/7] Present for approval
 
 Show the user, in the conversation, before touching any file:
 
@@ -91,7 +92,7 @@ Show the user, in the conversation, before touching any file:
 
 Then gate with `AskUserQuestion`: implement this plan, adjust it, or stop. **Do not edit any file before the user approves** — this command's value is front-loaded into thinking, and the user needs a chance to catch anything you missed about their system.
 
-## [6/6] Implement
+## [6/7] Implement
 
 Only after approval. Work through the plan, letting the nature of each change decide how careful to be.
 
@@ -107,7 +108,42 @@ This is the same skepticism the earlier phases aim at the ticket, turned on your
 
 **Non-testable changes** (config, docs, copy, scaffolding) — implement directly; a forced test here is theater. And if a change _would_ be testable but you genuinely can't run the tests (no runner wired up, behavior hangs on live external state), say so plainly rather than claim a green you never saw.
 
-After implementing, run the project's existing test suite and report results honestly — if something fails, say so with the output. Then summarize what you changed, file by file, and note anything you deferred or that needs follow-up. If you hit something that contradicts the approved plan (a verified fact turns out wrong once you're in the code), stop and re-surface rather than improvising around it.
+After implementing, run the project's existing test suite and report results honestly — if something fails, say so with the output. If you hit something that contradicts the approved plan (a verified fact turns out wrong once you're in the code), stop and re-surface rather than improvising around it. Don't write the final summary here — phase 7 sweeps the changeset first, so the wrap-up belongs there once coverage is settled.
+
+## [7/7] Verify every change has test coverage
+
+Phase 6 tested what the plan said to test. This phase tests what you actually changed — and the two are never quite the same set. Implementation always drags in edits the plan didn't anticipate: a caller you had to adjust, a formatter that needed a new branch, a second code path you only found once you were in the file. None of those were in the plan's test list, so the red/green loop never pinned them, and they ride out on a green suite because nothing asserts them. Find them now, while the context is still in your head.
+
+**Build the inventory from what you changed, not from what you planned.** Prefer `git diff` (plus `git diff --stat` for the file list) against the pre-implementation state. If the working tree isn't a git repo, or your changes live outside it, fall back to your own record of every file you edited this run — do _not_ report full coverage just because `git diff` came back empty.
+
+Then go hunk by hunk and name the **behavior** each one introduces or changes, because behavior is the unit of coverage, not the line. Give every behavior one of three verdicts:
+
+- **Covered** — name the test that pins it. A test that merely _executes_ the changed line doesn't count; it has to assert the new behavior, such that reverting your change turns that test red.
+- **Uncovered** — the behavior changed and no test would notice if it broke. This is the phase's whole reason to exist.
+- **Not meaningfully testable** — config, docs, copy, dependency bumps, pure formatting. Say which and move on; a forced test here is theater (see `${CLAUDE_PLUGIN_ROOT}/references/red-green-tdd.md`).
+
+If the project has its own coverage command (a `test:coverage` script, `go test -cover`, `pytest --cov`), run it as a **hint about what's definitely uncovered** — but a hunk it reports as covered can still be covered only by a test that asserts nothing about your change. Trust the per-behavior audit over the percentage.
+
+**Close each uncovered gap** with the same red/green loop, adjusted for one problem: you can't watch a test fail before code that already exists. So write the test, confirm it passes, then **break the change it covers** — revert that hunk, flip the condition, remove the guard — and re-run to confirm _that_ test fails, for the right reason. Restore the change and confirm green again. That manufactured red is your evidence the test grips something real; skip it and you've added a test you've only ever seen green, which is exactly the inert test `${CLAUDE_PLUGIN_ROOT}/references/red-green-tdd.md` warns about.
+
+Fill gaps that fit the project's existing test setup without asking — the plan was approved in phase 5 and this is finishing it. **Stop and ask** when closing a gap would need test infrastructure the repo doesn't have (a new fixture or factory, a harness, a mock server, a new test dependency): that's scope the user didn't approve. Call the **AskUserQuestion** tool (`multiSelect: false`, header `Coverage`) with three options:
+
+- `Build the harness` — "Add the missing test infrastructure and cover it properly."
+- `Ship uncovered` — "Leave it uncovered; note the gap as a follow-up."
+- `Narrow the change` — "Drop or shrink the change so it doesn't need new infrastructure."
+
+Act on the selection or take the user's redirect from the Other field. And **don't widen this into a coverage crusade** — the scope is the changes this run made. Pre-existing untested code next door stays untested; note it as a follow-up if it's egregious, don't fix it here.
+
+Before claiming done, invoke the **`superpowers:verification-before-completion` skill** via the `Skill` tool — same declared dependency phase 6 leans on, and its whole job is refusing to assert a green you haven't observed. Then report:
+
+1. **Coverage table** — every changed behavior, its verdict, and the test that covers it.
+2. **Retrofitted tests** — what you added, with the real mutation-check output (the manufactured red _and_ the restored green), quoted rather than narrated.
+3. **File-by-file summary** of everything the run changed.
+4. **Gaps left open** — anything still uncovered and why (not testable, infrastructure the user declined, suite can't run here), plus any follow-ups.
+
+If a change is genuinely testable but you couldn't run the suite, say so plainly and include the test you would have written. An honest "uncovered, here's the test I'd add" is worth more than a green you never saw.
+
+For API-level behavior, `/jira:create-tests` builds a runnable Postman QA collection from the same ticket — worth mentioning to the user as an optional next step, but it's user-invoked only, so don't try to call it yourself.
 
 ## Cleanup
 

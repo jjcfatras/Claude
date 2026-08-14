@@ -161,6 +161,7 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 4. **Design a plan** independently from the goal and verified facts first, then reconciles it against the ticket's proposed solution (if any), recording where each approach won.
 5. **Present for approval** — intent, claim-verification table (false claims headlined), the synthesized plan, and reconciliation rationale. Gates with `AskUserQuestion`; edits no file before you approve.
 6. **Implement** the approved plan — test-first for testable changes, directly for config/docs — then runs the existing suite and reports results honestly.
+7. **Verify coverage** of the finished changeset — enumerates what actually changed (not what was planned), gives each changed behavior a covered / uncovered / not-testable verdict, and retrofits tests for the gaps. Each retrofit test is mutation-checked (break the change, watch that test go red, restore) since a test written after the code can't be seen to fail naturally. Closes gaps that fit the existing test setup; asks before adding new test infrastructure.
 
 ## `code-review` — extras
 
