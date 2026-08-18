@@ -2,7 +2,7 @@
   "inline_eligible": [
     {
       "id": "infra-1",
-      "category": "infra",
+      "category": "config",
       "file": "modules/eks-managed-node-group/main.tf",
       "line": 325,
       "startLine": null,
@@ -18,7 +18,7 @@
         {
           "id": "quality-qual-1",
           "specialist": "quality",
-          "category": "quality",
+          "category": "design",
           "severity": "Medium",
           "confidence": 70,
           "file": "modules/self-managed-node-group/main.tf",
@@ -30,7 +30,7 @@
     },
     {
       "id": "infra-2",
-      "category": "infra",
+      "category": "config",
       "file": "modules/eks-managed-node-group/variables.tf",
       "line": 262,
       "startLine": null,
@@ -45,7 +45,7 @@
     },
     {
       "id": "errors-err-1",
-      "category": "errors",
+      "category": "error-handling",
       "file": "modules/self-managed-node-group/variables.tf",
       "line": 234,
       "startLine": null,
@@ -60,7 +60,7 @@
     },
     {
       "id": "quality-qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "node_groups.tf",
       "line": 362,
       "startLine": null,
@@ -76,7 +76,7 @@
         {
           "id": "claude-md-cmd-1",
           "specialist": "claude-md",
-          "category": "claude-md",
+          "category": "convention-adherence",
           "severity": "Medium",
           "confidence": 75,
           "file": "modules/self-managed-node-group/README.md",
@@ -88,7 +88,7 @@
     },
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "node_groups.tf",
       "line": 509,
       "startLine": null,
@@ -128,10 +128,12 @@
     "quality",
     "security"
   ],
-  "timed_out_roles": [],
+  "budget_exhausted_roles": [],
   "missing_roles": [],
   "unreadable_roles": [],
   "invalid_findings": [],
+  "unknown_categories": [],
+  "potential_conflicts": [],
   "last_review_date": null,
   "deduped": [
     {

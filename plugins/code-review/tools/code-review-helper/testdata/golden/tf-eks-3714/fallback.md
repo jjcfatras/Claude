@@ -6,7 +6,7 @@ Inline comment posting failed. All issues listed below.
 
 🟡 **Medium** (Confidence: 85/100) - identical dynamic block added twice instead of a shared local
 
-<!-- cr-finding id="b264639f649b" snippet64="ICBkeW5hbWljICJuZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnMiIHsKICAgIGZvcl9lYWNoID0gdmFyLm5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucyAhPSBudWxsID8gW3Zhci5uZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnNdIDogW10KCiAgICBjb250ZW50IHsKICAgICAgYmFuZHdpZHRoX3dlaWdodGluZyA9IG5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucy52YWx1ZS5iYW5kd2lkdGhfd2VpZ2h0aW5nCiAgICB9CiAgfQ==" -->
+<!-- cr-finding id="4f1e101d09c2" snippet64="ICBkeW5hbWljICJuZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnMiIHsKICAgIGZvcl9lYWNoID0gdmFyLm5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucyAhPSBudWxsID8gW3Zhci5uZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnNdIDogW10KCiAgICBjb250ZW50IHsKICAgICAgYmFuZHdpZHRoX3dlaWdodGluZyA9IG5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucy52YWx1ZS5iYW5kd2lkdGhfd2VpZ2h0aW5nCiAgICB9CiAgfQ==" -->
 
 **Issue & impact:** This dynamic block is byte-identical to the one added in modules/self-managed-node-group/main.tf, including the for_each guard. Two copies means a future change to the guard has to be found and applied twice, and the launch-template resources are already the pair that drifted last time.
 
@@ -38,7 +38,7 @@ Inline comment posting failed. All issues listed below.
 
 🟡 **Medium** (Confidence: 80/100) - new optional attribute accepts any string for bandwidth_weighting
 
-<!-- cr-finding id="43f79550f277" snippet64="dmFyaWFibGUgIm5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucyIgewogIGRlc2NyaXB0aW9uID0gIlRoZSBuZXR3b3JrIHBlcmZvcm1hbmNlIG9wdGlvbnMgZm9yIHRoZSBpbnN0YW5jZSIKICB0eXBlID0gb2JqZWN0KHsKICAgIGJhbmR3aWR0aF93ZWlnaHRpbmcgPSBvcHRpb25hbChzdHJpbmcpCiAgfSkKICBkZWZhdWx0ID0gbnVsbAp9" -->
+<!-- cr-finding id="55e8acb69526" snippet64="dmFyaWFibGUgIm5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucyIgewogIGRlc2NyaXB0aW9uID0gIlRoZSBuZXR3b3JrIHBlcmZvcm1hbmNlIG9wdGlvbnMgZm9yIHRoZSBpbnN0YW5jZSIKICB0eXBlID0gb2JqZWN0KHsKICAgIGJhbmR3aWR0aF93ZWlnaHRpbmcgPSBvcHRpb25hbChzdHJpbmcpCiAgfSkKICBkZWZhdWx0ID0gbnVsbAp9" -->
 
 **Issue & impact:** The declared object type constrains bandwidth_weighting to a string but not to the values EC2 accepts, so a typo surfaces as an API error during apply rather than at plan time. A validation block catches it before any infrastructure is touched.
 
@@ -75,7 +75,7 @@ variable "network_performance_options" {
 
 🟡 **Medium** (Confidence: 80/100) - null default makes the nested attribute unreachable without a guard
 
-<!-- cr-finding id="21bbf06b5210" snippet64="dmFyaWFibGUgIm5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucyIgewogIGRlc2NyaXB0aW9uID0gIlRoZSBuZXR3b3JrIHBlcmZvcm1hbmNlIG9wdGlvbnMgZm9yIHRoZSBpbnN0YW5jZSIKICB0eXBlID0gb2JqZWN0KHsKICAgIGJhbmR3aWR0aF93ZWlnaHRpbmcgPSBvcHRpb25hbChzdHJpbmcpCiAgfSkKICBkZWZhdWx0ID0gbnVsbAp9" -->
+<!-- cr-finding id="9545cdee25c2" snippet64="dmFyaWFibGUgIm5ldHdvcmtfcGVyZm9ybWFuY2Vfb3B0aW9ucyIgewogIGRlc2NyaXB0aW9uID0gIlRoZSBuZXR3b3JrIHBlcmZvcm1hbmNlIG9wdGlvbnMgZm9yIHRoZSBpbnN0YW5jZSIKICB0eXBlID0gb2JqZWN0KHsKICAgIGJhbmR3aWR0aF93ZWlnaHRpbmcgPSBvcHRpb25hbChzdHJpbmcpCiAgfSkKICBkZWZhdWx0ID0gbnVsbAp9" -->
 
 **Issue & impact:** Because the whole object defaults to null, any expression reading the nested attribute directly errors out instead of yielding null. Every consumer therefore needs its own presence check before dereferencing.
 
@@ -95,7 +95,7 @@ variable "network_performance_options" {
 
 🟡 **Medium** (Confidence: 80/100) - pass-through wiring duplicated across both module invocations
 
-<!-- cr-finding id="9e88899b8f53" snippet64="ICBuZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnMgICAgICAgID0gZWFjaC52YWx1ZS5uZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnM=" -->
+<!-- cr-finding id="6b3a1e3a903d" snippet64="ICBuZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnMgICAgICAgID0gZWFjaC52YWx1ZS5uZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnM=" -->
 
 **Issue & impact:** Adding one attribute here requires the identical line in the second module call further down, and the two node-group modules now expose an identical block that must be kept in lockstep by hand. A shared local would let both call sites read from one place.
 
@@ -109,7 +109,7 @@ variable "network_performance_options" {
 
 📝 **Minor** (Confidence: 80/100) - each.value lookup repeated per attribute in a wide for_each
 
-<!-- cr-finding id="141b0bc38d4e" snippet64="ICBuZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnMgICAgICAgID0gZWFjaC52YWx1ZS5uZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnM=" -->
+<!-- cr-finding id="7f6c8abbefdb" snippet64="ICBuZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnMgICAgICAgID0gZWFjaC52YWx1ZS5uZXR3b3JrX3BlcmZvcm1hbmNlX29wdGlvbnM=" -->
 
 **Issue & impact:** This module call already resolves several dozen attributes off each.value, and the block scales with the number of groups. The cost is small per attribute but the pattern is what makes plan time grow linearly with group count.
 

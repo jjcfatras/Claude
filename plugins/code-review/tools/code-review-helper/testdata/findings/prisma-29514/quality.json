@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "package.json",
       "line": 170,
       "startLine": null,
@@ -19,7 +19,7 @@
     },
     {
       "id": "qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "package.json",
       "line": 173,
       "startLine": 165,

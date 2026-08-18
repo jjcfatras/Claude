@@ -4,14 +4,14 @@
   "findings": [
     {
       "id": "err-1",
-      "category": "errors",
+      "category": "error-handling",
       "file": "pkg/scheduler/framework/runtime/framework.go",
       "line": 358,
       "startLine": null,
       "confidence": 75,
       "severity": "Critical",
       "rationale": "duplicate of security finding at the same call site",
-      "explanation": "Same call site as the security finding — race-condition risk if GenericWorkload feature flag flips during scheduler runtime since newOpportunisticBatch caches the value once.",
+      "explanation": "Same call site as the security finding \u2014 race-condition risk if GenericWorkload feature flag flips during scheduler runtime since newOpportunisticBatch caches the value once.",
       "code": "f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))",
       "suggested_fix": null,
       "language": "go",
@@ -19,7 +19,7 @@
     },
     {
       "id": "err-2",
-      "category": "errors",
+      "category": "error-handling",
       "file": "pkg/scheduler/framework/runtime/batch.go",
       "line": 174,
       "startLine": null,

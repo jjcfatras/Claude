@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "packages/next/src/client/route-params.ts",
       "line": 48,
       "startLine": null,

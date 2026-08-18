@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "tests/migrations/base.py",
       "line": 40,
       "startLine": 30,
@@ -19,7 +19,7 @@
     },
     {
       "id": "qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "tests/postgres_tests/test_operations.py",
       "line": 80,
       "startLine": null,

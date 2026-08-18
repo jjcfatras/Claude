@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "pkg/scheduler/framework/runtime/batch.go",
       "line": 175,
       "startLine": null,

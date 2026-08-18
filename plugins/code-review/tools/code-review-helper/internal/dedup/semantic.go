@@ -8,16 +8,46 @@ import (
 	"github.com/jjcfatras/claude-tools/code-review-helper/internal/findings"
 )
 
-// relatedCategoryPairs lists category pairs that count as "related" for the
-// semantic dedup substring rule. Symmetric — order doesn't matter.
-var relatedCategoryPairs = map[[2]string]bool{
-	{"security", "errors"}:   true,
-	{"errors", "security"}:   true,
-	{"quality", "claude-md"}: true,
-	{"claude-md", "quality"}: true,
-	{"typescript", "react"}:  true,
-	{"react", "typescript"}:  true,
+// relatedCategories lists unordered category pairs that count as "related" —
+// two lenses on one defect rather than two separate defects. Every name must be
+// a member of findings.Categories; TestRelatedCategoriesAreInVocabulary
+// enforces that, because the previous version of this table was keyed on ROLE
+// names while being indexed by Finding.Category and therefore matched nothing
+// at all for the whole life of the feature.
+//
+// Kept deliberately short. A pair here weakens the evidence bar for a fold, so
+// it should express a relationship a reviewer would agree with on sight, not
+// merely two things that could co-occur.
+var relatedCategories = [][2]string{
+	{"security", "config"},
+	{"security", "api-contract"},
+	{"error-handling", "observability"},
+	{"error-handling", "correctness"},
+	{"error-handling", "concurrency"},
+	{"correctness", "concurrency"},
+	{"correctness", "type-safety"},
+	{"correctness", "data-integrity"},
+	{"type-safety", "api-contract"},
+	{"performance", "concurrency"},
+	{"performance", "data-integrity"},
+	{"duplication", "design"},
+	{"duplication", "convention-adherence"},
+	{"design", "convention-adherence"},
+	{"config", "convention-adherence"},
+	{"config", "observability"},
+	{"config", "data-integrity"},
 }
+
+// relatedCategoryPairs is relatedCategories expanded to both orderings, so
+// lookups need not normalize argument order.
+var relatedCategoryPairs = func() map[[2]string]bool {
+	m := make(map[[2]string]bool, len(relatedCategories)*2)
+	for _, p := range relatedCategories {
+		m[[2]string{p[0], p[1]}] = true
+		m[[2]string{p[1], p[0]}] = true
+	}
+	return m
+}()
 
 // inDiff reports whether the finding's file appears in the parsed diff's
 // valid-line map (i.e., is anchored to a file the PR actually touched with

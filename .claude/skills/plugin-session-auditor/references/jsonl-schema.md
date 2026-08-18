@@ -30,7 +30,7 @@ When multiple jsonl files are passed, the top-level shape is `{"sessions": [<abo
 {
   "tool_calls": [ToolCall],
   "tool_failures": [FailureRec],         // is_error: true AND not a permission denial
-  "permission_denials": [FailureRec],    // is_error: true AND error matches denial markers
+  "permission_denials": [FailureRec],    // is_error: true AND (toolDenialKind set OR error matches denial markers)
   "agent_spawns": [AgentSpawn],
   "slash_commands": [SlashCmd],
   "hook_events": [HookEvent],
@@ -66,7 +66,7 @@ When multiple jsonl files are passed, the top-level shape is `{"sessions": [<abo
 
 ### `FailureRec`
 
-Same shape for `tool_failures` and `permission_denials`. The parser splits them based on the error text (see `permissionRejectMarkers` in `main.go`).
+Same shape for `tool_failures` and `permission_denials`. The parser splits them on the raw entry's `toolDenialKind` field, falling back to matching the error text against `permissionRejectMarkers` (see `main.go`) for transcripts written before that field existed.
 
 ```jsonc
 {
@@ -75,9 +75,12 @@ Same shape for `tool_failures` and `permission_denials`. The parser splits them 
   "tool_name": "...",
   "input_preview": "...",
   "is_sidechain": true | false,
-  "error_preview": "..."
+  "error_preview": "...",
+  "denial_kind": "permission-rule" | "text-match" // permission_denials only; absent on tool_failures
 }
 ```
+
+**Why `denial_kind` matters when reading a report.** A `PreToolUse` hook that returns `deny` writes its own prose — this repo's `enforce-builtin-tools` guardrail says "Use Edit for modifications, Read for line ranges — not `sed … <file>`" — which matches none of the harness refusal markers. Classifying on text alone therefore filed hook denials as ordinary `tool_failures` and left `permission_denial_count` at 0 even when a run hit the guardrail repeatedly. `denial_kind: "permission-rule"` is a hook or permission rule blocking the call before it ran; `"text-match"` is the legacy path and means only the prose matched.
 
 ### `AgentSpawn`
 
@@ -188,7 +191,7 @@ contain its own `agent_spawns` with their own attached `sidechain` fields.
 ## Field semantics — gotchas
 
 - **Sidechains are followed automatically.** When the main jsonl lives at `<dir>/<sessionId>.jsonl`, the parser looks for `<dir>/<sessionId>/subagents/agent-*.jsonl` and attaches each spawn's transcript to its `AgentSpawn.sidechain` (and the full set to `sidechains`). The orchestration analyzer can therefore compare what each specialist actually did — `tool_calls_by_name`, `tool_failure_count`, etc. — instead of guessing from the lead's view. `is_sidechain` on a tool call is still the lead-vs-subagent flag for the lead's transcript itself.
-- **`tool_failures` vs `permission_denials`** — the parser splits these. If you want both, union them.
+- **`tool_failures` vs `permission_denials`** — the parser splits these on `toolDenialKind` (see `FailureRec`). If you want both, union them. A guardrail deny lands in `permission_denials` with `denial_kind: "permission-rule"`, so a zero `permission_denial_count` now genuinely means no blocked calls — including inside sidechains, which is where hook denials usually happen.
 - **`hook_error_count`** counts only system entries whose `hookErrors` array is actually populated. Empty arrays (which `stop_hook_summary` entries often carry) are excluded — they are turn-summary signals, not errors.
 - **`turn_count`** counts `system / turn_duration` entries; older Claude Code versions emitted them less aggressively. Don't read it as "assistant turns" exactly — for that, count `assistant`-type entries in the raw jsonl (the parser doesn't expose this; add to the parser if you need it).
 - **`plugins_used`** can be empty — the session may not have invoked any plugin. The lead should bail out early in that case.

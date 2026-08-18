@@ -25,13 +25,27 @@ type consolidatedFile struct {
 	// DroppedByGate is the audit trail for the confidence/severity gate — the
 	// specialist's rationale supplies the reasoning for each dismissal. Shown in
 	// the terminal summary only; never posted to GitHub.
-	DroppedByGate   []droppedGateEntry        `json:"dropped_by_gate"`
-	SpecialistsUsed []string                  `json:"specialists_used"`
-	TimedOutRoles   []string                  `json:"timed_out_roles"`
-	MissingRoles    []string                  `json:"missing_roles"`
-	UnreadableRoles []string                  `json:"unreadable_roles"`
-	InvalidFindings []findings.InvalidFinding `json:"invalid_findings"`
-	LastReviewDate  *string                   `json:"last_review_date"`
+	DroppedByGate   []droppedGateEntry `json:"dropped_by_gate"`
+	SpecialistsUsed []string           `json:"specialists_used"`
+	// BudgetExhaustedRoles was `timed_out_roles`, a name that promised a
+	// guarantee the plugin does not make: nothing enforces a specialist
+	// deadline, so a hung role writes no file and appears in MissingRoles, never
+	// here. Only a still-running specialist can self-report into this bucket.
+	BudgetExhaustedRoles []string                  `json:"budget_exhausted_roles"`
+	MissingRoles         []string                  `json:"missing_roles"`
+	UnreadableRoles      []string                  `json:"unreadable_roles"`
+	InvalidFindings      []findings.InvalidFinding `json:"invalid_findings"`
+	// UnknownCategories names findings whose `category` fell outside the closed
+	// vocabulary (findings.Categories). They are still posted — an off-vocabulary
+	// label is not worth dropping real signal over — but they silently lose every
+	// category-based dedup match, so the summary reports them. Without this the
+	// vocabulary would decay exactly the way the free-form field it replaced did.
+	UnknownCategories []findings.UnknownCategory `json:"unknown_categories"`
+	// PotentialConflicts is an ANNOTATION over the surviving findings, not a
+	// bucket: a finding named here is still in InlineEligible or SummaryOnly and
+	// is counted there, so reconcile() must not see it. See conflicts.go.
+	PotentialConflicts []conflictEntry `json:"potential_conflicts"`
+	LastReviewDate     *string         `json:"last_review_date"`
 	// Deduped is the audit trail for the two dedup passes — the buckets above
 	// only account for what the *gate*, the *prior-review* filter and the schema
 	// validator dropped, so without this a finding folded by dedup appeared in no
@@ -298,19 +312,25 @@ func buildPostingFilter(includeIDs, excludeIDs string, classified lines.Result) 
 
 func assembleConsolidated(classified lines.Result, droppedPrior, droppedGate []findings.Finding, loaded *findings.LoadResult, prior dedup.PriorIssuesFile, pf *postingFilter) consolidatedFile {
 	cf := consolidatedFile{
-		InlineEligible:     coalesce(classified.InlineEligible),
-		SummaryOnly:        coalesce(classified.SummaryOnly),
-		DroppedPriorReview: coalesce(droppedPrior),
-		DroppedByGate:      toDroppedGateEntries(droppedGate),
-		SpecialistsUsed:    coalesce(loaded.Specialists),
-		TimedOutRoles:      coalesce(loaded.TimedOutRoles),
-		MissingRoles:       coalesce(loaded.MissingRoles),
-		UnreadableRoles:    coalesce(loaded.UnreadableRoles),
-		InvalidFindings:    coalesce(loaded.InvalidFindings),
-		LastReviewDate:     prior.LastReviewDate,
-		PostingFilter:      pf,
+		InlineEligible:       coalesce(classified.InlineEligible),
+		SummaryOnly:          coalesce(classified.SummaryOnly),
+		DroppedPriorReview:   coalesce(droppedPrior),
+		DroppedByGate:        toDroppedGateEntries(droppedGate),
+		SpecialistsUsed:      coalesce(loaded.Specialists),
+		BudgetExhaustedRoles: coalesce(loaded.BudgetExhaustedRoles),
+		MissingRoles:         coalesce(loaded.MissingRoles),
+		UnreadableRoles:      coalesce(loaded.UnreadableRoles),
+		InvalidFindings:      coalesce(loaded.InvalidFindings),
+		UnknownCategories:    coalesce(loaded.UnknownCategories),
+		LastReviewDate:       prior.LastReviewDate,
+		PostingFilter:        pf,
 	}
 	cf.Deduped = coalesce(collectDeduped(classified.InlineEligible, classified.SummaryOnly, droppedPrior, droppedGate))
+	// Computed over what the user will actually see, and deliberately after
+	// dedup: a pair that dedup already folded is one finding, not a
+	// disagreement.
+	cf.PotentialConflicts = coalesce(detectConflicts(
+		append(append([]findings.Finding{}, classified.InlineEligible...), classified.SummaryOnly...)))
 	cf.Accounting = reconcile(loaded.Findings, loaded.InvalidFindings, cf)
 	return cf
 }

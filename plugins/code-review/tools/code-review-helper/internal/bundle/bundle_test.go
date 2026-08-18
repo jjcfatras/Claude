@@ -2,10 +2,12 @@ package bundle
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -246,8 +248,8 @@ func TestBuild_SourceEmbedding(t *testing.T) {
 	if !strings.Contains(out, "## Source at HEAD") {
 		t.Errorf("missing source section header")
 	}
-	if !strings.Contains(out, "### small.ts\n```ts\nexport const x = 1;") {
-		t.Errorf("small.ts not embedded as expected")
+	if !strings.Contains(out, "### small.ts\n```ts\n1| export const x = 1;") {
+		t.Errorf("small.ts not embedded as expected (with HEAD line-number gutter)")
 	}
 	if !strings.Contains(out, "### big.ts\n_omitted:") {
 		t.Errorf("big.ts not rendered as omitted placeholder")
@@ -391,16 +393,16 @@ func TestBuild_SourceIndexBlock(t *testing.T) {
 	if !strings.Contains(out, "## Source index") {
 		t.Error("missing `## Source index` header")
 	}
-	if !strings.Contains(out, "| File | Status | Bytes | Note |") {
+	if !strings.Contains(out, "| File | Status | Bundle line | Bytes | Note |") {
 		t.Error("Source index table header missing")
 	}
-	if !strings.Contains(out, "| a.ts | embedded | 20 |  |") {
+	if indexRow(out, "a.ts") != "| a.ts | embedded | * | 20 |  |" {
 		t.Error("a.ts row missing or wrong in Source index")
 	}
-	if !strings.Contains(out, "| b.ts | omitted | 1400 |") {
+	if !strings.HasPrefix(indexRow(out, "b.ts"), "| b.ts | omitted | * | 1400 |") {
 		t.Error("b.ts omitted row missing or wrong in Source index")
 	}
-	if !strings.Contains(out, "| c.ts | omitted | 0 | git show:") {
+	if !strings.HasPrefix(indexRow(out, "c.ts"), "| c.ts | omitted | * | 0 | git show:") {
 		t.Errorf("c.ts (git-show error) row missing or wrong in Source index; got:\n%s", out)
 	}
 
@@ -412,10 +414,9 @@ func TestBuild_SourceIndexBlock(t *testing.T) {
 	}
 }
 
-// TestBuild_AggregateByteCap verifies the aggregate-byte cap: the first file
-// to overflow records the "would exceed" reason, and subsequent files
-// short-circuit with a distinct "already exhausted" reason and no git show
-// subprocess.
+// TestBuild_AggregateByteCap verifies the aggregate-byte cap: a file whose size
+// would overflow the cap records the "would exceed" reason, and — because there
+// is still headroom left — later files are measured rather than short-circuited.
 func TestBuild_AggregateByteCap(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts","c.ts"]`)
@@ -426,11 +427,10 @@ func TestBuild_AggregateByteCap(t *testing.T) {
 
 	// Each file is 600 bytes; per-file cap 1024 lets all three pass that gate,
 	// but aggregate cap 1000 only fits one.
-	body := strings.Repeat("x", 600)
 	var shownPaths []string
 	showFn := func(workdir, sha, path string) (string, int, error) {
 		shownPaths = append(shownPaths, path)
-		return body, len(body), nil
+		return padTo(path, 600), 600, nil
 	}
 
 	out, err := Build(Input{
@@ -449,25 +449,133 @@ func TestBuild_AggregateByteCap(t *testing.T) {
 	}
 
 	// a.ts embeds (600 bytes fits both caps).
-	if !strings.Contains(out, "| a.ts | embedded | 600 |  |") {
+	if indexRow(out, "a.ts") != "| a.ts | embedded | * | 600 |  |" {
 		t.Errorf("a.ts should be embedded; got:\n%s", out)
 	}
 	// b.ts is the first overflow — recorded with the "would exceed" reason.
-	if !strings.Contains(out, "| b.ts | omitted | 600 | would exceed 1000-byte aggregate bundle cap") {
+	if !strings.HasPrefix(indexRow(out, "b.ts"), "| b.ts | omitted | * | 600 | would exceed 1000-byte aggregate bundle cap") {
 		t.Errorf("b.ts should be omitted with the would-exceed reason; got:\n%s", out)
 	}
-	// c.ts short-circuits — size not measured, distinct "already exhausted" reason.
-	if !strings.Contains(out, "| c.ts | omitted | 0 | aggregate bundle cap already exhausted") {
-		t.Errorf("c.ts should be omitted with the already-exhausted reason and size 0; got:\n%s", out)
+	// c.ts is measured too — 400 bytes of headroom remain after a.ts, so it must
+	// get its chance at the budget instead of being latched off unmeasured.
+	if !strings.HasPrefix(indexRow(out, "c.ts"), "| c.ts | omitted | * | 600 | would exceed 1000-byte aggregate bundle cap") {
+		t.Errorf("c.ts should be measured and omitted with the would-exceed reason; got:\n%s", out)
 	}
 	// Per-file cap reason should NOT fire — the section heading mentions
 	// "per-file cap:" but the omission-reason text is "bytes > N per-file cap".
 	if strings.Contains(out, "per-file cap — use `git show") {
 		t.Errorf("per-file cap reason leaked into output despite all files being under it; got:\n%s", out)
 	}
-	// showFn should have been called for a.ts and b.ts but not c.ts.
-	if want := []string{"a.ts", "b.ts"}; !slices.Equal(shownPaths, want) {
-		t.Errorf("showFn calls = %v, want %v (c.ts must be short-circuited)", shownPaths, want)
+	// Every file is measured while headroom remains.
+	if want := []string{"a.ts", "b.ts", "c.ts"}; !slices.Equal(shownPaths, want) {
+		t.Errorf("showFn calls = %v, want %v (headroom remains, so none may be skipped)", shownPaths, want)
+	}
+}
+
+// TestBuild_AggregateCapSkipsOnlyWhenHeadroomGone verifies the one case that
+// still short-circuits the `git show` subprocess: the running total has reached
+// the cap outright, so no remaining file can possibly fit.
+func TestBuild_AggregateCapSkipsOnlyWhenHeadroomGone(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts","c.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `[]`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	// a.ts exactly fills the aggregate cap, leaving zero headroom.
+	var shownPaths []string
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		shownPaths = append(shownPaths, path)
+		return padTo(path, 600), 600, nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:        dir,
+		HeadSHA:             "deadbeef",
+		PRNumber:            1,
+		Owner:               "o",
+		Repo:                "r",
+		RubricPath:          rubric,
+		MaxSourceBytes:      1024,
+		MaxTotalSourceBytes: 600,
+		GitShowFn:           showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if indexRow(out, "a.ts") != "| a.ts | embedded | * | 600 |  |" {
+		t.Errorf("a.ts should be embedded; got:\n%s", out)
+	}
+	for _, p := range []string{"b.ts", "c.ts"} {
+		want := "| " + p + " | omitted | * | 0 | aggregate bundle cap already exhausted"
+		if !strings.HasPrefix(indexRow(out, p), want) {
+			t.Errorf("%s should be omitted unmeasured once headroom is gone; got:\n%s", p, out)
+		}
+	}
+	if want := []string{"a.ts"}; !slices.Equal(shownPaths, want) {
+		t.Errorf("showFn calls = %v, want %v (b/c must be skipped once headroom is gone)", shownPaths, want)
+	}
+}
+
+// TestBuild_SourceOrderedByDiffChurn verifies the source section spends its
+// budget most-churned-file-first rather than alphabetically, and that the diff
+// map is emitted ahead of the source sections so it lands on the bundle's first
+// page (both regressions observed in transcript 8428d029).
+func TestBuild_SourceOrderedByDiffChurn(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["aaa-catalog.yaml","zzz-hot.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `[]`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	// zzz-hot.ts has 2 hunks; aaa-catalog.yaml has 1. Alphabetically the catalog
+	// wins and eats the whole budget; by churn the hot file goes first.
+	diffPath := filepath.Join(dir, "pr-1.diff")
+	mustWrite(t, diffPath, "diff --git a/aaa-catalog.yaml b/aaa-catalog.yaml\n@@ -1 +1 @@\n-x\n+y\n"+
+		"diff --git a/zzz-hot.ts b/zzz-hot.ts\n@@ -1 +1 @@\n-a\n+b\n@@ -9 +9 @@\n-c\n+d\n")
+
+	var shownPaths []string
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		shownPaths = append(shownPaths, path)
+		return padTo(path, 600), 600, nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:        dir,
+		HeadSHA:             "deadbeef",
+		PRNumber:            1,
+		Owner:               "o",
+		Repo:                "r",
+		RubricPath:          rubric,
+		MaxSourceBytes:      1024,
+		MaxTotalSourceBytes: 1000, // fits exactly one of the two files
+		GitShowFn:           showFn,
+		DiffPath:            diffPath,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	// The churned file gets the budget; the alphabetically-first catalog does not.
+	if indexRow(out, "zzz-hot.ts") != "| zzz-hot.ts | embedded | * | 600 |  |" {
+		t.Errorf("zzz-hot.ts (2 hunks) should win the budget; got:\n%s", out)
+	}
+	if !strings.HasPrefix(indexRow(out, "aaa-catalog.yaml"), "| aaa-catalog.yaml | omitted | * | 600 | would exceed") {
+		t.Errorf("aaa-catalog.yaml (1 hunk) should be omitted; got:\n%s", out)
+	}
+	if want := []string{"zzz-hot.ts", "aaa-catalog.yaml"}; !slices.Equal(shownPaths, want) {
+		t.Errorf("showFn order = %v, want %v (most-churned first)", shownPaths, want)
+	}
+
+	// Diff map precedes the source sections. Anchor on the newline so the
+	// `## Source index` mention inside the `## Summary` prose doesn't match.
+	mapIdx := strings.Index(out, "\n## Diff map\n")
+	idxIdx := strings.Index(out, "\n## Source index\n")
+	if mapIdx < 0 || idxIdx < 0 || mapIdx > idxIdx {
+		t.Errorf("Diff map must precede Source index; got positions %d, %d", mapIdx, idxIdx)
 	}
 }
 
@@ -481,9 +589,8 @@ func TestBuild_AggregateCapDisabledWhenZero(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
 	rubric := seedRubric(t, dir)
 
-	body := strings.Repeat("x", 600)
 	showFn := func(workdir, sha, path string) (string, int, error) {
-		return body, len(body), nil
+		return padTo(path, 600), 600, nil
 	}
 
 	out, err := Build(Input{
@@ -501,7 +608,7 @@ func TestBuild_AggregateCapDisabledWhenZero(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 	// Both files should be embedded.
-	if !strings.Contains(out, "| a.ts | embedded | 600 |") || !strings.Contains(out, "| b.ts | embedded | 600 |  |") {
+	if indexRow(out, "a.ts") != "| a.ts | embedded | * | 600 |  |" || indexRow(out, "b.ts") != "| b.ts | embedded | * | 600 |  |" {
 		t.Errorf("expected both files embedded when aggregate cap disabled; got:\n%s", out)
 	}
 	if strings.Contains(out, "aggregate bundle cap") {
@@ -522,6 +629,205 @@ func seedMinimalArtifacts(t *testing.T, dir string) {
 	mustWrite(t, filepath.Join(dir, "roster.json"), `[]`)
 	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
 	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+}
+
+// TestBuild_SourceIndexBundleLineIsAccurate is the guard on the two-pass line
+// arithmetic: the `Bundle line` column must land exactly on each file's
+// `### <path>` heading. An off-by-one here is worse than no column at all — a
+// specialist would Read a confidently wrong offset instead of grepping.
+func TestBuild_SourceIndexBundleLineIsAccurate(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts","big.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `[]`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		if path == "big.ts" {
+			body := strings.Repeat("// pad\n", 400) // over the per-file cap
+			return body, len(body), nil
+		}
+		body := padTo(path, 300) + "\nsecond line\nthird line\n"
+		return body, len(body), nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:   dir,
+		HeadSHA:        "deadbeef",
+		PRNumber:       1,
+		Owner:          "o",
+		Repo:           "r",
+		RubricPath:     rubric,
+		MaxSourceBytes: 1024,
+		GitShowFn:      showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	lines := strings.Split(out, "\n")
+	// BUNDLE_LINES must equal the bundle's real height. A trailing newline
+	// terminates the last line rather than starting a new one, so Split's
+	// trailing empty element is not a line.
+	wantTotal := len(lines)
+	if strings.HasSuffix(out, "\n") {
+		wantTotal--
+	}
+	if !strings.Contains(out, fmt.Sprintf("- BUNDLE_LINES: %d ", wantTotal)) {
+		t.Errorf("BUNDLE_LINES does not match actual height %d; header line was:\n%s",
+			wantTotal, firstLineContaining(out, "BUNDLE_LINES"))
+	}
+	if strings.Contains(out, bundleLinesPlaceholder) {
+		t.Error("BUNDLE_LINES placeholder was not substituted")
+	}
+
+	// Every non-omitted row's Bundle line must point at its own `### <path>`.
+	for _, path := range []string{"a.ts", "b.ts"} {
+		n := bundleLineFor(t, out, path)
+		if n < 1 || n > len(lines) {
+			t.Fatalf("%s: Bundle line %d out of range (bundle has %d lines)", path, n, len(lines))
+		}
+		if got := lines[n-1]; got != "### "+path {
+			t.Errorf("%s: Bundle line %d points at %q, want %q", path, n, got, "### "+path)
+		}
+	}
+}
+
+// TestBuild_ReplicationGroups verifies byte-identical changed files collapse to
+// one embedded body, are charged to the aggregate budget once, and resolve to
+// the representative's offset so a specialist that jumps there finds content.
+func TestBuild_ReplicationGroups(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["app1/logs.tf","app2/logs.tf","app3/logs.tf","other.tf"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `[]`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `{}`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	shared := "resource \"aws_cloudwatch\" \"x\" {\n  name = \"y\"\n}\n"
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		if path == "other.tf" {
+			return "variable \"z\" {}\n", len("variable \"z\" {}\n"), nil
+		}
+		return shared, len(shared), nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir: dir,
+		HeadSHA:      "deadbeef",
+		PRNumber:     1,
+		Owner:        "o",
+		Repo:         "r",
+		RubricPath:   rubric,
+		// Aggregate cap fits ONE copy of shared plus other.tf, but not three
+		// copies — so if dedup regressed, the later apps would be omitted and
+		// this test fails loudly rather than merely wasting budget.
+		MaxSourceBytes:      1024,
+		MaxTotalSourceBytes: len(shared) + 32,
+		GitShowFn:           showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if !strings.Contains(out, "## Replication groups") {
+		t.Fatal("missing `## Replication groups` section")
+	}
+	if !strings.Contains(out, "| app1/logs.tf | "+strconv.Itoa(len(shared))+" | 2: app2/logs.tf, app3/logs.tf |") {
+		t.Errorf("replication group row missing or wrong; got:\n%s", out)
+	}
+	if indexRow(out, "app1/logs.tf") != "| app1/logs.tf | embedded | * | "+strconv.Itoa(len(shared))+" |  |" {
+		t.Errorf("representative should be embedded; got %q", indexRow(out, "app1/logs.tf"))
+	}
+	for _, p := range []string{"app2/logs.tf", "app3/logs.tf"} {
+		want := "| " + p + " | duplicate | * | " + strconv.Itoa(len(shared)) + " | identical to `app1/logs.tf` |"
+		if indexRow(out, p) != want {
+			t.Errorf("%s: got %q, want %q", p, indexRow(out, p), want)
+		}
+		// A duplicate's Bundle line must resolve to the representative's body,
+		// not to its own pointer stub — otherwise the jump lands on nothing.
+		if bundleLineFor(t, out, p) != bundleLineFor(t, out, "app1/logs.tf") {
+			t.Errorf("%s: Bundle line should point at the representative's body", p)
+		}
+	}
+	// The body appears exactly once.
+	if n := strings.Count(out, `resource "aws_cloudwatch"`); n != 1 {
+		t.Errorf("shared body embedded %d times, want exactly 1", n)
+	}
+	// Distinct content is unaffected by grouping.
+	if indexRow(out, "other.tf") == "" || strings.Contains(indexRow(out, "other.tf"), "duplicate") {
+		t.Errorf("other.tf must not be grouped; got %q", indexRow(out, "other.tf"))
+	}
+}
+
+// bundleLineFor extracts the `Bundle line` value from path's Source index row.
+func bundleLineFor(t *testing.T, out, path string) int {
+	t.Helper()
+	start := strings.Index(out, "\n## Source index\n")
+	if start < 0 {
+		t.Fatal("no Source index section")
+	}
+	for _, line := range strings.Split(out[start:], "\n") {
+		if !strings.HasPrefix(line, "| "+path+" | ") {
+			continue
+		}
+		cols := strings.Split(line, " | ")
+		if len(cols) < 3 {
+			t.Fatalf("malformed index row for %s: %q", path, line)
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(cols[2]))
+		if err != nil {
+			t.Fatalf("non-numeric Bundle line for %s: %q", path, cols[2])
+		}
+		return n
+	}
+	t.Fatalf("no Source index row for %s", path)
+	return 0
+}
+
+func firstLineContaining(out, needle string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	return ""
+}
+
+// padTo returns exactly n bytes of filler unique to path. The cap tests must use
+// distinct content per file: byte-identical files now collapse into a
+// replication group, which claims them before either cap is consulted, so
+// shared filler would silently stop exercising the cap logic under test.
+func padTo(path string, n int) string {
+	return (path + ":" + strings.Repeat("x", n))[:n]
+}
+
+// indexRow returns path's `## Source index` row with the `Bundle line` column
+// replaced by `*`. That column is a function of every preceding section's
+// height, so pinning it in an assertion would make unrelated wording edits
+// anywhere above the index fail these tests for no reason. Returns "" when the
+// path has no row.
+//
+// The search starts at the `## Source index` heading because `## Diff map`
+// renders earlier and its rows share the leading `| <path> |` shape — scanning
+// from the top of the bundle silently returns the diff-map row instead.
+func indexRow(out, path string) string {
+	start := strings.Index(out, "\n## Source index\n")
+	if start < 0 {
+		return ""
+	}
+	for _, line := range strings.Split(out[start:], "\n") {
+		if !strings.HasPrefix(line, "| "+path+" | ") {
+			continue
+		}
+		cols := strings.Split(line, " | ")
+		if len(cols) > 2 {
+			cols[2] = "*"
+		}
+		return strings.Join(cols, " | ")
+	}
+	return ""
 }
 
 func seedRubric(t *testing.T, dir string) string {

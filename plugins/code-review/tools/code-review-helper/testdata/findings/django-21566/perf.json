@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "tests/migrations/test_commands.py",
       "line": 120,
       "startLine": null,

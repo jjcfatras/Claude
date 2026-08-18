@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "infra-1",
-      "category": "infra",
+      "category": "config",
       "file": "modules/eks-managed-node-group/main.tf",
       "line": 325,
       "startLine": null,
@@ -19,7 +19,7 @@
     },
     {
       "id": "infra-2",
-      "category": "infra",
+      "category": "config",
       "file": "modules/eks-managed-node-group/variables.tf",
       "line": 262,
       "startLine": null,

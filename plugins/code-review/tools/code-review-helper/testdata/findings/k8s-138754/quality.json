@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "pkg/scheduler/framework/runtime/batch.go",
       "line": 38,
       "startLine": null,
@@ -19,7 +19,7 @@
     },
     {
       "id": "qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "pkg/scheduler/framework/runtime/batch.go",
       "line": 200,
       "startLine": null,

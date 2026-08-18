@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "packages/next/src/client/route-params.ts",
       "line": 200,
       "startLine": null,

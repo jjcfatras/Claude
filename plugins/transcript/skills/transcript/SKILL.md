@@ -10,7 +10,9 @@ Run the bash block below exactly once and print only its stdout. No preamble, no
 
 Claude Code exports `$CLAUDE_CODE_SESSION_ID` and stores each session's transcript at `$HOME/.claude/projects/<encoded-cwd>/<session-id>.jsonl`, where `<encoded-cwd>` is the absolute current working directory with every `/` and `.` replaced by `-`.
 
-If the env-derived path exists, print it. If not, fall back to the most-recently-modified `*.jsonl` in the encoded directory.
+If the env-derived path exists, print it. If not, fall back to the most-recently-modified `*.jsonl` in the encoded directory — but only if that file actually belongs to this session.
+
+That last condition matters. The primary lookup is exact: `$dir/$sid.jsonl` can only succeed by naming the right file. The fallback is a guess, and without a check it fails silently in the worst possible way — returning some _other_ session's transcript with exit 0 and no warning. Callers treat this path as authoritative (the `plugin-session-auditor` skill feeds it straight into its parser), so a wrong-but-plausible answer means auditing the wrong session and never knowing. Verifying that the candidate contains `$sid` converts that into the loud error the script already has two lines below.
 
 ```bash
 set -u
@@ -25,11 +27,19 @@ dir="$HOME/.claude/projects/$encoded"
 file="$dir/$sid.jsonl"
 
 if [ ! -f "$file" ]; then
-  file="$(ls -t "$dir"/*.jsonl 2> /dev/null | awk 'NR==1')"
+  # Best-effort recovery: newest transcript in this project dir, accepted only
+  # if it actually records this session. `grep -q -m1` stops at the first hit,
+  # so the cost is bounded regardless of transcript size.
+  cand="$(ls -t "$dir"/*.jsonl 2> /dev/null | awk 'NR==1')"
+  if [ -n "$cand" ] && grep -q -m1 -F "\"$sid\"" "$cand" 2> /dev/null; then
+    file="$cand"
+  else
+    file=""
+  fi
 fi
 
-if [ ! -f "$file" ]; then
-  echo "error: no transcript found in $dir" >&2
+if [ -z "$file" ] || [ ! -f "$file" ]; then
+  echo "error: no transcript for session $sid in $dir" >&2
   exit 1
 fi
 

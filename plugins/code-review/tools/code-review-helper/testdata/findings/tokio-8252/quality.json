@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "tokio/src/runtime/time_alt/wheel/mod.rs",
       "line": 0,
       "startLine": null,
@@ -19,7 +19,7 @@
     },
     {
       "id": "qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "tokio/src/runtime/time_alt/tests.rs",
       "line": 100,
       "startLine": null,
@@ -34,7 +34,7 @@
     },
     {
       "id": "qual-3",
-      "category": "quality",
+      "category": "design",
       "file": "tokio/src/runtime/time_alt/entry.rs",
       "line": 215,
       "startLine": null,

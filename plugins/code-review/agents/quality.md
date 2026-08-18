@@ -15,6 +15,15 @@ After the bundle and rubric, Read the diff. Per the bundle's Source index, prefe
 
 If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
 
+## Environment
+
+Four guardrails in this harness, each of which cost a specialist a wasted turn on a prior run. They apply to every command you issue.
+
+- **Never prefix a command with `cd <dir> &&`** — nor `;`, `||`, a `( … )` subshell, or `env -C` — to avoid retyping a long `$REVIEW_TMPDIR` path. The `no-cd-chaining` guardrail hard-blocks it and the call never runs. Spell the absolute path out in each command instead.
+- **Read line ranges with `Read` + `offset`/`limit`.** `sed`, `cat`, `head`, and `tail` against a file are hard-blocked by the `enforce-builtin-tools` guardrail.
+- **Never open a changed file through a live path under `<REPO_ROOT>`** — not via `Read`, `grep`, or an inline `python3`/`node` script. The working tree may not be at `HEAD_SHA`. Use the bundle's `## Source at HEAD` (whose `N|` gutter carries the HEAD line numbers your findings must cite) or `git show <HEAD_SHA>:<repo-relative-path>`.
+- **`grep` here is embedded ugrep in BRE mode**, where `^\+` is invalid syntax. Match added diff lines with `^[+]` and removed lines with `^[-]`.
+
 ## Calibration
 
 - Use `Grep` aggressively to check whether helpers, patterns, or naming conventions already exist for what the diff introduces. A duplication finding without a `Grep`-confirmed prior implementation is weak.
@@ -78,7 +87,7 @@ Each bullet names the signal and the false positive it most often produces. Flag
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/quality.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "quality"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "quality"` and `scan_status` (`"complete"` or `"budget_exhausted"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

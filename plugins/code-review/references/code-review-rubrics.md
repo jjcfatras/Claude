@@ -52,7 +52,7 @@ Every specialist follows this lifecycle. Don't deviate — the orchestrator's fi
 
 4. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The orchestrator pre-creates `$REVIEW_TMPDIR/findings/` — do not `mkdir -p` or pre-test it before your Write. Treat the file as immutable once written.
    - On a normal scan: set `scan_status: "complete"`.
-   - If you cannot complete the scan (tool budget exhausted, repeated read failures, etc.): set `scan_status: "timed_out"` and include whatever findings you accumulated. Partial signal is more useful than no signal.
+   - If you cannot complete the scan (tool budget exhausted, repeated read failures, etc.): set `scan_status: "budget_exhausted"` and include whatever findings you accumulated. Partial signal is more useful than no signal. Nothing cuts you off — no deadline is enforced anywhere in this plugin — so this status only ever gets set by a specialist that chose to stop and still had a turn left to say so.
 5. **Return.** Your final assistant message can be a short status line ("Wrote 4 findings, scan complete"). The orchestrator captures the file at `$REVIEW_TMPDIR/findings/<role>.json`, not your message text.
 
 There is no cross-specialist messaging in this plugin — each specialist scans independently and emits a single findings file. Calibrate cautiously when a finding depends on cross-domain knowledge you can't verify from the diff alone; lower the confidence rather than asserting it.
@@ -61,9 +61,9 @@ There is no cross-specialist messaging in this plugin — each specialist scans 
 
 Every specialist writes its findings to `$REVIEW_TMPDIR/findings/<specialist>.json` using the Write tool. The Go helper validates strictly — invalid findings are dropped with a warning, but the run continues. To get your findings posted, **match the example below field-for-field**.
 
-**Required top-level keys**: `specialist` (your role, lowercase, no `-reviewer` suffix), `scan_status` (`"complete"` or `"timed_out"`), `findings` (array; may be empty).
+**Required top-level keys**: `specialist` (your role, lowercase, no `-reviewer` suffix), `scan_status` (`"complete"` or `"budget_exhausted"`), `findings` (array; may be empty).
 
-**Required per-finding fields**: `id` (non-empty string), `category` (free-form string), `file` (relative path, non-empty), `line` (positive integer — see field rules), `confidence` (0–100 integer), `severity` (exactly `"Critical"` / `"Medium"` / `"Minor"` — title-case, **not** `"critical"`), `rationale`, `explanation`, `code`, `language`.
+**Required per-finding fields**: `id` (non-empty string), `category` (one of the 15 values in § "Category vocabulary" — **not** free-form), `file` (relative path, non-empty), `line` (positive integer — see field rules), `confidence` (0–100 integer), `severity` (exactly `"Critical"` / `"Medium"` / `"Minor"` — title-case, **not** `"critical"`), `rationale`, `explanation`, `code`, `language`.
 
 **Conditionally required per-finding fields**: `suggested_fix` (string with the replacement code when the finding has a concrete code-level fix; `null` only for structural/conceptual findings where no single-snippet replacement applies — see field rules), `startLine` (positive integer ≤ `line`; required when `suggested_fix` spans more than one line; otherwise omit or set to `null` — see field rules).
 
@@ -149,7 +149,35 @@ Field rules:
 - `language` — for fenced code blocks at posting time (`ts`, `tsx`, `py`, `sql`, `tf`, `yaml`, etc.).
 - `suggested_fix` — **required when the finding has a concrete code-level fix** — i.e., a self-contained replacement that goes on the cited line(s). Set to `null` only when no single-snippet replacement applies: architectural findings (rename a module, restructure a folder), findings that span many non-contiguous sites, or findings where picking between several valid fixes needs human judgment. Single-block code change → string. Architectural/conceptual finding → `null`. The renderer wraps the value in a fenced block tagged with `language`, so write only code (or a minimal patch excerpt with surrounding context if it wouldn't read standalone) — no backticks, headings, or prose prefixes like "Fix:". Put reasoning in `explanation`. **Scope tightly:** keep both `code` and `suggested_fix` to the line(s) you're changing plus the minimum context needed to read standalone — don't reproduce a large unchanged block when the fix touches one line or token. `code` and `suggested_fix` render as two side-by-side fenced blocks, so a one-token change buried in a multi-line copy reads as "no change." **Must differ:** if your replacement would be byte-identical to the cited `code`, there is no concrete fix — set `suggested_fix` to `null`. (The helper drops a fix equal to the code as a backstop, but don't rely on it.)
 - `startLine` — **required when `suggested_fix` spans more than one line.** Set to the first line of the replaced range; `line` remains the last line of the range. Both must reference right-side (added/context) lines inside the diff hunk. For single-line fixes, omit `startLine` or set it to `null`. Specialists routinely forget this on multi-line replacements, which then anchor over only the final line and either misrender or get demoted to summary-only.
-- `scan_status` — `"complete"` if you wrote this file normally after a clean scan; `"timed_out"` if you ran out of tool budget or hit repeated tool failures before reaching the end of the diff.
+- `scan_status` — `"complete"` if you wrote this file normally after a clean scan; `"budget_exhausted"` if you ran out of tool budget or hit repeated tool failures before reaching the end of the diff. (`"timed_out"` is the former spelling and is still accepted; it was renamed because it implied an enforced deadline that does not exist.)
+
+### Category vocabulary
+
+`category` is a **closed vocabulary**. Pick exactly one of these fifteen:
+
+| Category               | Use for                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `accessibility`        | a11y: semantics, labels, focus management, contrast, keyboard reachability        |
+| `api-contract`         | request/response shape, breaking changes, versioning, serialization compatibility |
+| `concurrency`          | races, await sequencing, locking, ordering assumptions, idempotency under retry   |
+| `config`               | environment/deployment parameterization: defaults, secrets wiring, feature flags  |
+| `convention-adherence` | project-documented patterns, CLAUDE.md rules, established naming/structure        |
+| `correctness`          | logic that produces a wrong result or wrong state                                 |
+| `data-integrity`       | migrations, schema, constraints, persistence and backfill correctness             |
+| `design`               | SOLID, coupling, layering, abstraction and responsibility boundaries              |
+| `duplication`          | duplicated code or duplicated knowledge (DRY)                                     |
+| `error-handling`       | try/catch shape, propagation, transaction boundaries, failure recovery            |
+| `observability`        | logging, metrics, alerting, whether a failure ever reaches a human                |
+| `performance`          | complexity, N+1, pagination, memory lifecycle, bundle size                        |
+| `security`             | authn/authz, injection, SSRF/CSRF, path traversal, crypto misuse, secret exposure |
+| `testing`              | missing, wrong, or misleading test coverage                                       |
+| `type-safety`          | narrowing, `any`/`unknown`, assertions, generic constraints, exhaustiveness       |
+
+**Categorize the defect, not yourself.** The category answers "what kind of problem is this?", never "which specialist am I?". Several roles legitimately emit `config` or `correctness`; only a security finding is `security`.
+
+This matters mechanically, not just for tidiness. When two specialists flag the same defect from different angles, a shared `category` is the strongest same-defect signal the dedup pipeline has — it is what collapses their findings into one PR comment instead of two. Choosing your own role name as the category (the old habit, back when this field was documented as free-form) defeats that: on a real review three specialists described one hard-coded environment default as `security`, `observability`, and `convention-adherence`, no two matched, and the PR author received two near-identical inline comments one line apart.
+
+If nothing fits well, choose the closest and explain the specifics in `explanation`. A value outside this list is not rejected — the finding still posts — but it is reported as an unknown category in the run summary and it silently loses every category-based dedup match.
 
 ### JSON string escaping (read this if you embed code or quotes)
 

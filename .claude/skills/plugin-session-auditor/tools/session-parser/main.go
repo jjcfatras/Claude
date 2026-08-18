@@ -36,6 +36,13 @@ type rawEntry struct {
 	Message     json.RawMessage `json:"message"`
 	HookErrors  json.RawMessage `json:"hookErrors"`
 	ToolUseID   string          `json:"toolUseID"`
+	// ToolDenialKind is set by the harness on a tool_result entry that was
+	// denied rather than executed — e.g. "permission-rule" for a PreToolUse hook
+	// returning deny. It is the only machine-readable denial signal: a hook's
+	// deny message is author-defined prose, so text matching alone files those
+	// as ordinary tool failures (which is how three guardrail denials went
+	// uncounted in transcript 8428d029 while permission_denial_count read 0).
+	ToolDenialKind string `json:"toolDenialKind"`
 	// Turn duration field name has varied across Claude Code versions; try a few.
 	DurationMs     *int64 `json:"durationMs,omitempty"`
 	TurnDurationMs *int64 `json:"turnDurationMs,omitempty"`
@@ -77,7 +84,11 @@ type ToolResult struct {
 	IsError        bool   `json:"is_error"`
 	IsSidechain    bool   `json:"is_sidechain"`
 	ContentPreview string `json:"content_preview"`
-	rawText        string
+	// DenialKind is the harness's `toolDenialKind` verbatim when the call was
+	// denied instead of executed ("permission-rule" for a hook/permission deny),
+	// empty for a normally-executed call.
+	DenialKind string `json:"denial_kind,omitempty"`
+	rawText    string
 }
 
 type FailureRec struct {
@@ -87,6 +98,10 @@ type FailureRec struct {
 	InputPreview string `json:"input_preview"`
 	IsSidechain  bool   `json:"is_sidechain"`
 	ErrorPreview string `json:"error_preview"`
+	// DenialKind distinguishes *why* a record landed in PermissionDenials:
+	// the harness's `toolDenialKind` when it supplied one, or "text-match" when
+	// only the prose markers matched (older transcripts predating the field).
+	DenialKind string `json:"denial_kind,omitempty"`
 }
 
 type AgentSpawn struct {
@@ -203,6 +218,10 @@ type Session struct {
 	Events           *Events                `json:"events,omitempty"`
 }
 
+// permissionRejectMarkers is the FALLBACK denial classifier, for transcripts
+// that predate the `toolDenialKind` field. It only recognises the harness's own
+// refusal phrasings — a PreToolUse hook's deny message is author-defined prose
+// and will not match, so never rely on this list alone.
 var permissionRejectMarkers = []string{
 	"doesn't want to proceed with this tool use",
 	"tool use was rejected",
@@ -616,6 +635,7 @@ func parseFile(path string) (*parsedFile, error) {
 					IsError:        it.IsError,
 					IsSidechain:    entry.IsSidechain,
 					ContentPreview: truncate(txt, 600),
+					DenialKind:     entry.ToolDenialKind,
 					rawText:        txt,
 				}
 			case "text":
@@ -651,6 +671,7 @@ func correlateAndStat(pf *parsedFile) (*Events, Stats) {
 			IsError:        res.IsError,
 			IsSidechain:    res.IsSidechain,
 			ContentPreview: res.ContentPreview,
+			DenialKind:     res.DenialKind,
 		}
 		if !res.IsError {
 			continue
@@ -663,9 +684,16 @@ func correlateAndStat(pf *parsedFile) (*Events, Stats) {
 			IsSidechain:  call.IsSidechain,
 			ErrorPreview: res.ContentPreview,
 		}
-		if isPermissionDenial(res.rawText) {
+		// Prefer the harness's structured verdict; fall back to prose matching
+		// for transcripts written before `toolDenialKind` existed.
+		switch {
+		case res.DenialKind != "":
+			rec.DenialKind = res.DenialKind
 			events.PermissionDenials = append(events.PermissionDenials, rec)
-		} else {
+		case isPermissionDenial(res.rawText):
+			rec.DenialKind = "text-match"
+			events.PermissionDenials = append(events.PermissionDenials, rec)
+		default:
 			events.ToolFailures = append(events.ToolFailures, rec)
 		}
 	}

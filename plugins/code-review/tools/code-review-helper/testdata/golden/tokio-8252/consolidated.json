@@ -25,7 +25,7 @@
     "quality",
     "security"
   ],
-  "timed_out_roles": [
+  "budget_exhausted_roles": [
     "errors"
   ],
   "missing_roles": [
@@ -52,6 +52,8 @@
       "reason": "specialist quality finding qual-3: empty code"
     }
   ],
+  "unknown_categories": [],
+  "potential_conflicts": [],
   "last_review_date": null,
   "deduped": [],
   "accounting": {

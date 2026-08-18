@@ -1,7 +1,7 @@
 // Package dedup implements the three dedup passes from the code-review rubric:
 //
 //   - Positional: group by file + line ±3, fold same-defect peers into the
-//     highest-confidence representative (see canFold).
+//     most-severe representative (see canFold).
 //   - Semantic:   file-in-explanation match OR 60-char substring + related category.
 //   - PriorReview: match against issues from a prior review on the same PR.
 package dedup
@@ -18,9 +18,12 @@ import (
 // cluster. Folded peers are recorded on the survivor's CrossRefs; see canFold
 // for when a fold is permitted.
 //
-// Order-stability: within a cluster, findings are visited highest-confidence
-// first, ties broken by domain match (specialist == category) then by
-// lexicographic specialist name, so the representative set is deterministic.
+// Order-stability: within a cluster, findings are visited most-severe first,
+// then highest-confidence, ties broken by domain match (specialist == category)
+// then by lexicographic specialist name, so the representative set is
+// deterministic. Severity leads confidence so the finding a reader most needs to
+// see is the one that represents its cluster — and so canFold can require real
+// same-defect evidence instead of a severity guard (see canFold).
 // Output is sorted by file then line for deterministic downstream processing.
 func Positional(in []findings.Finding) []findings.Finding {
 	if len(in) <= 1 {
@@ -56,8 +59,8 @@ func Positional(in []findings.Finding) []findings.Finding {
 		for _, cluster := range clusters {
 			slices.SortFunc(cluster, func(a, b findings.Finding) int {
 				return cmp.Or(
+					cmp.Compare(b.Severity.Rank(), a.Severity.Rank()),
 					cmp.Compare(b.Confidence, a.Confidence),
-					boolCompare(domainMatch(a.Specialist, a.Category), domainMatch(b.Specialist, b.Category)),
 					cmp.Compare(a.Specialist, b.Specialist),
 					cmp.Compare(a.ID, b.ID),
 				)
@@ -96,18 +99,38 @@ const sameDefectOverlapN = 60
 // happen to sit on the same line".
 //
 // A positive same-defect signal (shared category, a related-category pair, or a
-// substantial shared explanation) always permits the fold. Absent that signal,
-// a peer may only fold into a representative at least as severe as itself:
-// otherwise an unrelated Minor that merely won the confidence tiebreak would
-// bury a Medium or Critical, leaving only a CrossRef behind. That is not
-// hypothetical — it cost a real review its highest-value finding, where a Minor
-// (conf 75) buried two independent Mediums (conf 65, 55) anchored to the same
-// one-line diff hunk.
+// substantial shared explanation) always permits the fold. Absent that signal, a
+// peer folds only if it is STRICTLY less severe than the representative: it is
+// then dominated, and the reader loses nothing by seeing the more serious
+// finding with the lesser one recorded as a CrossRef.
+//
+// The strictness matters, and so does the cluster's severity-first ordering
+// (see Positional) — the two are one mechanism:
+//
+//   - Ordering severity-first makes the representative the most severe member by
+//     construction, so the burial this guard was written to prevent (a Minor at
+//     confidence 75 swallowing two independent Mediums) is now impossible
+//     without any comparison at all.
+//   - Given that, `<=` would be vacuous: every peer trivially satisfies
+//     `peer.Rank() <= rep.Rank()`, so every cluster would collapse to exactly one
+//     finding no matter how unrelated its members were.
+//   - `<` keeps equally-severe peers apart unless there is real evidence they
+//     are the same defect, which is the only case where two inline comments on
+//     one line are genuinely warranted.
+//
+// Under the old confidence-first ordering this same rule inverted: on transcript
+// db83dbda a Minor at confidence 78 became representative of a cluster holding
+// two Mediums, `Medium <= Minor` was false for both, and one defect shipped as
+// two inline comments a line apart carrying near-identical fixes. Note the real
+// fix for that case is the closed category vocabulary (findings.Categories):
+// all three findings describe one hardcoded environment-specific default, so
+// once specialists label the defect rather than their own domain they share a
+// category and fold on evidence, not on severity.
 func canFold(rep, peer findings.Finding) bool {
 	if sameDefectSignal(rep, peer) {
 		return true
 	}
-	return peer.Severity.Rank() <= rep.Severity.Rank()
+	return peer.Severity.Rank() < rep.Severity.Rank()
 }
 
 // sameDefectSignal reports positive evidence that two findings describe one
@@ -144,18 +167,11 @@ func makeCrossRef(other findings.Finding, mergedBy string) findings.CrossRef {
 	}
 }
 
-func domainMatch(specialist, category string) bool {
-	return specialist == category
-}
-
-// boolCompare orders true before false (sort-descending on a bool flag).
-func boolCompare(a, b bool) int {
-	switch {
-	case a == b:
-		return 0
-	case a:
-		return -1
-	default:
-		return 1
-	}
-}
+// A `domainMatch(specialist, category)` tiebreaker used to sit between
+// confidence and specialist name here, preferring a finding whose category
+// equalled its own role. It only ever fired because `category` was a free-form
+// string that specialists tended to fill with their own role name. Under
+// findings.Categories a category names the DEFECT, so the two coincide for
+// exactly one value (`security`) and the comparison encodes the same
+// role-equals-category assumption that left relatedCategoryPairs dead. Removed
+// rather than left as a near-constant tiebreak.

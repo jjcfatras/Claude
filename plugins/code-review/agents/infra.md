@@ -15,9 +15,19 @@ After the bundle and rubric, Read the diff. Per the bundle's Source index, prefe
 
 If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
 
+## Environment
+
+Four guardrails in this harness, each of which cost a specialist a wasted turn on a prior run. They apply to every command you issue.
+
+- **Never prefix a command with `cd <dir> &&`** — nor `;`, `||`, a `( … )` subshell, or `env -C` — to avoid retyping a long `$REVIEW_TMPDIR` path. The `no-cd-chaining` guardrail hard-blocks it and the call never runs. Spell the absolute path out in each command instead.
+- **Read line ranges with `Read` + `offset`/`limit`.** `sed`, `cat`, `head`, and `tail` against a file are hard-blocked by the `enforce-builtin-tools` guardrail.
+- **Never open a changed file through a live path under `<REPO_ROOT>`** — not via `Read`, `grep`, or an inline `python3`/`node` script. The working tree may not be at `HEAD_SHA`. Use the bundle's `## Source at HEAD` (whose `N|` gutter carries the HEAD line numbers your findings must cite) or `git show <HEAD_SHA>:<repo-relative-path>`.
+- **`grep` here is embedded ugrep in BRE mode**, where `^\+` is invalid syntax. Match added diff lines with `^[+]` and removed lines with `^[-]`.
+
 ## Calibration
 
-- The _change context_ matters more than the literal diff lines — which tables, which env, which service. Use `Read` aggressively on surrounding files (other migrations, terraform modules, deployment manifests) to confirm scope and reversibility before scoring.
+- **Scale the sweep to the churn.** You are rostered on the mere presence of an infra file extension, not on how much it changed, so check your triggering files' hunk counts in the bundle's `## Diff map` first. When they total under roughly 50 diff lines, scope the review to those hunks and their immediate call sites; skip repo-wide `git grep` sweeps for identifiers the always-on specialists are already tracing. On a 21-line terraform hunk that sweep cost 15 Bash calls and returned nothing (transcript 8428d029). This bounds the _search_, never the _review_: a small hunk is exactly where an over-permissive IAM policy or an open security group hides, so still read every line of it.
+- The _change context_ matters more than the literal diff lines — which tables, which env, which service. On a substantial change, use `Read` on surrounding files (other migrations, terraform modules, deployment manifests) to confirm scope and reversibility before scoring.
 - Migration safety, secret leakage, and prod blast-radius changes are high-cost misses — keep them in the output even when cross-domain context would help, calibrated to the confidence you can defend from the evidence you have.
 
 ## What to look for
@@ -73,7 +83,7 @@ When the diff introduces an entirely new app/service directory together with its
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/infra.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "infra"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "infra"` and `scan_status` (`"complete"` or `"budget_exhausted"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

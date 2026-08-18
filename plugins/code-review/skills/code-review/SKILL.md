@@ -165,11 +165,15 @@ Read `$TMP/consolidated.json` with a single Bash call (use one combined `jq` inv
 jq -r '
   "=== Review summary ===",
   "  Specialists: \(.specialists_used | join(", "))",
-  (if (.timed_out_roles // []) | length > 0 then "  Timed out: \(.timed_out_roles | join(", "))" else empty end),
+  (if (.budget_exhausted_roles // []) | length > 0 then "  Budget exhausted (self-reported partial scan): \(.budget_exhausted_roles | join(", "))" else empty end),
   (if (.missing_roles // []) | length > 0 then "  Missing: \(.missing_roles | join(", "))" else empty end),
   (if (.unreadable_roles // []) | length > 0 then "  Unreadable: \(.unreadable_roles | join(", "))" else empty end),
   (if (.invalid_findings // []) | length > 0 then "  Invalid findings (\(.invalid_findings | length)):" else empty end),
   ((.invalid_findings // [])[] | "    [\(.role)/\(.id)] \(.reason)"),
+  (if (.unknown_categories // []) | length > 0 then "  Off-vocabulary categories (\(.unknown_categories | length)) — posted, but they match nothing in category-based dedup:" else empty end),
+  ((.unknown_categories // [])[] | "    [\(.role)/\(.id)] \(.category)"),
+  (if (.potential_conflicts // []) | length > 0 then "  ⚠ Potential conflicts (\(.potential_conflicts | length)) — each pair anchors near the other and discusses its subject; confirm they do not give opposite advice before posting:" else empty end),
+  ((.potential_conflicts // [])[] | "    [\(.id_a)] \(.file):\(.line_a) ↔ [\(.id_b)] \(.file):\(.line_b) — both concern `\(.identifier)`"),
   (if (.dropped_prior_review // []) | length > 0 then "  Dropped (prior review): \(.dropped_prior_review | length)" else empty end),
   (if (.dropped_by_gate // []) | length > 0 then "  Reconciled (below gate): \(.dropped_by_gate | length)" else empty end),
   ((.dropped_by_gate // [])[] | "    [\(.id)] \(.severity) conf=\(.confidence) \(.file):\(.line) — \(.rationale)"),
@@ -186,6 +190,13 @@ jq -r '
 ```
 
 The Invalid-findings block lists each dropped finding's role, id, and reason so the user can see what was lost (e.g., a finding with `line: 0` that the helper rejected). The Reconciled block shows findings the confidence gate filtered out, each with the specialist's one-sentence rationale. The Deduped block shows findings that a dedup pass folded into another, naming both sides. None of the three is posted to GitHub; without them, drops are silent.
+
+Two of the remaining lines report on findings that **are** being posted rather than dropped:
+
+- **Off-vocabulary categories** — the finding still posts, but its `category` is outside the closed vocabulary in `references/code-review-rubrics.md` § "Category vocabulary", so it silently matches nothing in category-based dedup. A recurring value here means an agent file's guidance has drifted from the rubric.
+- **Potential conflicts** — two surviving findings anchored within five lines of each other where one's prose discusses the other's subject. This is a prompt to look, not a verdict: specialists scan independently with no cross-agent verification, so two of them can reach opposite conclusions about one symbol and both pass the gate (on PR #1784 one specialist flagged a variable's missing default as the defect while two others cited that same missing default as the correct pattern — all three posted). Read the pair before answering the post prompt; if they disagree, type the finding IDs you want into the prompt's free-text field rather than posting all.
+
+**`budget_exhausted_roles` is a self-report, not an enforced deadline.** Nothing in this plugin bounds a specialist's runtime — there is no `maxTurns` on any agent, no orchestrator wall-clock check, and because the whole batch is spawned in one message the harness returns every specialist together. A role only lands in this bucket by writing a findings file that says it stopped early, which means it was alive to write it. A specialist that hangs or dies produces no file at all and appears in **`missing_roles`**.
 
 **The `Accounted:` line is the conservation check.** `finalize` requires every finding a specialist wrote to land in exactly one bucket — inline, summary-only, dropped-prior, reconciled, deduped, or invalid. When the totals match, the summary above is provably the complete account of this review. When they don't, the line reads `⚠ ACCOUNTING MISMATCH` and names the orphaned IDs: findings that entered the pipeline and left no trace. That is a helper bug, not something to work around — follow the **Accounting mismatch** procedure below.
 
@@ -205,15 +216,19 @@ Only when the `Accounted:` line reports a mismatch. The raw `findings/*.json` fi
    Re-run by hand or file this against the helper; remove the dir with: rm -rf "$TMP"
    ```
 
-   Take each orphan's severity, confidence, file, line and rationale from the specialist's own `findings/<role>.json` with this exact one-shot `jq` — one call across the whole directory, not one per file. Pass the orphan IDs the summary printed. This is the single exception to the do-not-re-read rule above, and it exists because the summary provably does _not_ have this information:
+   Take each orphan's severity, confidence, file, line and rationale from the specialist's own `findings/<role>.json` with this exact `jq`, in one Bash call. Pass the orphan IDs the summary printed. This is the single exception to the do-not-re-read rule above, and it exists because the summary provably does _not_ have this information:
 
    ```bash
-   jq -r --argjson orphans '["<id>","<id>"]' '
-     .specialist as $role | .findings[]
-     | select(($role + "-" + (.id | sub("^f-";"") | sub("^" + $role + "-";""))) as $ns | $orphans | index($ns))
-     | "  \($role)-\(.id) | \(.severity) conf=\(.confidence) | \(.file):\(.line) | \(.rationale)"
-   ' "$TMP/findings"/*.json
+   for f in "$TMP/findings"/*.json; do
+     jq -r --argjson orphans '["<id>","<id>"]' '
+       .specialist as $role | .findings[]
+       | select(($role + "-" + (.id | sub("^f-";"") | sub("^" + $role + "-";""))) as $ns | $orphans | index($ns))
+       | "  \($role)-\(.id) | \(.severity) conf=\(.confidence) | \(.file):\(.line) | \(.rationale)"
+     ' "$f" 2> /dev/null || echo "  (unreadable, inspect by hand: $f)"
+   done
    ```
+
+   **The loop is load-bearing — do not collapse it back to `jq … "$TMP/findings"/*.json`.** `jq` treats a file glob as one concatenated stream, so a single malformed findings file aborts the whole invocation and every file that sorts after it prints nothing at all, including valid files holding orphans. That is silent, order-dependent data loss at the exact moment these files are the only surviving copy of a lost finding — and a malformed file is not hypothetical here, since a specialist writing bad JSON is precisely what `unreadable_roles` exists to record. Per-file, a bad file costs only its own line.
 
    (The `sub` calls reproduce the helper's ID namespacing: a specialist numbers its findings locally as `f-1` or `<role>-1`, and the loader rewrites both to `<role>-1`.)
 

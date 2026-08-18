@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "err-1",
-      "category": "errors",
+      "category": "error-handling",
       "file": "package.json",
       "line": 160,
       "startLine": null,

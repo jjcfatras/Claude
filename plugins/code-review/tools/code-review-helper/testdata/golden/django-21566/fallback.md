@@ -20,7 +20,7 @@ def assertTableExists(self, table, using="default"):
 
 🟡 **Medium** (Confidence: 80/100) - three unrelated base classes share one module after the rename
 
-<!-- cr-finding id="be4d257c82bb" snippet64="Y2xhc3MgT3BlcmF0aW9uVGVzdEJhc2UoTWlncmF0aW9uVGVzdEJhc2UpOg==" -->
+<!-- cr-finding id="4b2dff3f161a" snippet64="Y2xhc3MgT3BlcmF0aW9uVGVzdEJhc2UoTWlncmF0aW9uVGVzdEJhc2UpOg==" -->
 
 **Issue & impact:** MigrationTestBase, OperationTestBase and OptimizerTestBase all live side by side in the module this PR renames, and the eight importers each pull a different subset. Splitting them would let each test file depend only on what it uses. Nothing about the bodies changed here, so the range is unanchored in the diff.
 
@@ -34,7 +34,7 @@ class OperationTestBase(MigrationTestBase):
 
 🟡 **Medium** (Confidence: 65/100) - shutil.which("black") runs at import time on every collection
 
-<!-- cr-finding id="bffcfc19d0f6" snippet64="SEFTX0JMQUNLID0gc2h1dGlsLndoaWNoKCJibGFjayIp" -->
+<!-- cr-finding id="61aa8b8585e8" snippet64="SEFTX0JMQUNLID0gc2h1dGlsLndoaWNoKCJibGFjayIp" -->
 
 **Issue & impact:** HAS_BLACK is evaluated while the module is imported, so a PATH scan happens during collection even for runs that never touch the formatter tests. Caching it behind functools.cache would defer the cost. The anchor sits well past the import block this PR edited.
 
@@ -48,7 +48,7 @@ HAS_BLACK = shutil.which("black")
 
 📝 **Minor** (Confidence: 85/100) - cross-package absolute import where every sibling uses a relative one
 
-<!-- cr-finding id="60f1a72e1ba6" snippet64="ZnJvbSBtaWdyYXRpb25zLmJhc2UgaW1wb3J0IE9wZXJhdGlvblRlc3RCYXNlLCBPcHRpbWl6ZXJUZXN0QmFzZQ==" -->
+<!-- cr-finding id="348ab9ea2e93" snippet64="ZnJvbSBtaWdyYXRpb25zLmJhc2UgaW1wb3J0IE9wZXJhdGlvblRlc3RCYXNlLCBPcHRpbWl6ZXJUZXN0QmFzZQ==" -->
 
 **Issue & impact:** This file reaches into the sibling package with an absolute `migrations.base` import while the other seven updated call sites use the relative form. The inconsistency makes the shared helper look like two different modules when grepping.
 

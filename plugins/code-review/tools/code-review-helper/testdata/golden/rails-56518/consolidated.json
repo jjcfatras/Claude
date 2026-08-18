@@ -1,23 +1,8 @@
 {
   "inline_eligible": [
     {
-      "id": "quality-qual-2",
-      "category": "quality",
-      "file": "activejob/lib/active_job/queue_adapters.rb",
-      "line": 130,
-      "startLine": null,
-      "confidence": 90,
-      "severity": "Minor",
-      "rationale": "the lookup example in the doc comment now advertises the async adapter as the canonical choice",
-      "explanation": "Two other tables in this same file were edited to drop a row, but the prose above them still counts the adapters inline, so the numbers no longer agree with the rows beneath them.\n\n_Note: This issue was flagged in a prior review but the code has since changed._",
-      "code": "      #   # =\u003e ActiveJob::QueueAdapters::AsyncAdapter",
-      "suggested_fix": null,
-      "language": "ruby",
-      "verifications": []
-    },
-    {
       "id": "quality-qual-3",
-      "category": "quality",
+      "category": "design",
       "file": "activejob/test/cases/test_case_test.rb",
       "line": 41,
       "startLine": null,
@@ -32,7 +17,7 @@
     },
     {
       "id": "errors-err-2",
-      "category": "errors",
+      "category": "error-handling",
       "file": "activejob/test/integration/queuing_test.rb",
       "line": 34,
       "startLine": null,
@@ -61,11 +46,24 @@
       "code": "      #   ActiveJob::QueueAdapters.lookup(:async)",
       "suggested_fix": null,
       "language": "ruby",
-      "verifications": []
+      "verifications": [],
+      "cross_refs": [
+        {
+          "id": "quality-qual-2",
+          "specialist": "quality",
+          "category": "design",
+          "severity": "Minor",
+          "confidence": 90,
+          "file": "activejob/lib/active_job/queue_adapters.rb",
+          "line": 130,
+          "rationale": "the lookup example in the doc comment now advertises the async adapter as the canonical choice",
+          "merged_by": "positional"
+        }
+      ]
     },
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "activejob/test/cases/adapter_test.rb",
       "line": 11,
       "startLine": null,
@@ -80,7 +78,7 @@
     },
     {
       "id": "errors-err-1",
-      "category": "errors",
+      "category": "error-handling",
       "file": "activejob/test/integration/queuing_test.rb",
       "line": 77,
       "startLine": null,
@@ -95,7 +93,7 @@
     },
     {
       "id": "quality-qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "railties/test/application/active_job_adapter_test.rb",
       "line": 42,
       "startLine": null,
@@ -116,21 +114,35 @@
     "quality",
     "security"
   ],
-  "timed_out_roles": [],
+  "budget_exhausted_roles": [],
   "missing_roles": [],
   "unreadable_roles": [],
   "invalid_findings": [],
+  "unknown_categories": [],
+  "potential_conflicts": [],
   "last_review_date": "2026-07-14T09:12:44Z",
-  "deduped": [],
+  "deduped": [
+    {
+      "id": "quality-qual-2",
+      "specialist": "quality",
+      "severity": "Minor",
+      "confidence": 90,
+      "file": "activejob/lib/active_job/queue_adapters.rb",
+      "line": 130,
+      "rationale": "the lookup example in the doc comment now advertises the async adapter as the canonical choice",
+      "merged_into": "security-sec-1",
+      "merged_by": "positional"
+    }
+  ],
   "accounting": {
     "ok": true,
     "loaded": 7,
     "accounted": 7,
     "by_bucket": {
-      "deduped": 0,
+      "deduped": 1,
       "dropped_by_gate": 0,
       "dropped_prior_review": 4,
-      "inline_eligible": 3,
+      "inline_eligible": 2,
       "invalid_findings": 0,
       "summary_only": 0
     },

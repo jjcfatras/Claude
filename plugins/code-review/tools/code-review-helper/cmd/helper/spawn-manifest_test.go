@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -144,7 +145,13 @@ func TestRunSpawnManifest_AllRolesRoundTrip(t *testing.T) {
 	if len(entries) != len(roles) {
 		t.Fatalf("len(entries)=%d, want %d", len(entries), len(roles))
 	}
-	for i, role := range roles {
+	// The manifest is emitted longest-running-role first rather than in roster
+	// order. Each Agent block costs the orchestrator token-streaming time before
+	// the next one is issued, so the role that defines the run's critical path
+	// must not be the last to start (on transcript db83dbda, `infra` spawned 5th
+	// and began 26s after the first specialist, then ran 73s past every peer).
+	wantOrder := []string{"infra", "security", "typescript", "quality", "errors", "react", "perf", "claude-md"}
+	for i, role := range wantOrder {
 		e := entries[i]
 		if e.SubagentType != "code-review:"+role {
 			t.Errorf("[%d] subagent_type=%q, want code-review:%s", i, e.SubagentType, role)
@@ -155,6 +162,37 @@ func TestRunSpawnManifest_AllRolesRoundTrip(t *testing.T) {
 		if !strings.Contains(e.Prompt, "/findings/"+role+".json") {
 			t.Errorf("[%d] prompt does not reference %s findings; got: %s", i, role, e.Prompt)
 		}
+	}
+
+	// Reordering must never drop or duplicate a roster entry.
+	seen := map[string]int{}
+	for _, e := range entries {
+		seen[strings.TrimPrefix(e.SubagentType, "code-review:")]++
+	}
+	for _, role := range roles {
+		if seen[role] != 1 {
+			t.Errorf("role %s appears %d times in the manifest, want exactly 1", role, seen[role])
+		}
+	}
+}
+
+// TestRunSpawnManifest_UnrankedRolesKeepRosterOrderLast guards the sort's
+// fallback: a role added to the roster but not to spawnRank must still be
+// emitted exactly once, after the ranked roles, in its original relative order.
+func TestRunSpawnManifest_UnrankedRolesKeepRosterOrderLast(t *testing.T) {
+	dir := t.TempDir()
+	rp := writeRoster(t, dir, "zeta-new", "perf", "alpha-new", "infra")
+	out := runSpawnManifestOK(t, dir, rp)
+
+	var entries []spawnEntry
+	readJSON(t, out, &entries)
+	var got []string
+	for _, e := range entries {
+		got = append(got, strings.TrimPrefix(e.SubagentType, "code-review:"))
+	}
+	want := []string{"infra", "perf", "zeta-new", "alpha-new"}
+	if !slices.Equal(got, want) {
+		t.Errorf("spawn order = %v, want %v", got, want)
 	}
 }
 
@@ -179,14 +217,67 @@ func TestRunSpawnManifest_AllPlaceholdersSubstituted(t *testing.T) {
 		"/tmp/pr-review-99-1/rubric.md",
 		"/tmp/pr-review-99-1/pr-99.diff",
 		"/tmp/pr-review-99-1/findings/security.json",
+		"BUNDLE_LINES",
+		// The one value a specialist may need before its first Read lands.
 		"HEAD_SHA: deadbeefcafef00d",
-		"REPO_ROOT: /work/repo",
-		"REVIEW_TMPDIR: /tmp/pr-review-99-1",
-		"PR: #99 in FS-Main/fairsquare",
 	}
 	for _, s := range wantSubstrings {
 		if !strings.Contains(p, s) {
 			t.Errorf("prompt missing %q; full prompt:\n%s", s, p)
+		}
+	}
+
+	// The orchestrator pays for this prompt once per roster entry, so anything
+	// identical across roles and runs belongs in agents/*.md (a system prompt,
+	// which is free) or in the bundle the specialist Reads seconds later. These
+	// substrings all moved out; if one reappears here, the per-block streaming
+	// cost that transcript db83dbda measured at ~6.4s comes back with it.
+	forbidden := map[string]string{
+		"REPO_ROOT: ":           "already in the bundle's `## Per-PR` header",
+		"REVIEW_TMPDIR: ":       "already in the bundle's `## Per-PR` header",
+		"PR: #":                 "already in the bundle's `## Per-PR` header",
+		"enforce-builtin-tools": "moved to agents/*.md `## Environment`",
+		"no-cd-chaining":        "moved to agents/*.md `## Environment`",
+		"ugrep":                 "moved to agents/*.md `## Environment`",
+		"suggested_fix":         "defined in the rubric the specialist Reads",
+		"startLine":             "defined in the rubric the specialist Reads",
+	}
+	for s, why := range forbidden {
+		if strings.Contains(p, s) {
+			t.Errorf("prompt re-introduced %q — %s; full prompt:\n%s", s, why, p)
+		}
+	}
+}
+
+// TestAgentFilesCarryEnvironmentNotes is the other half of the prompt trim: the
+// guardrail notes are only free if they actually reached every specialist's
+// system prompt. Without this, deleting them from the prompt template would
+// silently leave every role unwarned — which is how the `no-cd-chaining` denial
+// in transcript db83dbda happened in the first place.
+func TestAgentFilesCarryEnvironmentNotes(t *testing.T) {
+	agentsDir := filepath.Join("..", "..", "..", "..", "agents")
+	roles := []string{"security", "quality", "errors", "perf", "typescript", "react", "infra", "claude-md"}
+	wantNotes := []string{
+		"no-cd-chaining",
+		"enforce-builtin-tools",
+		"may not be at `HEAD_SHA`",
+		"ugrep in BRE mode",
+	}
+	for _, role := range roles {
+		path := filepath.Join(agentsDir, role+".md")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		body := string(raw)
+		if !strings.Contains(body, "\n## Environment\n") {
+			t.Errorf("%s.md has no `## Environment` section", role)
+			continue
+		}
+		for _, note := range wantNotes {
+			if !strings.Contains(body, note) {
+				t.Errorf("%s.md `## Environment` is missing the %q guardrail note", role, note)
+			}
 		}
 	}
 }

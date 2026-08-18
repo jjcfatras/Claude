@@ -72,8 +72,8 @@ func TestLoadDir_MixedRoles(t *testing.T) {
 	if res.Findings[0].Specialist == "" {
 		t.Fatalf("specialist field not populated by loader")
 	}
-	if len(res.TimedOutRoles) != 1 || res.TimedOutRoles[0] != "perf" {
-		t.Fatalf("expected perf in timed-out roles, got %v", res.TimedOutRoles)
+	if len(res.BudgetExhaustedRoles) != 1 || res.BudgetExhaustedRoles[0] != "perf" {
+		t.Fatalf("expected perf in budget-exhausted roles, got %v", res.BudgetExhaustedRoles)
 	}
 	if len(res.MissingRoles) != 1 || res.MissingRoles[0] != "react" {
 		t.Fatalf("expected react in missing roles, got %v", res.MissingRoles)

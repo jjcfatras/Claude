@@ -11,12 +11,30 @@ import (
 )
 
 type LoadResult struct {
-	Findings        []Finding
-	Specialists     []string
-	TimedOutRoles   []string
-	MissingRoles    []string         // roles in `expectedRoles` with no file present
-	UnreadableRoles []string         // file existed but couldn't parse — we still continue
-	InvalidFindings []InvalidFinding // findings that failed schema validation; skipped, not fatal
+	Findings    []Finding
+	Specialists []string
+	// BudgetExhaustedRoles holds roles that self-reported an incomplete scan.
+	// Named for what it can actually contain: no deadline is enforced, so a
+	// genuinely hung specialist never appears here — it writes nothing and shows
+	// up in MissingRoles instead. See ScanStatus.
+	BudgetExhaustedRoles []string
+	MissingRoles         []string         // roles in `expectedRoles` with no file present
+	UnreadableRoles      []string         // file existed but couldn't parse — we still continue
+	InvalidFindings      []InvalidFinding // findings that failed schema validation; skipped, not fatal
+	// UnknownCategories lists findings whose `category` is outside Categories.
+	// The finding is kept — an off-vocabulary label is not worth dropping real
+	// signal over — but it silently degrades dedup, since every same-defect test
+	// keyed on category stops matching for it. Surfacing it is what keeps the
+	// vocabulary from rotting back into the free-form field it used to be.
+	UnknownCategories []UnknownCategory
+}
+
+// UnknownCategory records a finding that used a category outside the closed
+// vocabulary. Reported, never fatal.
+type UnknownCategory struct {
+	Role     string `json:"role"`
+	ID       string `json:"id"`
+	Category string `json:"category"`
 }
 
 // InvalidFinding describes a finding rejected by validateFinding. The role's
@@ -33,8 +51,10 @@ type InvalidFinding struct {
 // files are tolerated; if expectedRoles is non-nil, missing entries are recorded
 // in MissingRoles so the caller can include them in its log line.
 //
-// A file with scan_status: "timed_out" is loaded normally (its findings count)
-// but its role is added to TimedOutRoles for the caller to mention.
+// A file declaring it stopped early (scan_status "budget_exhausted", or its
+// legacy spelling "timed_out") is loaded normally — its findings count — but its
+// role is added to BudgetExhaustedRoles for the caller to mention. See
+// ScanStatus: this is a self-report, never an enforced deadline.
 func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -61,8 +81,8 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 
 		seen[role] = true
 		res.Specialists = append(res.Specialists, role)
-		if rf.ScanStatus == ScanTimedOut {
-			res.TimedOutRoles = append(res.TimedOutRoles, role)
+		if rf.ScanStatus.StoppedEarly() {
+			res.BudgetExhaustedRoles = append(res.BudgetExhaustedRoles, role)
 		}
 
 		for i := range rf.Findings {
@@ -77,6 +97,13 @@ func LoadDir(dir string, expectedRoles []string) (*LoadResult, error) {
 			}
 			dropRedundantFix(&rf.Findings[i])
 			rf.Findings[i].ID = namespaceID(role, rf.Findings[i].ID)
+			if !KnownCategory(rf.Findings[i].Category) {
+				res.UnknownCategories = append(res.UnknownCategories, UnknownCategory{
+					Role:     role,
+					ID:       rf.Findings[i].ID,
+					Category: rf.Findings[i].Category,
+				})
+			}
 			res.Findings = append(res.Findings, rf.Findings[i])
 		}
 	}

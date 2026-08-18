@@ -15,6 +15,15 @@ After the bundle and rubric, Read the diff. Per the bundle's Source index, prefe
 
 If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
 
+## Environment
+
+Four guardrails in this harness, each of which cost a specialist a wasted turn on a prior run. They apply to every command you issue.
+
+- **Never prefix a command with `cd <dir> &&`** — nor `;`, `||`, a `( … )` subshell, or `env -C` — to avoid retyping a long `$REVIEW_TMPDIR` path. The `no-cd-chaining` guardrail hard-blocks it and the call never runs. Spell the absolute path out in each command instead. (This is also why the `tsc` step below runs from the repo cwd with `-p <dir>`.)
+- **Read line ranges with `Read` + `offset`/`limit`.** `sed`, `cat`, `head`, and `tail` against a file are hard-blocked by the `enforce-builtin-tools` guardrail.
+- **Never open a changed file through a live path under `<REPO_ROOT>`** — not via `Read`, `grep`, or an inline `python3`/`node` script. The working tree may not be at `HEAD_SHA`. Use the bundle's `## Source at HEAD` (whose `N|` gutter carries the HEAD line numbers your findings must cite) or `git show <HEAD_SHA>:<repo-relative-path>`.
+- **`grep` here is embedded ugrep in BRE mode**, where `^\+` is invalid syntax. Match added diff lines with `^[+]` and removed lines with `^[-]`.
+
 ## Calibration
 
 - The compiler catches most plain type errors under default `strict` settings — assume CI runs `tsc`. Your job is what `tsc` _doesn't_ catch: silent unsafe casts, broad inferred types, missing exhaustiveness, and types that mismatch runtime behavior. Once a finding is in that set, the rubric's "CI would catch it?" question and its linter/typechecker false-positive entry are **already answered — do not apply them twice.**
@@ -108,28 +117,29 @@ Applies to every finding whose `suggested_fix` is non-null and changes a **type-
 **3. Run one `tsc` over the directory** — a single Bash call covering every candidate finding:
 
 ```bash
-npx --no-install tsc -p "$REVIEW_TMPDIR/tscheck" || tsc -p "$REVIEW_TMPDIR/tscheck"
+npx --no-install tsc -p "$REVIEW_TMPDIR/tscheck"
 ```
 
+- **Run it bare — no `|| tsc` fallback.** `npx` exits non-zero both when it cannot resolve `tsc` **and** when `tsc` ran correctly and found a type error, so a chained fallback fires on your real diagnostics and buries them under a second, unrelated `command not found: tsc` (observed: a genuine `TS2591` masked by exit 127). One command, one meaning. If `npx --no-install` genuinely cannot resolve the project's `typescript`, take the last row of the table below rather than reaching for a global `tsc`, whose arbitrary version defeats the point of matching CI.
 - **Use `-p <dir>`, never a command-line file list.** TypeScript 6 hard-errors with `TS5112: tsconfig.json is present but will not be loaded if files are specified on commandline` whenever a `tsconfig.json` is in scope — which is every TS repo you will ever review. `-p` also picks up all repro files at once.
-- **Do not `cd` into the directory.** `cd <dir> && …` is blocked by the `no-cd-chaining` guardrail, and staying in the repo's cwd is what lets `npx --no-install` resolve the project's own `typescript` — so `satisfies`, `const` type params, and the project's TS version behave as CI will. Global `tsc` is the fallback.
+- **Do not `cd` into the directory.** `cd <dir> && …` is blocked by the `no-cd-chaining` guardrail, and staying in the repo's cwd is what lets `npx --no-install` resolve the project's own `typescript` — so `satisfies`, `const` type params, and the project's TS version behave as CI will. There is no global-`tsc` fallback by design (see above).
 - **`"target": "es2022"` pins the lib** so `Array.prototype.includes`, `Object.entries`, and `Promise` resolve regardless of the local `tsc`'s default target (TS 5 defaults to ES5 and would invent errors your fix never caused).
 - Exit status is `0` when clean, non-zero on error. Each error is prefixed `file(line,col)`, so one invocation attributes errors per finding — don't run `tsc` once per finding.
 
 **4. Act on the result:**
 
-| Result                                                                                | Action                                                                                                                                                                                                                                                                                         |
-| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Clean exit                                                                            | Emit the finding.                                                                                                                                                                                                                                                                              |
-| Error caused by the fix                                                               | Do not emit it as written. Repair the fix and re-run — or, if the error shows the flagged code is the only typing that satisfies both its contract and its consumers, **score the finding 0 and drop it.** A "safer" alternative that doesn't compile is evidence the current code is correct. |
-| Error caused by the repro (a project type stubbed wrong, a flag the project disables) | Fix the repro, not the finding. It doesn't count against the fix.                                                                                                                                                                                                                              |
-| Neither `tsc` resolves                                                                | Fall back to reasoning alone, and never claim in `explanation` that the fix typechecks.                                                                                                                                                                                                        |
+| Result                                                                                | Action                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clean exit                                                                            | Emit the finding.                                                                                                                                                                                                                                                                                       |
+| Error caused by the fix                                                               | Do not emit it as written. Repair the fix and re-run — or, if the error shows the flagged code is the only typing that satisfies both its contract and its consumers, **score the finding 0 and drop it.** A "safer" alternative that doesn't compile is evidence the current code is correct.          |
+| Error caused by the repro (a project type stubbed wrong, a flag the project disables) | Fix the repro, not the finding — then **re-run `tsc` and confirm a clean exit before you emit.** A patched repro you never re-ran is an unverified fix; a `Buffer`/`process`/`__dirname` error means the stub needs a `declare` line or a `Uint8Array`-style substitute, not that the finding is wrong. |
+| `npx --no-install tsc` cannot resolve the project's `typescript`                      | Fall back to reasoning alone, and never claim in `explanation` that the fix typechecks. Do not substitute a global `tsc`.                                                                                                                                                                               |
 
 ## Output
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/typescript.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "typescript"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "typescript"` and `scan_status` (`"complete"` or `"budget_exhausted"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

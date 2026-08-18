@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "err-1",
-      "category": "errors",
+      "category": "error-handling",
       "file": "modules/self-managed-node-group/variables.tf",
       "line": 234,
       "startLine": null,

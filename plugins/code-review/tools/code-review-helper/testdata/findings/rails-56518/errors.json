@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "err-1",
-      "category": "errors",
+      "category": "error-handling",
       "file": "activejob/test/integration/queuing_test.rb",
       "line": 77,
       "startLine": null,
@@ -19,7 +19,7 @@
     },
     {
       "id": "err-2",
-      "category": "errors",
+      "category": "error-handling",
       "file": "activejob/test/integration/queuing_test.rb",
       "line": 34,
       "startLine": null,

@@ -36,8 +36,24 @@ type ScanStatus string
 
 const (
 	ScanComplete ScanStatus = "complete"
+	// ScanBudgetExhausted is a specialist's SELF-REPORT that it stopped early.
+	// Nothing enforces a deadline anywhere in this plugin: no maxTurns on the
+	// agents, no orchestrator wall-clock check, and the spawn batch is issued in
+	// one message so the harness returns all specialists together. A specialist
+	// that hangs or dies therefore writes no file at all and lands in
+	// MissingRoles — meaning this status can only ever be set by a specialist
+	// that is still alive and writing. It is a budget signal, not a timeout.
+	ScanBudgetExhausted ScanStatus = "budget_exhausted"
+	// ScanTimedOut is the original spelling of ScanBudgetExhausted, accepted
+	// because agent prompts and older findings files still emit it. The name was
+	// misleading in exactly the way the comment above describes.
 	ScanTimedOut ScanStatus = "timed_out"
 )
+
+// StoppedEarly reports whether a role declared it did not finish its scan.
+func (s ScanStatus) StoppedEarly() bool {
+	return s == ScanBudgetExhausted || s == ScanTimedOut
+}
 
 type Verdict string
 

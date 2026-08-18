@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "cmd-1",
-      "category": "claude-md",
+      "category": "convention-adherence",
       "file": "modules/self-managed-node-group/README.md",
       "line": 170,
       "startLine": null,

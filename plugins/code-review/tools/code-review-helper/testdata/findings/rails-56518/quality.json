@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "qual-1",
-      "category": "quality",
+      "category": "design",
       "file": "railties/test/application/active_job_adapter_test.rb",
       "line": 42,
       "startLine": null,
@@ -19,7 +19,7 @@
     },
     {
       "id": "qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "activejob/lib/active_job/queue_adapters.rb",
       "line": 130,
       "startLine": null,
@@ -34,7 +34,7 @@
     },
     {
       "id": "qual-3",
-      "category": "quality",
+      "category": "design",
       "file": "activejob/test/cases/test_case_test.rb",
       "line": 41,
       "startLine": null,

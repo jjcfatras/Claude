@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "ts-1",
-      "category": "typescript",
+      "category": "type-safety",
       "file": "packages/next/src/client/route-params.ts",
       "line": 55,
       "startLine": null,

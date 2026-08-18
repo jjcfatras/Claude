@@ -158,8 +158,10 @@ func TestE2E_DiffSubcommand(t *testing.T) {
 // TestE2E_FinalizeSubsetFilter pins the --include-finding-ids behavior:
 // payload reflects the post-filter subset while consolidated.json remains the
 // pre-filter audit log. Uses the k8s-138754 fixture; IDs are role-namespaced at
-// load, so the classified findings are security-sec-1, errors-err-2,
-// quality-qual-2.
+// load, so the classified findings are errors-err-1, errors-err-2,
+// quality-qual-2. (security-sec-1 is not among them: it shares a cluster with
+// the more severe errors-err-1 and folds into it as a CrossRef, since positional
+// dedup now selects the most severe member as representative.)
 func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
@@ -203,7 +205,7 @@ func TestE2E_FinalizeSubsetFilter(t *testing.T) {
 		// Pre-filter audit log still carries every classified finding.
 		preFilter := append([]string{}, idsOf(cons.InlineEligible)...)
 		preFilter = append(preFilter, idsOf(cons.SummaryOnly)...)
-		for _, want := range []string{"security-sec-1", "errors-err-2", "quality-qual-2"} {
+		for _, want := range []string{"errors-err-1", "errors-err-2", "quality-qual-2"} {
 			if !slices.Contains(preFilter, want) {
 				t.Errorf("consolidated.json pre-filter buckets missing %s; got %v", want, preFilter)
 			}

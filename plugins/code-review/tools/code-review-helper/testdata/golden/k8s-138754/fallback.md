@@ -6,7 +6,7 @@ Inline comment posting failed. All issues listed below.
 
 🟡 **Medium** (Confidence: 60/100) - nested condition in batchStateCompatible adds branching that is hard to follow
 
-<!-- cr-finding id="2fb28056889b" snippet64="aWYgIWIuZ2VuZXJpY1dvcmtsb2FkRW5hYmxlZCB8fCBjeWNsZUNvdW50ICE9IGIubGFzdEN5Y2xlLmN5Y2xlQ291bnQgewogICAgYi5sb2dVbnVzYWJsZVN0YXRlKGxvZ2dlciwgY3ljbGVDb3VudCwgbWV0cmljcy5CYXRjaEZsdXNoUG9kU2tpcHBlZCkKICAgIHJldHVybiBmYWxzZQp9" -->
+<!-- cr-finding id="fbf987416e8f" snippet64="aWYgIWIuZ2VuZXJpY1dvcmtsb2FkRW5hYmxlZCB8fCBjeWNsZUNvdW50ICE9IGIubGFzdEN5Y2xlLmN5Y2xlQ291bnQgewogICAgYi5sb2dVbnVzYWJsZVN0YXRlKGxvZ2dlciwgY3ljbGVDb3VudCwgbWV0cmljcy5CYXRjaEZsdXNoUG9kU2tpcHBlZCkKICAgIHJldHVybiBmYWxzZQp9" -->
 
 **Issue & impact:** The new condition `if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount` collapses two distinct error paths into one expression. A cycleCount mismatch with GenericWorkload disabled and a cycleCount mismatch with GenericWorkload enabled now share the same return path, making future regressions harder to diagnose.
 
@@ -21,11 +21,11 @@ if !b.genericWorkloadEnabled || cycleCount != b.lastCycle.cycleCount {
 
 **pkg/scheduler/framework/runtime/framework.go:358**
 
-🟡 **Medium** (Confidence: 80/100) - feature-gate value captured at construction time without re-check
+🔴 **Critical** (Confidence: 75/100) - duplicate of security finding at the same call site
 
-<!-- cr-finding id="8059bad464de" snippet64="Zi5iYXRjaCA9IG5ld09wcG9ydHVuaXN0aWNCYXRjaChmLCB1dGlsZmVhdHVyZS5EZWZhdWx0RmVhdHVyZUdhdGUuRW5hYmxlZChmZWF0dXJlcy5HZW5lcmljV29ya2xvYWQpKQ==" -->
+<!-- cr-finding id="6fd674c3bd2a" snippet64="Zi5iYXRjaCA9IG5ld09wcG9ydHVuaXN0aWNCYXRjaChmLCB1dGlsZmVhdHVyZS5EZWZhdWx0RmVhdHVyZUdhdGUuRW5hYmxlZChmZWF0dXJlcy5HZW5lcmljV29ya2xvYWQpKQ==" -->
 
-**Issue & impact:** newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.
+**Issue & impact:** Same call site as the security finding — race-condition risk if GenericWorkload feature flag flips during scheduler runtime since newOpportunisticBatch caches the value once.
 
 **Code:**
 
@@ -37,7 +37,7 @@ f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(featur
 
 🟡 **Medium** (Confidence: 70/100) - out-of-diff defect referenced from the diff context
 
-<!-- cr-finding id="0eaf91fa1f9c" snippet64="ZnVuYyAoYiAqT3Bwb3J0dW5pc3RpY0JhdGNoKSBiYXRjaFN0YXRlQ29tcGF0aWJsZShjdHggY29udGV4dC5Db250ZXh0LCBwb2QgKnYxLlBvZCkgew==" -->
+<!-- cr-finding id="b616f1ffe29b" snippet64="ZnVuYyAoYiAqT3Bwb3J0dW5pc3RpY0JhdGNoKSBiYXRjaFN0YXRlQ29tcGF0aWJsZShjdHggY29udGV4dC5Db250ZXh0LCBwb2QgKnYxLlBvZCkgew==" -->
 
 **Issue & impact:** The function batchStateCompatible (line 200, not in this diff) has no test that exercises the new GenericWorkload code path with a NIL lastCycle. Coverage gap should be filled in this PR.
 

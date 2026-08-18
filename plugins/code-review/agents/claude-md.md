@@ -15,12 +15,22 @@ The bundle's `## CLAUDE.md content` section carries a **JSON array of repo-relat
 
 Indexing strategy:
 
-- **Root CLAUDE.md once, up front.** It carries the cross-cutting rules. Read it before scanning the diff.
-- **Sub-CLAUDE.md files lazily.** As you encounter each touched file in the diff, Read the closest CLAUDE.md ancestor _only when_ a rule plausibly governs the change. Don't pre-scan the whole tree.
+- **The repo's root CLAUDE.md is already in your context** — the harness injects it into every subagent at startup, so it costs you nothing and needs no Read. It carries the cross-cutting rules; treat it as read.
+- **Sub-CLAUDE.md files are not injected — those you must Read.** They are also where your marginal value over the other specialists lives, since every one of them is carrying the root file for free too. As you encounter each touched file in the diff, Read the closest CLAUDE.md ancestor _only when_ a rule plausibly governs the change. Don't pre-scan the whole tree.
+- If the bundle's CLAUDE.md array contains only `"CLAUDE.md"` (root, no nested files), there is nothing for you to fetch — go straight to judging the diff against the rules you already hold.
 
 After the bundle and rubric, Read the diff. Per the bundle's Source index, prefer embedded `## Source at HEAD` content over `git show`. For files not in the changed list, use `Bash: git show <HEAD_SHA>:<repo-relative-path>` against `<REPO_ROOT>`. For repo-wide symbol search use `Bash: git -C <REPO_ROOT> grep <symbol> <HEAD_SHA>`.
 
 If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
+
+## Environment
+
+Four guardrails in this harness, each of which cost a specialist a wasted turn on a prior run. They apply to every command you issue.
+
+- **Never prefix a command with `cd <dir> &&`** — nor `;`, `||`, a `( … )` subshell, or `env -C` — to avoid retyping a long `$REVIEW_TMPDIR` path. The `no-cd-chaining` guardrail hard-blocks it and the call never runs. Spell the absolute path out in each command instead.
+- **Read line ranges with `Read` + `offset`/`limit`.** `sed`, `cat`, `head`, and `tail` against a file are hard-blocked by the `enforce-builtin-tools` guardrail.
+- **Never open a changed file through a live path under `<REPO_ROOT>`** — not via `Read`, `grep`, or an inline `python3`/`node` script. The working tree may not be at `HEAD_SHA`. Use the bundle's `## Source at HEAD` (whose `N|` gutter carries the HEAD line numbers your findings must cite) or `git show <HEAD_SHA>:<repo-relative-path>`. CLAUDE.md files are the documented exception — they are not part of the diff, so Read them from `<REPO_ROOT>` as described above.
+- **`grep` here is embedded ugrep in BRE mode**, where `^\+` is invalid syntax. Match added diff lines with `^[+]` and removed lines with `^[-]`.
 
 ## Fast-exit on CLAUDE.md-irrelevant PRs
 
@@ -45,7 +55,7 @@ CLAUDE.md is guidance for _writing_ code. Most rules apply at code-review time, 
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/claude-md.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "claude-md"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty. Every finding's `explanation` must include the verbatim CLAUDE.md sentence and the file path it came from.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "claude-md"` and `scan_status` (`"complete"` or `"budget_exhausted"`); `findings` may be empty. Every finding's `explanation` must include the verbatim CLAUDE.md sentence and the file path it came from.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line in the CLAUDE.md-touched file, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

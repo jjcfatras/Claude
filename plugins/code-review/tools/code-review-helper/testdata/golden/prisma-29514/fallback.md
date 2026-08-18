@@ -6,7 +6,7 @@ Inline comment posting failed. All issues listed below.
 
 🟡 **Medium** (Confidence: 70/100) - near-diff finding to test snap path
 
-<!-- cr-finding id="0492d1ff419c" snippet64="InBucG0iOiB7" -->
+<!-- cr-finding id="469f24cfb766" snippet64="InBucG0iOiB7" -->
 
 **Issue & impact:** _Note: This comment was placed on the nearest diff line; the issue actually occurs on line 160._
 
@@ -36,7 +36,7 @@ The pnpm.overrides block doesn't surface when an override fails to apply. If a t
 
 🟡 **Medium** (Confidence: 80/100) - multi-line block needs a shared rationale comment
 
-<!-- cr-finding id="488fc0a60023" snippet64="Im92ZXJyaWRlcyI6IHsKICAiZm9ybS1kYXRhIjogIj49NC4wLjQiLAogICJob25vIjogIj49NC4xMi4xNCIsCiAgLi4uCn0=" -->
+<!-- cr-finding id="71e353db0d94" snippet64="Im92ZXJyaWRlcyI6IHsKICAiZm9ybS1kYXRhIjogIj49NC4wLjQiLAogICJob25vIjogIj49NC4xMi4xNCIsCiAgLi4uCn0=" -->
 
 **Issue & impact:** The full overrides block grew from 7 to 10 entries this PR. Without inline rationale comments it will be hard for future contributors to know which overrides exist for security versus compatibility.
 
@@ -68,7 +68,7 @@ The pnpm.overrides block doesn't surface when an override fails to apply. If a t
 
 📝 **Minor** (Confidence: 80/100) - uuid major bump increases bundle size
 
-<!-- cr-finding id="134220e1d87d" snippet64="ICAgIHZlcnNpb246IDE0LjAuMA==" -->
+<!-- cr-finding id="e359f7dd693a" snippet64="ICAgIHZlcnNpb246IDE0LjAuMA==" -->
 
 **Issue & impact:** uuid 14.0.0 ships an additional crypto-backed v7 implementation; the import surface in client-engine-runtime should be checked to confirm tree-shaking still drops the unused versions.
 

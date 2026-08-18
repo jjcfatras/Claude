@@ -23,9 +23,9 @@ func TestSemantic_FileInExplanation(t *testing.T) {
 }
 
 func TestSemantic_FileMatchSkippedBelowMedium(t *testing.T) {
-	findingA := mkFinding("a", "quality", "quality", "x.ts", 10, 50, findings.SeverityMinor,
+	findingA := mkFinding("a", "quality", "design", "x.ts", 10, 50, findings.SeverityMinor,
 		"the file y.ts is mentioned here", "")
-	findingB := mkFinding("b", "claude-md", "claude-md", "y.ts", 5, 50, findings.SeverityMinor,
+	findingB := mkFinding("b", "claude-md", "convention-adherence", "y.ts", 5, 50, findings.SeverityMinor,
 		"unrelated", "")
 	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return true })
 	if len(out) != 2 {
@@ -37,7 +37,7 @@ func TestSemantic_RelatedCategorySubstring(t *testing.T) {
 	shared := strings.Repeat("X", 60) + " — same defect text appears here"
 	findingA := mkFinding("a", "security", "security", "x.ts", 10, 70, findings.SeverityMedium,
 		"prefix "+shared+" suffix A", "")
-	findingB := mkFinding("b", "errors", "errors", "y.ts", 20, 65, findings.SeverityMedium,
+	findingB := mkFinding("b", "infra", "config", "y.ts", 20, 65, findings.SeverityMedium,
 		"prefix B "+shared+" end", "")
 	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return false })
 	if len(out) != 1 {
@@ -49,7 +49,7 @@ func TestSemantic_UnrelatedCategorySubstring(t *testing.T) {
 	shared := strings.Repeat("X", 80)
 	findingA := mkFinding("a", "security", "security", "x.ts", 10, 70, findings.SeverityMedium,
 		shared, "")
-	findingB := mkFinding("b", "perf", "perf", "y.ts", 20, 65, findings.SeverityMedium,
+	findingB := mkFinding("b", "perf", "performance", "y.ts", 20, 65, findings.SeverityMedium,
 		shared, "")
 	out := Semantic([]findings.Finding{findingA, findingB}, func(string) bool { return false })
 	if len(out) != 2 {
@@ -95,11 +95,11 @@ func TestSemantic_NoDuplicateEmit(t *testing.T) {
 // appeared in err-2's polluted Explanation. Both findings live on the same file,
 // so the match was a false positive driven by the prior pass's bookkeeping.
 func TestPositionalThenSemantic_NoFilePathCascade(t *testing.T) {
-	errFinding := mkFinding("err", "errors", "errors", "pkg/batch.go", 100, 70, findings.SeverityMedium,
+	errFinding := mkFinding("err", "errors", "error-handling", "pkg/batch.go", 100, 70, findings.SeverityMedium,
 		"the new branch shares the same return path as the old one", "")
-	perfFinding := mkFinding("perf", "perf", "perf", "pkg/batch.go", 101, 55, findings.SeverityMinor,
+	perfFinding := mkFinding("perf", "perf", "performance", "pkg/batch.go", 101, 55, findings.SeverityMinor,
 		"extra branch on hot path", "")
-	qualFinding := mkFinding("qual", "quality", "quality", "pkg/batch.go", 200, 70, findings.SeverityMedium,
+	qualFinding := mkFinding("qual", "quality", "testing", "pkg/batch.go", 200, 70, findings.SeverityMedium,
 		"out-of-diff coverage gap on test side", "")
 
 	step1 := Positional([]findings.Finding{errFinding, perfFinding, qualFinding})

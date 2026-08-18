@@ -15,9 +15,20 @@ After the bundle and rubric, Read the diff. Per the bundle's Source index, prefe
 
 If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
 
+## Environment
+
+Four guardrails in this harness, each of which cost a specialist a wasted turn on a prior run. They apply to every command you issue.
+
+- **Never prefix a command with `cd <dir> &&`** — nor `;`, `||`, a `( … )` subshell, or `env -C` — to avoid retyping a long `$REVIEW_TMPDIR` path. The `no-cd-chaining` guardrail hard-blocks it and the call never runs. Spell the absolute path out in each command instead.
+- **Read line ranges with `Read` + `offset`/`limit`.** `sed`, `cat`, `head`, and `tail` against a file are hard-blocked by the `enforce-builtin-tools` guardrail.
+- **Never open a changed file through a live path under `<REPO_ROOT>`** — not via `Read`, `grep`, or an inline `python3`/`node` script. The working tree may not be at `HEAD_SHA`. Use the bundle's `## Source at HEAD` (whose `N|` gutter carries the HEAD line numbers your findings must cite) or `git show <HEAD_SHA>:<repo-relative-path>`.
+- **`grep` here is embedded ugrep in BRE mode**, where `^\+` is invalid syntax. Match added diff lines with `^[+]` and removed lines with `^[-]`.
+
 ## Fast-exit on perf-irrelevant PRs
 
 After reading the bundle and the diff, judge whether the changed files plausibly contain perf-relevant code: database calls, network I/O, loops/iterations over user-controlled or unbounded inputs, service-layer code with N×M risk, bundle-affecting imports, or memory-lifecycle code (listeners, timers, subscriptions, refs). On a PR where the diff is dominated by error-handling edits, controller routing, type/interface adjustments, test files, configuration, or documentation — and _none_ of the perf shapes above appear — write a findings file with `findings: []` and `scan_status: "complete"` immediately, rather than running a full per-file Read pass.
+
+**"After reading the diff" is a precondition, not a formality — the changed-files list alone is not enough to exit on.** Scanning extensions and concluding "all infrastructure, nothing for me" reaches the right answer on a PR that really is 100% config and the wrong one on a PR that is 34 config files plus two service files, which produces exactly the same first impression. Before exiting, read the hunks of every changed file that is _not_ obviously config/docs/tests — use the bundle's `## Diff map` to jump straight to them — and let the exit rest on what those hunks contain. If the diff genuinely has no non-config file, say so in the findings file's own terms rather than asserting anything about code you did not open: a claim like "no unbounded loops appear anywhere in the diff" is not one you can make from a file listing.
 
 ## Calibration
 
@@ -69,7 +80,7 @@ Verify by reading the surrounding loop and the loop's call site.
 
 Write your findings as JSON to `$REVIEW_TMPDIR/findings/perf.json` using the Write tool. `$REVIEW_TMPDIR` appears in the bundle's Per-PR header. The orchestrator pre-creates `findings/` — do not `mkdir -p` or pre-test it.
 
-The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "perf"` and `scan_status` (`"complete"` or `"timed_out"`); `findings` may be empty.
+The findings schema is defined in the rubric at `RUBRIC_PATH` — follow it field-for-field. Set `specialist: "perf"` and `scan_status` (`"complete"` or `"budget_exhausted"`); `findings` may be empty.
 
 **Never emit `line: 0` (or omit `line` — JSON parses missing-int as `0`).** The helper treats a non-positive `line` as a schema violation and silently drops the finding. If you cannot identify the exact line, locate it via the bundle's `## Source at HEAD` or `git show <HEAD_SHA>:<path>` (the working tree may not be at HEAD), or omit the finding entirely.
 

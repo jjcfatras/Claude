@@ -2,7 +2,7 @@
   "inline_eligible": [
     {
       "id": "errors-err-2",
-      "category": "errors",
+      "category": "error-handling",
       "file": "pkg/scheduler/framework/runtime/batch.go",
       "line": 174,
       "startLine": null,
@@ -18,7 +18,7 @@
         {
           "id": "perf-1",
           "specialist": "perf",
-          "category": "perf",
+          "category": "performance",
           "severity": "Minor",
           "confidence": 55,
           "file": "pkg/scheduler/framework/runtime/batch.go",
@@ -29,29 +29,29 @@
       ]
     },
     {
-      "id": "security-sec-1",
-      "category": "security",
+      "id": "errors-err-1",
+      "category": "error-handling",
       "file": "pkg/scheduler/framework/runtime/framework.go",
       "line": 358,
       "startLine": null,
-      "confidence": 80,
-      "severity": "Medium",
-      "rationale": "feature-gate value captured at construction time without re-check",
-      "explanation": "newOpportunisticBatch captures DefaultFeatureGate.Enabled(features.GenericWorkload) once and stores it on the struct. If the feature gate is mutated at runtime, batchStateCompatible will keep using the stale value, which can cause inconsistent scheduling decisions across pod cycles.",
+      "confidence": 75,
+      "severity": "Critical",
+      "rationale": "duplicate of security finding at the same call site",
+      "explanation": "Same call site as the security finding — race-condition risk if GenericWorkload feature flag flips during scheduler runtime since newOpportunisticBatch caches the value once.",
       "code": "f.batch = newOpportunisticBatch(f, utilfeature.DefaultFeatureGate.Enabled(features.GenericWorkload))",
       "suggested_fix": null,
       "language": "go",
       "verifications": [],
       "cross_refs": [
         {
-          "id": "errors-err-1",
-          "specialist": "errors",
-          "category": "errors",
-          "severity": "Critical",
-          "confidence": 75,
+          "id": "security-sec-1",
+          "specialist": "security",
+          "category": "security",
+          "severity": "Medium",
+          "confidence": 80,
           "file": "pkg/scheduler/framework/runtime/framework.go",
           "line": 358,
-          "rationale": "duplicate of security finding at the same call site",
+          "rationale": "feature-gate value captured at construction time without re-check",
           "merged_by": "positional"
         }
       ]
@@ -60,7 +60,7 @@
   "summary_only": [
     {
       "id": "quality-qual-2",
-      "category": "quality",
+      "category": "design",
       "file": "pkg/scheduler/framework/runtime/batch.go",
       "line": 200,
       "startLine": null,
@@ -91,23 +91,14 @@
     "quality",
     "security"
   ],
-  "timed_out_roles": [],
+  "budget_exhausted_roles": [],
   "missing_roles": [],
   "unreadable_roles": [],
   "invalid_findings": [],
+  "unknown_categories": [],
+  "potential_conflicts": [],
   "last_review_date": null,
   "deduped": [
-    {
-      "id": "errors-err-1",
-      "specialist": "errors",
-      "severity": "Critical",
-      "confidence": 75,
-      "file": "pkg/scheduler/framework/runtime/framework.go",
-      "line": 358,
-      "rationale": "duplicate of security finding at the same call site",
-      "merged_into": "security-sec-1",
-      "merged_by": "positional"
-    },
     {
       "id": "perf-1",
       "specialist": "perf",
@@ -117,6 +108,17 @@
       "line": 175,
       "rationale": "extra branch on the hot path",
       "merged_into": "errors-err-2",
+      "merged_by": "positional"
+    },
+    {
+      "id": "security-sec-1",
+      "specialist": "security",
+      "severity": "Medium",
+      "confidence": 80,
+      "file": "pkg/scheduler/framework/runtime/framework.go",
+      "line": 358,
+      "rationale": "feature-gate value captured at construction time without re-check",
+      "merged_into": "errors-err-1",
       "merged_by": "positional"
     }
   ],

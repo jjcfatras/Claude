@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "activejob/test/cases/adapter_test.rb",
       "line": 11,
       "startLine": null,

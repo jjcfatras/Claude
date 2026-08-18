@@ -4,7 +4,7 @@
   "findings": [
     {
       "id": "perf-1",
-      "category": "perf",
+      "category": "performance",
       "file": "node_groups.tf",
       "line": 509,
       "startLine": null,
