@@ -1,7 +1,7 @@
 ---
 name: commit-push
 description: Commit changes and push to the current branch's origin; refresh an open PR's description if one exists. Use when the user asks to "commit and push", "push this up", or wants changes committed and the remote updated without opening a new PR.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*), AskUserQuestion
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*), AskUserQuestion
 model: sonnet
 effort: low
 ---
@@ -31,7 +31,7 @@ Commit the changes above and push them to the current branch's `origin`.
    Co-Authored-By: Claude <noreply@anthropic.com>
    ```
 
-4. **Push.** If the branch already has an upstream, run `git push`. If it does not (you just created it, or it has never been pushed), run `git push -u origin HEAD` to set the upstream. If the push is rejected (non-fast-forward), **stop and report** — do not force-push.
+4. **Push.** Run `git push -u origin HEAD` — this pushes the current branch to `origin` under the same name and sets the upstream, whether or not one was already configured. If the push is rejected (non-fast-forward), **stop and report** — do not force-push.
 
 5. **Refresh an open PR (if one exists).** Check whether the current branch has an open PR: run `gh pr view --json number,state,url,body` (with no argument it targets the current branch). If the command errors or `state` is not `OPEN`, there is no open PR — skip to the final report and do **not** create one. If an open PR is found:
    - Inspect **all** commits on the branch relative to the default branch (`git log <default>..HEAD --oneline`), not just the latest, so the description reflects the whole branch as it now stands.

@@ -7,7 +7,7 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, and merge",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "category": "git"
     },
     {

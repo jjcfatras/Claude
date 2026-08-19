@@ -1,7 +1,7 @@
 ---
 name: commit-push-pr
 description: Commit, push, and open a pull request. Use when the user asks to "open a PR", "commit and create a pull request", or wants changes committed, pushed, and a new PR opened.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), AskUserQuestion
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), AskUserQuestion
 model: sonnet
 effort: low
 ---
@@ -31,7 +31,7 @@ Commit the changes above, push them, and open a pull request. Requires the GitHu
    Co-Authored-By: Claude <noreply@anthropic.com>
    ```
 
-4. **Push.** `git push -u origin HEAD` if the branch has no upstream, otherwise `git push`. If rejected (non-fast-forward), stop and report — do not force-push.
+4. **Push.** Run `git push -u origin HEAD` — pushes the current branch to `origin` under the same name and sets the upstream whether or not one existed. If rejected (non-fast-forward), stop and report — do not force-push.
 
 5. **Open the PR.** Inspect **all** commits on this branch relative to the default branch (`git log <default>..HEAD --oneline`), not just the latest, so the description covers the whole branch. Create the PR with `gh pr create`, writing a body of the form:
 
