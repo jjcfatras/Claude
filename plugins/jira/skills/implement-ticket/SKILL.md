@@ -5,7 +5,7 @@ description: Take a JIRA ticket by key, understand its intent, verify every clai
 argument-hint: <JIRA-key> (e.g. PROJ-1234)
 model: opus
 effort: xhigh
-allowed-tools: Bash, Read, Write, Grep, Glob, Edit, Agent, Skill, AskUserQuestion, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+allowed-tools: Bash, Read, Write, Grep, Glob, Edit, Agent, Workflow, Skill, AskUserQuestion, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 Take a JIRA ticket and carry it all the way to working code — but with a healthy skepticism that separates this from "just do what the ticket says." Tickets are written by people who may be looking at stale code, half-remembering how a system works, or proposing a fix they haven't validated. So before you build anything, you find out what the ticket is _really_ asking for, check whether its claims about the codebase are actually true, and design your own approach rather than reflexively implementing whatever solution the ticket sketched. The whole point is to catch a wrong premise on day one instead of discovering it three commits deep.
@@ -63,7 +63,13 @@ Classify each claim, and require concrete `file:line` evidence for the verdict:
 - **Partial** — true in some paths, not others (e.g. validated on the API route but not the batch importer).
 - **Unverifiable** — depends on runtime/config/external state you can't inspect statically. Say so rather than guessing.
 
-When there are many independent claims, spawn parallel investigator subagents (one `Agent` message, several calls) so verification doesn't serialize — give each a cluster of claims and a findings file to write to, then merge their verdicts. When there are only a few, just verify inline.
+Scale how you verify to how many claims there are — don't reach for machinery a three-claim ticket doesn't need:
+
+- **A few claims** — verify inline.
+- **Several** — spawn parallel investigator subagents (one `Agent` message, several calls) so verification doesn't serialize; give each a cluster of claims and a findings file to write to, then merge their verdicts.
+- **Many independent claims** (roughly 8+, or enough that verifying them inline would flood your context) — call the **Workflow** tool. The user invoking this skill _is_ the explicit opt-in Workflow requires, so you don't need to ask for it again. Shape the script as a `pipeline()` over claim **clusters** — one `agent()` per cluster, not per claim, so the fan-out stays coarse (keep it under ~15 agents) — and force structured returns with a `schema` of `{ claim, verdict, evidence }`, where `verdict` is an enum of `confirmed | false | partial | unverifiable`. Getting verdict objects back instead of prose you have to re-parse is the whole reason to reach for Workflow here.
+
+**A workflow returns verdicts and nothing else.** Judging whether a false claim is load-bearing, and the `AskUserQuestion` gate below, stay in this session — a workflow subagent runs in a background runtime and can't prompt the user, so a gate moved inside one is a gate silently skipped.
 
 **If a false claim knocks out the ticket's premise, stop here.** If the ticket asks you to "add the missing validation" and the validation already exists, building anything is wrong — surface the finding and show the user the evidence, then call the **AskUserQuestion** tool (`multiSelect: false`, header `Premise`) with three options:
 
@@ -121,6 +127,8 @@ Then go hunk by hunk and name the **behavior** each one introduces or changes, b
 - **Covered** — name the test that pins it. A test that merely _executes_ the changed line doesn't count; it has to assert the new behavior, such that reverting your change turns that test red.
 - **Uncovered** — the behavior changed and no test would notice if it broke. This is the phase's whole reason to exist.
 - **Not meaningfully testable** — config, docs, copy, dependency bumps, pure formatting. Say which and move on; a forced test here is theater (see `${CLAUDE_PLUGIN_ROOT}/references/red-green-tdd.md`).
+
+When the diff spans enough files that auditing every hunk inline would flood your context, run **the audit** through the **Workflow** tool: a `pipeline()` over the changed files, one `agent()` per file, with a `schema` of `{ file, behavior, verdict, coveringTest }` where `verdict` is the enum above. For a handful of files, skip the workflow and audit inline. **The workflow audits only** — writing the retrofit tests, running the mutation check, and the `AskUserQuestion` gate below all stay in this session, for two reasons: parallel agents editing the same working tree collide, and a background subagent can't prompt the user.
 
 If the project has its own coverage command (a `test:coverage` script, `go test -cover`, `pytest --cov`), run it as a **hint about what's definitely uncovered** — but a hunk it reports as covered can still be covered only by a test that asserts nothing about your change. Trust the per-behavior audit over the percentage.
 

@@ -5,7 +5,7 @@ argument-hint: <pr-number> [--auto|--dry-run]
 disable-model-invocation: true
 model: opus
 effort: medium
-allowed-tools: Bash, Bash(gh:*), Bash(*/code-review-helper:*), Read, Write, Grep, Glob, Agent, AskUserQuestion
+allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
 ---
 
 # /code-review — orchestrate a multi-specialist PR review
@@ -321,12 +321,12 @@ If tier 3 also fails, surface the full error and stop. Report `posted via tier 3
 
 Cleanup always runs — after step [5/5] completes normally, after the user chose `Skip` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Two exceptions, and only two: skip it if `$TMP` is unset (the stop happened before step 0 created the scratch dir), and **skip the `rm -rf` if [4/5] reported an accounting mismatch** — there the raw findings are the only surviving copy of an orphaned finding, so deleting them destroys the evidence. Still delete the git ref in that case.
 
-Defensive check: only `rm -rf` paths whose basename starts with `pr-review-` (the prefix we created in step 0):
+Defensive check: only `rm -rf` a path that is a `pr-review-*` directory **directly under the temp root** — matching the full path, not just its basename, so a `pr-review-*` component anywhere else on disk can't satisfy the guard. The pattern re-expands the same `${TMPDIR:-/tmp}` used to build `$TMP` in step 0, so it matches by construction whether or not `TMPDIR` carries a trailing slash:
 
 ```bash
-case "$(basename "$TMP")" in
-  pr-review-*) rm -rf "$TMP" ;;
-  *) echo "refusing to remove $TMP (unexpected prefix)" ;;
+case "$TMP" in
+  "${TMPDIR:-/tmp}"/pr-review-*) rm -rf "$TMP" ;;
+  *) echo "refusing to remove $TMP (not a pr-review dir under ${TMPDIR:-/tmp})" ;;
 esac
 ```
 

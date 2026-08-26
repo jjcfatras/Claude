@@ -1025,6 +1025,62 @@ func parseSidechain(jsonlPath string, sidechainDir string, byAgentType map[strin
 	return sc, nil
 }
 
+// rollUpSidechainStats folds every attached sidechain's failure signal into the
+// session's top-level counters.
+//
+// Without this, `parseSession` stats only the main transcript, so a hook denial
+// or API error inside a subagent reported 0 at the top level while the real
+// signal sat in `agent_spawns[].sidechain.stats` — several levels deep in a
+// 260 KB JSON that a lead skims. That is the worst shape a bug can take in an
+// auditing tool: silent, and confidence-inspiring. `references/jsonl-schema.md`
+// promised the inclusive behaviour long before the code did.
+//
+// Only the failure/denial/error counters and SidechainToolCalls become
+// inclusive. TotalToolCalls, MainThreadToolCalls, ToolCallsByName, and every
+// turn-duration field stay main-thread-only on purpose: redefining them would
+// silently change the basis of numbers that existing findings docs already
+// quote, and "how many calls did the lead itself make" is a question worth
+// keeping answerable. ToolFailureRate is recomputed over the inclusive base so
+// it stays a rate over the calls it now counts.
+func rollUpSidechainStats(sess *Session) {
+	if sess == nil || sess.Events == nil {
+		return
+	}
+	s := &sess.Stats
+	var walk func(scs []*Sidechain)
+	walk = func(scs []*Sidechain) {
+		for _, sc := range scs {
+			if sc == nil {
+				continue
+			}
+			s.SidechainToolCalls += sc.Stats.TotalToolCalls
+			s.ToolFailureCount += sc.Stats.ToolFailureCount
+			s.PermissionDenialCount += sc.Stats.PermissionDenialCount
+			s.HookErrorCount += sc.Stats.HookErrorCount
+			s.APIErrorCount += sc.Stats.APIErrorCount
+			for tool, n := range sc.Stats.PermissionDenialsByTool {
+				if s.PermissionDenialsByTool == nil {
+					s.PermissionDenialsByTool = map[string]int{}
+				}
+				s.PermissionDenialsByTool[tool] += n
+			}
+			// A subagent can spawn its own subagents; those nest here.
+			if sc.Events != nil {
+				for i := range sc.Events.AgentSpawns {
+					walk(sc.Events.AgentSpawns[i].Sidechains)
+				}
+			}
+		}
+	}
+	for i := range sess.Events.AgentSpawns {
+		walk(sess.Events.AgentSpawns[i].Sidechains)
+	}
+
+	if base := s.MainThreadToolCalls + s.SidechainToolCalls; base > 0 {
+		s.ToolFailureRate = float64(s.ToolFailureCount) / float64(base)
+	}
+}
+
 func parseSession(path string) (*Session, error) {
 	pf, err := parseFile(path)
 	if err != nil {
@@ -1094,6 +1150,8 @@ func parseSession(path string) (*Session, error) {
 			}
 		}
 	}
+
+	rollUpSidechainStats(sess)
 
 	scope := discoverPluginScope(resolvePluginsRoot(sess.CWD))
 	sess.PluginsUsed = detectPluginsInSession(events, scope)

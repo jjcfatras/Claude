@@ -1,7 +1,11 @@
 ---
 name: transcript
 description: Print the filepath of the current Claude Code session's .jsonl transcript. Use when the user asks where this session's transcript / session log / .jsonl file is, asks for "the transcript path", or when you need the current session's transcript file to pass to another tool such as the plugin-session-auditor. Only for locating the current session's file — not for reading or analyzing transcript contents.
-allowed-tools: Bash(bash:*)
+# Bare `Bash`, not a prefix filter: the block below starts `set -u`, and Bash
+# filters match the literal command string, so `Bash(bash:*)` never matched the
+# one command this skill runs. A filter that cannot fire is worse than none —
+# it reads as least-privilege while granting nothing.
+allowed-tools: Bash
 model: haiku
 effort: low
 ---

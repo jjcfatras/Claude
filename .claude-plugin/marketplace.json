@@ -21,7 +21,7 @@
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "category": "code-review"
     },
     {
@@ -49,14 +49,14 @@
       "name": "transcript",
       "source": "./plugins/transcript",
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "category": "session-tools"
     },
     {
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "category": "project-management"
     },
     {

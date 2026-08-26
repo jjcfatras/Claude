@@ -1,6 +1,6 @@
 {
   "name": "jira",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket (summary, acceptance criteria, QA steps) from a diff/PR/description, pick up a ticket by key to verify its codebase claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

@@ -37,9 +37,19 @@ import (
 // repeated here: the bundle's `## Per-PR` header carries all of them verbatim,
 // and the specialist Reads it as its first action. HEAD_SHA stays because it is
 // the one value a specialist may need before that Read succeeds.
+//
+// The first-page limit is 400, not 200. Transcript 2eb9ac1c (Aug 2026) showed
+// 200 landing 13 lines short of the `## Source index`'s first data row, so every
+// specialist got the index's heading and zero rows — and "page the remainder"
+// then walked three of the six through all 1,492 lines sequentially, 78s of it
+// on the critical path. 400 clears the orientation payload on a normal PR;
+// SOURCE_START makes the tail self-correcting when the index is taller, which is
+// why the fallback is phrased as "read up to SOURCE_START" and not "keep paging".
 const promptTemplate = "Read {{TMP}}/spawn-context.md " +
-	"(offset:0, limit:200 — its `BUNDLE_LINES` header field states the total, so page the remainder " +
-	"in sized Reads rather than guessing whether more follows) " +
+	"(offset:0, limit:400 — this covers the orientation payload, ending with the `## Source index`. " +
+	"Its `SOURCE_START` header field is the first line of per-file source content: if that number is " +
+	"past your first page, Read up to it before anything else, then stop paging and use the index's " +
+	"`Bundle line` column to jump straight to the files you need) " +
 	"and {{TMP}}/rubric.md, once each. " +
 	"Scan {{TMP}}/pr-{{PR_NUMBER}}.diff for issues in your domain — the `## Diff map` on the bundle's first page " +
 	"gives you each file's line offset and hunk count, so never bare-Read the diff. " +

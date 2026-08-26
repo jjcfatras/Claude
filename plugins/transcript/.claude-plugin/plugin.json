@@ -1,6 +1,6 @@
 {
   "name": "transcript",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Print the filepath of the current Claude Code session's .jsonl transcript",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

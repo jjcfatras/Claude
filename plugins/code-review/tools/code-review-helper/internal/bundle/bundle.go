@@ -32,6 +32,22 @@ import (
 // the header reports stays correct after substitution.
 const bundleLinesPlaceholder = "{{BUNDLE_LINES}}"
 
+// sourceStartPlaceholder is substituted with the first line of the `## Source at
+// HEAD` bodies, i.e. the line just past the Source index's last row. Everything
+// above it is orientation, so it is exactly the first page a specialist must
+// read to hold the jump table.
+//
+// It needs the same placeholder-then-replace treatment as BUNDLE_LINES: the
+// header is written long before the index's height is known, and that height is
+// what fixes the value.
+//
+// Emitting it closes a real bug. The spawn prompt hard-coded `limit: 200` while
+// the index's first data row landed at 213 on transcript 2eb9ac1c (Aug 2026), so
+// every specialist received the index's heading and zero rows — and the prompt's
+// "page the remainder" wording then walked them through all 1,492 lines
+// sequentially. The value was already computed here and discarded.
+const sourceStartPlaceholder = "{{SOURCE_START}}"
+
 // Input is what the `bundle-context` subcommand collects from flags +
 // $REVIEW_TMPDIR.
 type Input struct {
@@ -127,6 +143,14 @@ func Build(in Input) (string, error) {
 		fmt.Fprintf(&b, "- RUBRIC_PATH: %s (Read this once after the bundle — moved out of the bundle body to keep spawn-context.md under the Read tool's 256 KB byte cap)\n", in.RubricExternal)
 	}
 	fmt.Fprintf(&b, "- BUNDLE_LINES: %s — total lines in this file. Page with Read `offset`/`limit` up to this number; do not guess whether more content follows.\n", bundleLinesPlaceholder)
+	hasSourceSection := in.MaxSourceBytes > 0 && len(changedFiles) > 0
+	if hasSourceSection {
+		// Deliberately does NOT spell the "## Source ..." headings verbatim:
+		// this line sits near the top of the bundle, so repeating them here
+		// would make an unanchored search for either section match the header
+		// prose instead of the real section.
+		fmt.Fprintf(&b, "- SOURCE_START: %s — first line of the per-file source bodies. Everything above it is orientation you need in full; everything below is per-file content you should reach via the Source index's `Bundle line` column rather than by paging. If your first Read stopped short of this line, read up to it before doing anything else.\n", sourceStartPlaceholder)
+	}
 	fmt.Fprintf(&b, "- The findings/ subdirectory is pre-created by the orchestrator — do not mkdir or pre-test it before your Write.\n\n")
 
 	fmt.Fprint(&b, "## Summary\n")
@@ -161,7 +185,8 @@ func Build(in Input) (string, error) {
 		}
 	}
 
-	if in.MaxSourceBytes > 0 && len(changedFiles) > 0 {
+	sourceStart := 0
+	if hasSourceSection {
 		decisions := planSourceSection(in, changedFiles, diffHunks)
 		b.WriteString(renderReplicationGroups(decisions))
 
@@ -173,6 +198,7 @@ func Build(in Input) (string, error) {
 		content, relStart := renderSourceContent(decisions, in)
 		indexHeight := countLines(renderSourceIndex(decisions, nil))
 		base := countLines(b.String()) + indexHeight
+		sourceStart = base
 		absStart := make(map[string]int, len(relStart))
 		for path, rel := range relStart {
 			absStart[path] = base + rel
@@ -194,7 +220,8 @@ func Build(in Input) (string, error) {
 	if !strings.HasSuffix(out, "\n") {
 		total++
 	}
-	return strings.Replace(out, bundleLinesPlaceholder, strconv.Itoa(total), 1), nil
+	out = strings.Replace(out, bundleLinesPlaceholder, strconv.Itoa(total), 1)
+	return strings.Replace(out, sourceStartPlaceholder, strconv.Itoa(sourceStart), 1), nil
 }
 
 // countLines reports how many lines s occupies when appended to the bundle. A

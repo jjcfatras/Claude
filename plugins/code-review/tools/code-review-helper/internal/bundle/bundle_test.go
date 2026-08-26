@@ -849,3 +849,122 @@ func runOutIn(dir, name string, args ...string) (string, error) {
 	out, err := cmd.Output()
 	return string(out), err
 }
+
+// TestBuild_SourceStartCoversIndex pins the invariant the SOURCE_START header
+// exists to guarantee: a Read of lines 0..SOURCE_START holds the *entire*
+// Source index, rows included, and every file the index points at lives at or
+// below that line.
+//
+// Transcript 2eb9ac1c (Aug 2026) is why this is a test and not a comment. The
+// spawn prompt hard-coded `limit: 200` while the index's first data row landed
+// at 213, so specialists received the index heading and zero rows, then paged
+// all 1,492 lines linearly instead of jumping. Asserting the relationship
+// rather than the literal numbers keeps this honest as the header grows.
+func TestBuild_SourceStartCoversIndex(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "changed-files.json"), `["a.ts","b.ts","c.ts"]`)
+	mustWrite(t, filepath.Join(dir, "roster.json"), `["security"]`)
+	mustWrite(t, filepath.Join(dir, "prior-issues.json"), `[]`)
+	mustWrite(t, filepath.Join(dir, "claude-md-files.json"), `{}`)
+	rubric := seedRubric(t, dir)
+
+	// Distinct bodies per file: identical content would collapse them into a
+	// replication group, whose table also emits `| <path> | ` rows and would
+	// mask whether the Source index itself lands inside the first page.
+	showFn := func(workdir, sha, path string) (string, int, error) {
+		content := "export const " + strings.TrimSuffix(path, ".ts") + " = 1;\n" +
+			strings.Repeat("// "+path+"\n", 40)
+		return content, len(content), nil
+	}
+
+	out, err := Build(Input{
+		ReviewTmpDir:   dir,
+		HeadSHA:        "deadbeef",
+		PRNumber:       1,
+		Owner:          "o",
+		Repo:           "r",
+		RubricPath:     rubric,
+		MaxSourceBytes: 64 * 1024,
+		GitShowFn:      showFn,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	srcStart := headerInt(t, out, "- SOURCE_START: ")
+	if srcStart <= 0 {
+		t.Fatalf("SOURCE_START not emitted or non-positive: %d", srcStart)
+	}
+	if strings.Contains(out, sourceStartPlaceholder) {
+		t.Error("SOURCE_START placeholder was never substituted")
+	}
+
+	lines := strings.Split(out, "\n")
+	lineOf := func(prefix string) int {
+		for i, l := range lines {
+			if strings.HasPrefix(l, prefix) {
+				return i + 1 // Read offsets are 1-indexed
+			}
+		}
+		return -1
+	}
+
+	idxLine := lineOf("## Source index")
+	if idxLine < 0 {
+		t.Fatal("no `## Source index` section emitted")
+	}
+	if idxLine >= srcStart {
+		t.Errorf("Source index starts at line %d, at or past SOURCE_START %d", idxLine, srcStart)
+	}
+
+	// Every index row must fall inside the first page, or the jump table is
+	// truncated exactly the way it was in 2eb9ac1c. Rows are located *after*
+	// the index heading so an identically-shaped row elsewhere in the bundle
+	// (the replication-groups table) can't satisfy the assertion by accident.
+	for _, path := range []string{"a.ts", "b.ts", "c.ts"} {
+		row := -1
+		for i := idxLine; i < len(lines); i++ {
+			if strings.HasPrefix(lines[i], "| "+path+" | ") {
+				row = i + 1
+				break
+			}
+		}
+		if row < 0 {
+			t.Errorf("%s missing from Source index", path)
+			continue
+		}
+		if row > srcStart {
+			t.Errorf("%s row at line %d falls past SOURCE_START %d — first page would truncate the index", path, row, srcStart)
+		}
+	}
+
+	// And the content SOURCE_START points at is genuinely the source section.
+	srcHeading := lineOf("## Source at HEAD")
+	if srcHeading < 0 {
+		t.Fatal("no `## Source at HEAD` section emitted")
+	}
+	if srcStart > srcHeading {
+		t.Errorf("SOURCE_START %d overshoots the source heading at line %d", srcStart, srcHeading)
+	}
+}
+
+// headerInt pulls an integer-valued bundle header field out of the rendered
+// bundle, e.g. "- SOURCE_START: 213 — first line of ...".
+func headerInt(t *testing.T, out, prefix string) int {
+	t.Helper()
+	for _, l := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(l, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(l, prefix)
+		if sp := strings.IndexAny(rest, " \t"); sp > 0 {
+			rest = rest[:sp]
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(rest))
+		if err != nil {
+			t.Fatalf("header %q not an integer: %q (%v)", prefix, rest, err)
+		}
+		return n
+	}
+	return -1
+}

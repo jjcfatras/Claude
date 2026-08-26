@@ -217,7 +217,11 @@ func TestRunSpawnManifest_AllPlaceholdersSubstituted(t *testing.T) {
 		"/tmp/pr-review-99-1/rubric.md",
 		"/tmp/pr-review-99-1/pr-99.diff",
 		"/tmp/pr-review-99-1/findings/security.json",
-		"BUNDLE_LINES",
+		// SOURCE_START, not BUNDLE_LINES: the prompt's paging anchor is the end
+		// of the orientation payload, not the end of the file. A specialist
+		// reads through SOURCE_START and then jumps via the Source index, so it
+		// never needs the total line count to know when to stop.
+		"SOURCE_START",
 		// The one value a specialist may need before its first Read lands.
 		"HEAD_SHA: deadbeefcafef00d",
 	}

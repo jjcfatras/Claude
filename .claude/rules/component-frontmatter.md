@@ -118,6 +118,16 @@ These govern the `effort` row above for both skills and slash commands.
   - `xhigh` — extended reasoning; Opus-only (4.7+), falls back to `high` elsewhere, so pair with `model: opus`. For the hardest analysis / refactor judgment.
   - `max` — maximum reasoning budget; highest cost/latency. Reserve for the most demanding tasks. (Unused in this repo.)
 
+**`ultracode` is not one of these.** It's a separate session-level setting (CC 2.1.203+) that flips
+Claude's default disposition toward authoring dynamic workflows; it does not unlock the `Workflow`
+tool, which is always in the pool. Per the settings docs it is "not read from settings.json" and is
+reachable only via `/effort ultracode`, `claude --effort ultracode`, the `--settings` flag, or an
+Agent SDK control request — **never from component frontmatter**. `effort: ultracode` in a
+`SKILL.md` is not a valid level and falls back to the nearest supported one. To have a skill use
+workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
+slash command whose instructions tell you to call Workflow" is one of that tool's documented
+opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7).
+
 ### Slash-command specifics
 
 **Repo enforcement:** the `validate-command-frontmatter.sh` PostToolUse hook requires every
