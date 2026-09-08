@@ -100,7 +100,7 @@ For each conflicting file:
 
 After all conflicts are resolved and staged:
 
-1. Use the Grep tool to search for `<<<<<<<` across the repository to verify no conflict markers remain.
+1. Run `git grep -n '^<<<<<<<'` to verify no conflict markers remain. Exit status 1 with no output is the success case here; any output means a conflict is still unresolved.
 2. Run `git merge --continue` (which will open the merge-commit message editor — git uses the prepared default message non-interactively when run from this skill). If the editor environment causes a hang, use `git commit --no-edit` instead to finalize with the default merge message.
 3. If this fails, check `git status` for remaining issues.
 

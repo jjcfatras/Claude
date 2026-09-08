@@ -1,7 +1,7 @@
 ---
-description: Respond to every flagged issue on a PR — inline comments and review-body findings alike — dismissing false positives and preexisting issues, fixing valid ones
+description: Respond to every flagged issue on a PR — inline comments and review-body findings alike, including reviews you posted yourself (e.g. via `/code-review --comment`) — dismissing false positives and preexisting issues, fixing valid ones
 argument-hint: <pr-number> [comment-id]
-allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob, AskUserQuestion, mcp__*
+allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob, AskUserQuestion, mcp__*
 model: opus
 effort: high
 ---
@@ -12,7 +12,7 @@ Respond to every flagged issue on a pull request — both **inline review commen
 
 **Tool discipline:** Three rules apply across every step. They are not stylistic — they keep the command working under stricter permission modes and cut wall time:
 
-- **Use the `Grep` tool, never Bash `grep`/`rg`.** The Grep tool is in `allowed-tools`; Bash `grep` is not. Grep tool also sidesteps the zsh "no matches found" glob bug.
+- **Search with `Bash(rg *)`.** The `Grep`/`Glob` tools are removed on native macOS/Linux builds (CC 2.1.117+), where `rg` is that same embedded ripgrep; `Bash(rg *)` is in `allowed-tools` so it runs unprompted. Two gotchas: `rg` exits **1** on no match, so append `|| true` to any probe allowed to find nothing, or it fails the whole Bash call; and always quote patterns and globs (`rg 'foo' -g '*.ts'`) to sidestep the zsh "no matches found" glob bug.
 - **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. The GitHub-API JSON parsing in Step 1 is well within `jq`'s capabilities.
 - **Batch independent tool calls in parallel.** When a step says "for each X do Y" and the Y's have no ordering dependency (different file paths, different comment IDs, different verification targets), emit them as multiple tool calls in a single assistant message. Steps 1, 4, and 5 call this out explicitly where it matters.
 
@@ -23,7 +23,7 @@ Follow these steps precisely:
 1. Run `mktemp -d /tmp/review-respond-XXXXXX` to create a temp directory. Store the path as `$TMPDIR`.
 2. Parse the PR number from `$ARGUMENTS`. If a second argument is present, treat it as a specific inline-comment ID to target; in that case, skip review-body processing entirely (the user is scoping to one inline thread).
 3. Run `gh repo view --json owner,name` to get the repository owner and name.
-4. Run `gh api user` and extract the `login` field — this is the current user.
+4. Run `gh api user` and extract the `login` field — this is the current user. It is used **only** for dedup — spotting threads we already replied to (Step 1a) and findings we already answered (Step 1d) — never to exclude items. Reviews and comments you authored yourself are in scope.
 5. Run `gh pr view $PR_NUMBER --json headRefName,headRefOid,baseRefName,baseRefOid` to get branch info and commit SHAs.
 6. Run `gh pr diff $PR_NUMBER` and save the output to `$TMPDIR/pr.diff` using the Write tool.
 7. Parse the diff to build a map of changed files and their hunk ranges (`file path → list of [newStart, newStart+newCount-1]` ranges), and whether each line is added (`+`) or context (` `).
@@ -40,19 +40,21 @@ Follow these steps precisely:
 2. Save the raw JSON to `$TMPDIR/all-comments.json` using the Write tool.
 3. Filter to **actionable comments** by excluding:
    - Comments where `in_reply_to_id` is not null (these are replies, not top-level comments)
-   - Comments authored by the current user (`user.login` matches)
    - If a specific comment ID was provided in step 0, filter to only that comment
-4. For each remaining comment, check if the current user has already replied by scanning all comments for entries where `in_reply_to_id` matches this comment's `id` AND `user.login` matches the current user. Exclude comments that already have a reply from us.
+
+   Do **not** filter on author. Top-level comments you wrote yourself are in scope — a review posted by `/code-review --comment` lands under your own login, and those findings are exactly what this command exists to triage.
+
+4. For each remaining comment, check if the current user has already replied by scanning all comments for entries where `in_reply_to_id` matches this comment's `id` AND `user.login` matches the current user. Exclude comments that already have a reply from us. With self-authored comments in scope, this is the **only** guard against answering the same thread twice — never skip it.
 
 ### 1b — Reviews
 
 If a specific inline comment ID was provided in step 0, skip 1b–1d entirely — the user is scoping the run to one thread.
 
 1. Fetch all reviews: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews`. Save the raw JSON to `$TMPDIR/reviews.json` using the Write tool.
-2. Filter the reviews to entries that meet **all** of the following:
-   - `user.login` is not the current user,
+2. Filter the reviews to entries that meet **all** of the following. Note the absence of an author filter — self-authored reviews are in scope, same as self-authored inline comments:
    - `body` is non-empty after trimming whitespace,
-   - `body` is not a trivial acknowledgement — exclude bodies whose trimmed text is, case-insensitive, one of `lgtm`, `looks good`, `approved`, `:+1:`, `👍`, or is shorter than roughly 20 characters of prose (a bare "thanks!" or "great work" has no findings to triage).
+   - `body` is not a trivial acknowledgement — exclude bodies whose trimmed text is, case-insensitive, one of `lgtm`, `looks good`, `approved`, `:+1:`, `👍`, or is shorter than roughly 20 characters of prose (a bare "thanks!" or "great work" has no findings to triage),
+   - `body` does not report a clean result — exclude bodies whose only substantive claim is that nothing was found (e.g. containing `No issues found`), so an all-clear automated review doesn't spawn a parsing agent for nothing.
 
 ### 1c — Parse review bodies into discrete findings
 
@@ -77,11 +79,20 @@ When the skill posts a reply for a review-body finding (Step 6), it embeds a sta
 
 1. Fetch PR-level issue comments: `gh api --paginate repos/OWNER/REPO/issues/NUMBER/comments`. Save to `$TMPDIR/issue-comments.json` using the Write tool.
 2. Filter the list to comments authored by the current user.
-3. For each review-body finding from 1c, use the **Grep tool** (ripgrep-backed; the `grep` shell command isn't in this skill's `allowed-tools`) on `$TMPDIR/issue-comments.json` to check for its marker string. If the marker appears in any of our prior PR comments, drop the finding.
+3. For each review-body finding from 1c, check `$TMPDIR/issue-comments.json` for its marker string with `jq` — the file is JSON, so `jq` reads it structurally rather than by text match: `jq -e --arg m "<marker>" 'any(.[]; .body | contains($m))' "$TMPDIR/issue-comments.json"`. If the marker appears in any of our prior PR comments, drop the finding.
 
 ### 1e — Merge into pending items
 
-Combine the filtered inline comments from 1a and the surviving review-body findings from 1c/1d into a single list. Each entry in `$TMPDIR/pending-items.json` must contain:
+Combine the filtered inline comments from 1a and the surviving review-body findings from 1c/1d into a single list.
+
+**Drop review-body findings that merely point at an inline comment already in the list.** An automated review body — `/code-review`'s in particular — leads with an index table of its own inline findings (one row per finding: severity, confidence, `file:line` link) followed by "See inline comments for full details". Those rows are pointers, not separate concerns, and answering them would double-reply to every finding. Drop a review-body finding when either holds:
+
+- its `path` and `line` match a surviving inline comment from 1a, or
+- it carries no concern of its own — a bare table row, a `file:line` link with no described problem, or text deferring to the inline comments.
+
+Findings under an "Additional issues (could not attach inline)" heading are **not** pointers — they exist nowhere else and must survive.
+
+Each entry in `$TMPDIR/pending-items.json` must contain:
 
 - `id`
 - `source_type`: `inline-comment` or `review-body-finding`
@@ -99,7 +110,7 @@ For each pending item in `$TMPDIR/pending-items.json`, perform the following ana
 
 **CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
 
-> You are a review-response analysis agent. Use the Read/Grep/Write tools rather than `sed`/`awk`/`grep`/`du` — those aren't in this skill's `allowed-tools` and would be denied at the skill-permission layer regardless of permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
+> You are a review-response analysis agent. Use the Read/Write tools and `rg` for searching, rather than `sed`/`awk`/`du` — those aren't in this skill's `allowed-tools`, so they stop for a permission prompt on every call. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
 >
 > **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 
@@ -136,7 +147,7 @@ If the item is not preexisting, analyze whether the reviewer's concern is valid.
    - Is the reviewer misreading the code or missing context?
    - Is the concern about style/preference rather than correctness?
    - Would the suggested change actually be incorrect or unnecessary given the types/constraints?
-4. Use Grep to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files). If the reviewer's concern hinges on external library behavior (React hooks, Prisma, Next.js, AWS SDK, etc.), verify the claim with Context7 (`mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_context7_context7__query-docs`) before deciding the verdict.
+4. Use `rg` to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files). If the reviewer's concern hinges on external library behavior (React hooks, Prisma, Next.js, AWS SDK, etc.), verify the claim with Context7 (`mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_context7_context7__query-docs`) before deciding the verdict.
 5. If you can **definitively** demonstrate the concern is unfounded with concrete evidence → categorize as **false positive** and record the evidence.
 6. If there is any reasonable chance the reviewer is correct → categorize as **valid**.
 
@@ -245,6 +256,8 @@ Inline comments get their own per-comment reply via the standard inline-reply en
 ### Reply templates (per-item body)
 
 Each of these templates produces the body for a single item. Inline replies post this directly. Aggregated review-body replies embed one of these under a per-finding heading (see "Review-body findings" below).
+
+**When the item's reviewer is the current user** (a self-authored review), keep the same structure but drop the second-person flourishes: write `Fixed in commit …` instead of `Good catch! Fixed in commit …`, and open the aggregated body with `Re: my earlier review summary — addressing the findings below.` rather than @-mentioning yourself. Everything else, including the mandatory HTML-comment markers, is unchanged.
 
 **For preexisting items:**
 

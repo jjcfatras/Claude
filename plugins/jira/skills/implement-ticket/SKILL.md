@@ -54,7 +54,7 @@ Some tickets have no bucket (c) at all — that's fine and common. Don't invent 
 
 ## [3/7] Verify every codebase claim
 
-This is the phase that earns its keep. Go through bucket (b) and check each claim against the **actual current code** — Grep, Glob, Read, and the LSP tools if available. Don't trust the ticket; trust the code in front of you.
+This is the phase that earns its keep. Go through bucket (b) and check each claim against the **actual current code** — `rg`, `Read`, and the LSP tools if available. Don't trust the ticket; trust the code in front of you.
 
 Classify each claim, and require concrete `file:line` evidence for the verdict:
 

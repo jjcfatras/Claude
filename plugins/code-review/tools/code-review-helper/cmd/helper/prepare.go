@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -179,6 +181,25 @@ func runPrepare(argv []string) error {
 	}
 
 	// 4. spawn-context.md (+ the rubric copy it references).
+	//
+	// Two directories are created up front so nothing downstream has to. `head/`
+	// holds HEAD blobs — the ones bundle.Build spills because they cleared no
+	// cap, plus whatever `show` caches later — and `scratch/` is where
+	// specialists are told to put their own working copies. Both sit under
+	// $REVIEW_TMPDIR precisely so Cleanup's existing `rm -rf` covers them; the
+	// bare-/tmp writes that motivated this left 187 KB behind that no cleanup
+	// this plugin runs could ever have reached.
+	headDir := filepath.Join(opts.reviewTmpDir, "head", meta.HeadRefOid)
+	if err := os.MkdirAll(headDir, 0o755); err != nil {
+		return fmt.Errorf("create head dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(opts.reviewTmpDir, "scratch"), 0o755); err != nil {
+		return fmt.Errorf("create scratch dir: %w", err)
+	}
+	// Best-effort: an unresolvable executable path only costs the bundle its
+	// HELPER_PATH line, which degrades to the pre-2.4.0 `git show` guidance.
+	helperPath, _ := os.Executable()
+
 	var summary string
 	if opts.summaryInline != "" {
 		b, err := os.ReadFile(opts.summaryInline)
@@ -201,6 +222,9 @@ func runPrepare(argv []string) error {
 		MaxTotalSourceBytes: opts.maxTotalSrcB,
 		GitWorkdir:          opts.gitWorkdir,
 		DiffPath:            opts.diffPath,
+		HeadDir:             headDir,
+		HelperPath:          helperPath,
+		ValidLines:          validLineRanges(parsed.ValidLines),
 	})
 	if err != nil {
 		return err
@@ -210,6 +234,7 @@ func runPrepare(argv []string) error {
 	}
 
 	// 5. One fully-rendered Agent payload per roster role.
+	diffBytes, diffLines := measureFile(opts.diffPath)
 	entries, err := buildSpawnEntries(roles, spawnSubs{
 		reviewTmpDir: opts.reviewTmpDir,
 		headSHA:      meta.HeadRefOid,
@@ -217,6 +242,8 @@ func runPrepare(argv []string) error {
 		owner:        owner,
 		repo:         repo,
 		repoRoot:     opts.repoRoot,
+		diffBytes:    diffBytes,
+		diffLines:    diffLines,
 	})
 	if err != nil {
 		return err
@@ -354,4 +381,33 @@ func firstNonNil(candidates ...*int) int {
 		}
 	}
 	return 0
+}
+
+// validLineRanges projects the diff parser's per-file runs into the plain
+// [start,end] pairs bundle.Build wants for its Read-window hints. Keeping the
+// conversion here means internal/bundle needs no dependency on internal/diff.
+func validLineRanges(in map[string][]diffpkg.Run) map[string][][2]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][][2]int, len(in))
+	for path, runs := range in {
+		pairs := make([][2]int, 0, len(runs))
+		for _, r := range runs {
+			pairs = append(pairs, [2]int{r.Start, r.End})
+		}
+		out[path] = pairs
+	}
+	return out
+}
+
+// measureFile reports a file's size in bytes and lines, or (0, 0) if it cannot
+// be read. Used to decide whether the spawn prompt should tell specialists to
+// Read the diff whole or navigate it by the diff map.
+func measureFile(path string) (int, int) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, 0
+	}
+	return len(b), bytes.Count(b, []byte("\n"))
 }

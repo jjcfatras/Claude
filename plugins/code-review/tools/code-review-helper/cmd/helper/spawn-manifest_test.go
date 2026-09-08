@@ -237,14 +237,12 @@ func TestRunSpawnManifest_AllPlaceholdersSubstituted(t *testing.T) {
 	// substrings all moved out; if one reappears here, the per-block streaming
 	// cost that transcript db83dbda measured at ~6.4s comes back with it.
 	forbidden := map[string]string{
-		"REPO_ROOT: ":           "already in the bundle's `## Per-PR` header",
-		"REVIEW_TMPDIR: ":       "already in the bundle's `## Per-PR` header",
-		"PR: #":                 "already in the bundle's `## Per-PR` header",
-		"enforce-builtin-tools": "moved to agents/*.md `## Environment`",
-		"no-cd-chaining":        "moved to agents/*.md `## Environment`",
-		"ugrep":                 "moved to agents/*.md `## Environment`",
-		"suggested_fix":         "defined in the rubric the specialist Reads",
-		"startLine":             "defined in the rubric the specialist Reads",
+		"REPO_ROOT: ":     "already in the bundle's `## Per-PR` header",
+		"REVIEW_TMPDIR: ": "already in the bundle's `## Per-PR` header",
+		"PR: #":           "already in the bundle's `## Per-PR` header",
+		"ugrep":           "moved to agents/*.md `## Environment`",
+		"suggested_fix":   "defined in the rubric the specialist Reads",
+		"startLine":       "defined in the rubric the specialist Reads",
 	}
 	for s, why := range forbidden {
 		if strings.Contains(p, s) {
@@ -256,14 +254,12 @@ func TestRunSpawnManifest_AllPlaceholdersSubstituted(t *testing.T) {
 // TestAgentFilesCarryEnvironmentNotes is the other half of the prompt trim: the
 // guardrail notes are only free if they actually reached every specialist's
 // system prompt. Without this, deleting them from the prompt template would
-// silently leave every role unwarned — which is how the `no-cd-chaining` denial
-// in transcript db83dbda happened in the first place.
+// silently leave every role unwarned — which is how a specialist lost a turn to
+// the since-retired `no-cd-chaining` hook in transcript db83dbda.
 func TestAgentFilesCarryEnvironmentNotes(t *testing.T) {
 	agentsDir := filepath.Join("..", "..", "..", "..", "agents")
 	roles := []string{"security", "quality", "errors", "perf", "typescript", "react", "infra", "claude-md"}
 	wantNotes := []string{
-		"no-cd-chaining",
-		"enforce-builtin-tools",
 		"may not be at `HEAD_SHA`",
 		"ugrep in BRE mode",
 	}
@@ -283,5 +279,67 @@ func TestAgentFilesCarryEnvironmentNotes(t *testing.T) {
 				t.Errorf("%s.md `## Environment` is missing the %q guardrail note", role, note)
 			}
 		}
+	}
+}
+
+func TestDiffGuidance(t *testing.T) {
+	tests := []struct {
+		name           string
+		bytes, lines   int
+		wantContains   string
+		wantNotContain string
+	}{
+		{
+			// The PR #1817 shape: all five specialists correctly ignored the
+			// old absolute "never bare-Read the diff" rule at this size.
+			name: "small diff says read it whole", bytes: 13456, lines: 224,
+			wantContains: "13456 bytes / 224 lines, so Read it in ONE call",
+			// The map is the wrong advice here and must not be mentioned.
+			wantNotContain: "Diff map",
+		},
+		{
+			name: "byte-oversize diff says use the map", bytes: 420_000, lines: 900,
+			wantContains: "too big for one Read, so use the `## Diff map`",
+		},
+		{
+			name: "line-oversize diff says use the map", bytes: 100_000, lines: 9_000,
+			wantContains: "too big for one Read, so use the `## Diff map`",
+		},
+		{
+			// Unmeasured (0) must fall back to the conservative branch rather
+			// than claiming a 0-byte diff is safe to read whole.
+			name: "unmeasured falls back to the map", bytes: 0, lines: 0,
+			wantContains:   "use the `## Diff map`",
+			wantNotContain: "ONE call",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := diffGuidance(tt.bytes, tt.lines)
+			if !strings.Contains(got, tt.wantContains) {
+				t.Errorf("diffGuidance(%d, %d) = %q, want it to contain %q", tt.bytes, tt.lines, got, tt.wantContains)
+			}
+			if tt.wantNotContain != "" && strings.Contains(got, tt.wantNotContain) {
+				t.Errorf("diffGuidance(%d, %d) = %q, should not contain %q", tt.bytes, tt.lines, got, tt.wantNotContain)
+			}
+		})
+	}
+}
+
+// The rendered prompt must carry the measured guidance, not the placeholder.
+func TestBuildSpawnEntries_SubstitutesDiffGuidance(t *testing.T) {
+	entries, err := buildSpawnEntries([]string{"security"}, spawnSubs{
+		reviewTmpDir: "/tmp/r", headSHA: "deadbeef", prNumber: 7,
+		owner: "o", repo: "r", repoRoot: "/repo",
+		diffBytes: 13456, diffLines: 224,
+	})
+	if err != nil {
+		t.Fatalf("buildSpawnEntries: %v", err)
+	}
+	if strings.Contains(entries[0].Prompt, "{{") {
+		t.Errorf("unsubstituted placeholder left in prompt: %s", entries[0].Prompt)
+	}
+	if !strings.Contains(entries[0].Prompt, "Read it in ONE call") {
+		t.Errorf("prompt missing measured diff guidance: %s", entries[0].Prompt)
 	}
 }

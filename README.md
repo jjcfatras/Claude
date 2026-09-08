@@ -24,8 +24,6 @@ A Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/p
 
 Install only the plugins you want — each is independent.
 
-Two additional hook-only plugins ship no slash command: `tool-discipline` (`PreToolUse` guardrails — no-cd-chaining, enforce-builtin-tools, plus a conditional ToolSearch shim that redirects Grep/Glob loads to the embedded Bash search on native builds that dropped those tools and self-disables elsewhere) and `tool-discipline-lsp` (the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry when `workspaceSymbol` returns empty).
-
 ## Using the plugins
 
 Each subsection covers how to invoke the plugin, its prerequisites, and what to expect. The full flow lives in each command or skill file under `plugins/<name>/commands/` or `plugins/<name>/skills/`.
@@ -157,7 +155,7 @@ Use this to hand the file to `/plugin-session-auditor` or any other transcript-c
 
 1. **Fetch** the ticket — description, comments, linked issues, and acceptance criteria (later comments weighted over the original description on conflict).
 2. **Understand intent** — distills the underlying goal and sorts the ticket into three buckets: goal/problem, claims about the codebase, and any proposed solution.
-3. **Verify every codebase claim** against the actual current code (Grep/Glob/Read/LSP), classifying each as confirmed / false / partial / unverifiable with `file:line` evidence. If a false claim knocks out the ticket's premise, it stops and surfaces the finding instead of building on a phantom.
+3. **Verify every codebase claim** against the actual current code (`rg`/Read/LSP), classifying each as confirmed / false / partial / unverifiable with `file:line` evidence. If a false claim knocks out the ticket's premise, it stops and surfaces the finding instead of building on a phantom.
 4. **Design a plan** independently from the goal and verified facts first, then reconciles it against the ticket's proposed solution (if any), recording where each approach won.
 5. **Present for approval** — intent, claim-verification table (false claims headlined), the synthesized plan, and reconciliation rationale. Gates with `AskUserQuestion`; edits no file before you approve.
 6. **Implement** the approved plan — test-first for testable changes, directly for config/docs — then runs the existing suite and reports results honestly.

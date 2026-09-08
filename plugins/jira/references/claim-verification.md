@@ -17,7 +17,7 @@ What is _not_ a claim to verify: the goal, the proposed solution, opinions ("thi
 
 ## Verifying
 
-For each claim, go to the code — Grep for the symbol, Glob for the file, Read the region, use LSP `findReferences` / `goToDefinition` when chasing a symbol. Verdicts:
+For each claim, go to the code — `rg` for the symbol, `rg --files -g '<pat>'` for the file, `Read` the region, use LSP `findReferences` / `goToDefinition` when chasing a symbol. Verdicts:
 
 | Verdict          | Meaning                                  | Evidence required                                                                                    |
 | ---------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |

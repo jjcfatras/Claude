@@ -24,7 +24,7 @@ Resolve the audit scope from `$1` (trimmed), an optional positional argument.
 1. **`$1` is empty** — whole-repo audit. Use the default globs in Step 1 rooted at `$REPO_ROOT`, as today.
 2. **`$1` resolves to an existing file** (`test -f`, relative to `$REPO_ROOT` or the current working directory) — audit **only that file**, even if its name does not match the default doc globs (the user named it deliberately, so target `docs/setup.md`, `CONTRIBUTING.md`, etc.). The file set is just this one path; skip Step 1 discovery and skip the >50-file count guard.
 3. **`$1` resolves to an existing directory** (`test -d`) — run the Step 1 discovery globs **rooted at that directory** instead of `$REPO_ROOT`. Same documentation patterns, but only matches under the passed subtree.
-4. **`$1` is any other non-empty value** — treat it as a glob. Expand it with a single `find`/`Glob`, and audit the matches. If it expands to nothing, stop and report "no files match `<arg>`".
+4. **`$1` is any other non-empty value** — treat it as a glob. Expand it with a single `find`, and audit the matches. If it expands to nothing, stop and report "no files match `<arg>`".
 
 The directory exclusions and the `.claude/skills/*/agents|references/` skip from Step 1 apply to every scope (cases 1, 3, 4). For an explicit single file (case 2), do not silently drop it for matching a default-skip pattern — but if it falls inside `node_modules/` or `.claude/worktrees/`, skip it, tell the user that path is out of scope, and stop.
 
@@ -94,14 +94,14 @@ Keep working notes in memory or a temp file — do not persist them to the repo.
 
 **Batch independent verifications.** Issue all verification calls for independent claims in the same message. Only serialize when a probe truly depends on a prior result (e.g., reading a file's contents after confirming it exists, or grepping a symbol inside a path the previous call located). A run that issues all probes one-at-a-time is doing it wrong — claim verification is embarrassingly parallel and the cheapest way to keep wall-clock down on repos with many docs.
 
-Verification depends on category. Use the cheapest tool that answers definitively. For plain text/config files (`.nvmrc`, `.tool-versions`, `.python-version`) use the `Read` tool, not `Bash` — `cat`/`head`/`tail` are blocked by the `enforce-builtin-tools.sh` hook. For JSON, use `Bash(jq:*)`.
+Verification depends on category. Use the cheapest tool that answers definitively. For plain text/config files (`.nvmrc`, `.tool-versions`, `.python-version`) use the `Read` tool, not `Bash`. For JSON, use `Bash(jq:*)`.
 
 - **Tech stack / version** — read `.nvmrc`, `package.json` (`engines`, `packageManager`, dependency versions), `go.mod`, `pyproject.toml`, `Cargo.toml`, framework-specific config. Check whether the doc's claimed version matches.
 - **Paths / structure** — `test -e` / `ls` / `Read`. For a directory claim, also check it contains roughly what the doc says (e.g., "plugins/ holds plugins" — confirm subdirs match the description).
 - **Commands / scripts / config** — for `package.json` scripts, `jq -r '.scripts | keys[]' package.json`. For `Makefile` targets, grep `^<target>:` in `Makefile`. For env vars / config keys / hook names, grep for usage in source.
-- **Module / symbol refs** — prefer LSP if available (`workspaceSymbol`, `goToDefinition`); fall back to `Grep` for symbol name with appropriate file-type filter. For API endpoints, grep route definitions.
+- **Module / symbol refs** — prefer LSP if available (`workspaceSymbol`, `goToDefinition`); fall back to `rg` for the symbol name with an appropriate file-type filter (`-t go`, `-g '*.ts'`). For API endpoints, search route definitions.
 - **Cross-doc links** — `test -e` on the resolved path.
-- **Provenance / attribution** — locate the named source doc/section, then `Grep` the attributed text (or a distinctive phrase from it) inside that source. Absent or diverged ⇒ ⚠️ **stale**: the attribution is wrong or reversed. Watch for the common form where content was _moved out of_ the cited doc into the current one, leaving a backwards "verbatim from X" pointer.
+- **Provenance / attribution** — locate the named source doc/section, then `rg` the attributed text (or a distinctive phrase from it) inside that source. Absent or diverged ⇒ ⚠️ **stale**: the attribution is wrong or reversed. Watch for the common form where content was _moved out of_ the cited doc into the current one, leaving a backwards "verbatim from X" pointer.
 
 For each claim, classify as:
 
@@ -167,8 +167,8 @@ Skip findings the user declines. After the last decision, summarize what was app
 
 ## Operating notes
 
-- **Performance** — the scan is read-mostly. Use parallel `Glob`/`Read` calls in the same message wherever findings don't depend on each other. Avoid spawning subagents unless the file count exceeds ~30 and per-file extraction starts dominating turn time.
-- **Prefer `Grep` over `Bash(grep:*)` for content and symbol searches** — `Grep` exits 0 on empty matches and avoids shell glob-expansion pitfalls (e.g., brace globs like `*.{ts,mjs}` against directories that hold none of those extensions return non-zero in `/bin/sh` and poison the call's exit code). Reserve `Bash(grep:*)` for flags `Grep` does not expose (`-l`, `-A`, `-B`, multi-step pipelines). When chaining several probes in a single `Bash` call, guard each subcommand that is allowed to find nothing with `|| true` so one empty match does not mark the whole call as failed.
+- **Performance** — the scan is read-mostly. Use parallel `Read`/`rg` calls in the same message wherever findings don't depend on each other. Avoid spawning subagents unless the file count exceeds ~30 and per-file extraction starts dominating turn time.
+- **Use `Bash(rg:*)` for content and symbol searches** — the `Grep`/`Glob` tools are removed on native macOS/Linux builds (CC 2.1.117+), where Bash `rg` is that same embedded ripgrep. Mind the exit-code flip: `rg` returns **1** on no match where the `Grep` tool returned 0, so guard each probe that is allowed to find nothing with `|| true`, or one empty match marks the whole `Bash` call failed. Quote patterns and globs (`rg 'foo' -g '*.ts'`) — an unquoted brace glob like `*.{ts,mjs}` against a directory holding neither expands to nothing in `/bin/sh` and poisons the call's exit code.
 - **Be conservative on aspirational docs** — sections labelled "Future work", "TODO", "Roadmap", "Design intent" describe intent, not current state. Skip them.
 - **Quote, don't paraphrase** — when you cite a claim, quote it verbatim so the user can grep for it. Paraphrased claims hide the original wording and make fixes harder to apply.
 - **Doc-vs-doc agreement** — if two docs make contradictory claims, both are findings. Don't pick a winner; flag both and let the user reconcile.

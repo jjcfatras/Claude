@@ -7,28 +7,28 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, and merge",
-      "version": "0.9.1",
+      "version": "0.9.2",
       "category": "git"
     },
     {
       "name": "respond-to-review",
       "source": "./plugins/respond-to-review",
-      "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones",
-      "version": "1.4.0",
+      "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones",
+      "version": "1.5.0",
       "category": "code-review"
     },
     {
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.3.1",
+      "version": "2.4.0",
       "category": "code-review"
     },
     {
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.5.1",
+      "version": "1.5.2",
       "category": "documentation"
     },
     {
@@ -42,7 +42,7 @@
       "name": "simplify",
       "source": "./plugins/simplify",
       "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose)",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "category": "code-quality"
     },
     {
@@ -56,22 +56,8 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "category": "project-management"
-    },
-    {
-      "name": "tool-discipline",
-      "source": "./plugins/tool-discipline",
-      "description": "PreToolUse guardrails: block cd-chaining, prefer built-in Read/Write/Edit over cat/head/tail/sed, and conditionally redirect ToolSearch loads of Grep/Glob to the embedded ripgrep/ugrep/bfs Bash search on native builds that dropped them (self-disabling elsewhere)",
-      "version": "0.5.0",
-      "category": "guardrails"
-    },
-    {
-      "name": "tool-discipline-lsp",
-      "source": "./plugins/tool-discipline-lsp",
-      "description": "LSP navigation guardrails: push Go/TS symbol searches to the LSP tool (PreToolUse), plus a PostToolUse advisory nudging a retry when workspaceSymbol returns empty",
-      "version": "0.1.1",
-      "category": "guardrails"
     }
   ]
 }

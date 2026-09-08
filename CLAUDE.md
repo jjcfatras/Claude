@@ -17,10 +17,12 @@ All scripts live in `package.json` and are invoked with `pnpm <script>`:
 - `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across both Go modules (`plugins/code-review/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
 - `pnpm build:go` — `make release` for the `code-review` helper; cross-compiles prebuilts into `plugins/code-review/bin/` (darwin/linux/windows × amd64/arm64; Windows binaries get a `.exe` suffix). Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
 - `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json`
-- `pnpm test` — runs the `code-review` Go test suite via `make -C plugins/code-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change
+- `pnpm test` — runs the `code-review` Go test suite via `make -C plugins/code-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change. They cover the `diff` and `finalize` outputs only — the bundle (`spawn-context.md`) and spawn prompt (`spawn-manifest.json`) have no golden, so changes there pass silently and need their own unit tests. `spawn-manifest_test.go` also reads the eight `agents/*.md` files and asserts substrings in their `## Environment` block — rewording an agent can fail `pnpm test`
 - `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
 
 To build the Go helper, run `make release` (or `make test`) directly from inside `plugins/code-review/tools/code-review-helper/`.
+
+`claude plugin list` shows what is actually installed (name, version, scope, status). Shipping in `.claude-plugin/marketplace.json` does **not** mean a plugin is enabled — `tool-discipline` sat in the marketplace uninstalled while repo docs described its hooks as actively enforcing.
 
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
 
@@ -29,17 +31,21 @@ Note: `.claude/settings.json` registers hooks that block bad edits at write time
 - **Frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md`, `plugins/*/skills/*/SKILL.md`, and `.claude/skills/*/SKILL.md` must start with `---` and include a `description:` field.
 - **Version-sync validator** (`PostToolUse`): a plugin's `plugin.json` `version` must match its entry in `.claude-plugin/marketplace.json`; editing either file triggers the check.
 
+All four match on `Edit|Write` only — a scripted multi-file edit (`python3` heredoc, shell redirect) bypasses every one of them. After one, run `pnpm format` / `pnpm format:go` and re-check manifests yourself.
+
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping ten plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping eight plugins under `plugins/`:
 
 - `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
 - `jira` — JIRA workflow skills (`create-ticket`, `implement-ticket`, `create-tests`), all user-only (`disable-model-invocation: true`)
-- `tool-discipline`, `tool-discipline-lsp` — **hook-only** plugins (no slash command); each ships just `hooks/hooks.json` + hook scripts. `tool-discipline` bundles three `PreToolUse` guardrails: two durable (no-cd-chaining, enforce-builtin-tools) plus a conditional one that redirects ToolSearch loads of Grep/Glob — removed by design on native builds since CC 2.1.117 in favor of embedded ripgrep/ugrep/bfs exposed through Bash — to those embedded engines, self-disabling on builds that still ship the tools (#52121/#61845 track the ToolSearch catalog gap); `tool-discipline-lsp` adds the prefer-LSP `PreToolUse` guardrail plus a `PostToolUse` advisory that nudges a retry/pivot when `workspaceSymbol` returns empty
 - `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships the orchestrator as a user-only skill (`skills/code-review/SKILL.md`, `disable-model-invocation: true`), plus .md agent files, references, a Go helper, and prebuilt binaries
+  - The eight `agents/*.md` duplicate their `## Environment` block and source-fetching paragraph near-verbatim, so shared guidance must be edited in all eight. The `## Environment` block (three bullets) is byte-identical in seven; only `claude-md` adds a clause, exempting CLAUDE.md files from the never-read-a-live-path rule. The source-fetching paragraph has four variants that differ only in the trailing `git grep` pathspec (`'*.ts'`, `'*.tsx'`, or none) and an optional "never `find | xargs grep`" clause. Check the outliers individually rather than blind-replacing.
+
+Component prose says `rg` (or `git grep`), never the `Grep`/`Glob` tools — those are removed on native macOS/Linux builds (CC 2.1.117+; upstream #52121 open). `code-review` specialists use `git grep <symbol> <HEAD_SHA>` specifically: they must read at `HEAD_SHA`, not the working tree.
 
 Besides the plugins, one repo-local skill ships at `.claude/skills/plugin-session-auditor/` — session-transcript audit: `SKILL.md`, four analyzer agents, evals, and the `session-parser` Go module (run via `go run .`).
 

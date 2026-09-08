@@ -5,14 +5,16 @@ argument-hint: <pr-number> [--auto|--dry-run]
 disable-model-invocation: true
 model: opus
 effort: medium
-allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion
+allowed-tools: Bash, Read, Write, Grep, Glob, Agent, AskUserQuestion, ListAgents
 ---
 
 # /code-review — orchestrate a multi-specialist PR review
 
 You are the orchestrator for /code-review. Execute the numbered steps below in order. Report progress with one short line per step (e.g. `[1/5] Fetching PR #42…`). Surface every command failure verbatim and stop — do not invent workarounds.
 
-A "stop" includes harness-side Agent rejections. All specialists are spawned together in a single message (see [3/5]), so a rejection means the harness denied one block of an already-issued batch — it is **not** a cue to issue the remaining specialists one at a time. If any `Agent` call returns a message containing `"user doesn't want to proceed"` or `"tool use was rejected"`, treat it as a fatal stop: do not retry, abandon the finalize/post phase. Report which subagent was denied, then jump to **Cleanup** (which always runs, regardless of whether the workflow finished normally).
+A "stop" includes harness-side Agent rejections. All specialists are spawned together in a single message (see [3/5]), so a rejection means the harness denied one block of an already-issued batch — it is **not** a cue to issue the remaining specialists one at a time. If any `Agent` call returns a message containing `"user doesn't want to proceed"` or `"tool use was rejected"`, treat it as a fatal stop: do not retry, abandon the finalize/post phase. Report which subagent was denied, then jump to **Cleanup**.
+
+**One carve-out: an interrupt is not a denial.** The harness emits that same `"user doesn't want to proceed"` text when the user cancels an _open_ permission prompt by typing ahead — queuing a message or a slash command while the prompt is pending — which is a request for attention, not a verdict on the tool call. Tell them apart by what arrives with it: a genuine denial stands alone, while an interrupt is accompanied by `[Request interrupted by user…]` and/or a new user turn at effectively the same instant. On an interrupt, do not fatally abort a healthy run — say which call was cancelled, answer whatever the user typed, and re-issue that one call. (On transcript `d67f09e0`, `/transcript` typed at 13:58:52.487 cancelled an open prompt and produced this exact string. It landed on a `SendMessage` and cost only a re-invocation; on an `Agent` block the rule above would have killed a working review over a keystroke.)
 
 All agents in this plugin are namespaced under `code-review:` — use the fully-qualified form for every `subagent_type` value (`code-review:security`, `code-review:quality`, etc.). The unqualified bare names are not registered and will fail with "Agent type not found".
 
@@ -41,14 +43,25 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 
 This step is **three Bash turns**, in this order. Everything derivable from what they fetch happens in [2/5], not here — so if you find yourself running `jq` to pull a value out of a file just to pass it to the next command, you are in the wrong step.
 
-**Turn 1 — create the scratch dir** (one call; everything downstream needs `$TMP`):
+**Turn 1 — create the scratch dir and sweep the last run's corpse** (one call; everything downstream needs `$TMP`):
 
 ```bash
 TMP="${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-$(date +%s)"
 mkdir -p "$TMP/findings"
 echo "TMP=$TMP"
 echo "REPO_ROOT=$(git rev-parse --show-toplevel)"
+
+# Pre-flight sweep — see Cleanup for why this exists.
+find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'pr-review-*' -mtime +1 -exec rm -rf {} + 2> /dev/null
+for ref in $(git for-each-ref --format='%(refname)' refs/code-review/); do
+  n=${ref##*/pr-}
+  set -- "${TMPDIR:-/tmp}/pr-review-$n-"*
+  [ "$n" = "$PR_NUMBER" ] || [ -d "$1" ] || git update-ref -d "$ref"
+done
+echo "pre-flight sweep done"
 ```
+
+The sweep is the other half of **Cleanup**: cleanup is a turn _this_ orchestrator takes, so a run whose process dies never reaches it, and the leak is unbounded until someone notices. Having each run bury the previous one's corpse bounds it at one. Both halves are deliberately conservative — `-mtime +1` cannot touch a review that started today, and a ref is deleted only when **no** `pr-review-<n>-*` dir survives for that PR, which means no review of it is in flight. The trailing `echo` keeps the block's exit status `0` when the loop's last test is false (same trap as the tier-1 check in [5/5]).
 
 **Turn 2 — the three fetches, ALL THREE in ONE message.** Each depends only on `PR_NUMBER` and `$TMP`, never on another's output, so they must be issued as three sibling `Bash` blocks in a single assistant message:
 
@@ -64,17 +77,7 @@ gh pr diff "$PR_NUMBER" > "$TMP/pr-$PR_NUMBER.diff"
 git fetch origin "+pull/$PR_NUMBER/head:refs/code-review/pr-$PR_NUMBER" --no-tags
 ```
 
-**Do NOT issue one of these, wait for its result, then issue the next.** Each Bash round-trip costs several seconds of fixed harness overhead regardless of how little work it does; running three independent fetches serially spends that price three times for nothing. This is the same failure this file warns about for specialist spawns in [3/5], and it is just as wrong here.
-
-Schematic — the three fetches are sibling blocks inside one message, not one block per turn:
-
-```
-<single assistant message>
-  Bash(gh pr view …)      ← fetch 1
-  Bash(gh pr diff …)      ← fetch 2
-  Bash(git fetch …)       ← fetch 3
-</single assistant message>
-```
+**Do NOT issue one of these, wait for its result, then issue the next.** Each Bash round-trip costs several seconds of fixed harness overhead regardless of how little work it does. This is the same failure [3/5] guards against for specialist spawns — see the schematic there — and it is just as wrong here.
 
 The `git fetch` puts the PR head in a hidden local ref so `git show $HEAD_SHA:<path>` and `git grep <sym> $HEAD_SHA` resolve even on a stale clone or a fork PR (specialists and the bundle builder both depend on the HEAD_SHA objects being present locally). If it fails (offline, fork ref unavailable, restricted remote), print a one-line warning and continue — an explicit exception to the surface-and-stop rule at the top of this file. Specialists fall back to the bundle's embedded source; line confirmation against `$HEAD_SHA` may degrade on stale clones.
 
@@ -98,7 +101,7 @@ If this call fails, `review-threads.json` will be absent or empty — that is no
 "$HELPER" prepare --review-tmpdir "$TMP" --repo-root "$REPO_ROOT" --rubric "$RUBRIC"
 ```
 
-That is the whole step. `prepare` reads `pr-meta.json`, `pr-$PR_NUMBER.diff` and `review-threads.json` from `$TMP` and writes all eight downstream artifacts: `changed-files.json`, `valid-lines.json`, `claude-md-files.json`, `roster.json`, `prior-issues.json`, `spawn-context.md`, `rubric.md`, `spawn-manifest.json`. It replaces six separate calls (two `jq` projections plus `diff`, `roster`, `bundle-context`, `spawn-manifest`) whose outputs it reproduces byte for byte.
+That is the whole step. `prepare` reads `pr-meta.json`, `pr-$PR_NUMBER.diff` and `review-threads.json` from `$TMP` and writes all eight downstream artifacts: `changed-files.json`, `valid-lines.json`, `claude-md-files.json`, `roster.json`, `prior-issues.json`, `spawn-context.md`, `rubric.md`, `spawn-manifest.json`. It also creates two directories the specialists use: `head/<HEAD_SHA>/` — where a changed file too large for the bundle's caps is written verbatim, so the Source index can hand every specialist one local path instead of six `git show` calls, and where `helper show` caches anything they ask for outside the changed set — and `scratch/`, for their own working copies. Both live under `$TMP` so Cleanup already covers them; that is the point, since specialist scratch written to bare `/tmp` is unreachable by any cleanup this skill runs. It replaces six separate calls (two `jq` projections plus `diff`, `roster`, `bundle-context`, `spawn-manifest`) whose outputs it reproduces byte for byte.
 
 It prints shell-safe `KEY=value` lines to stdout — this is where you get the values later steps need, so read them from the tool result rather than re-deriving any of them:
 
@@ -109,22 +112,9 @@ ROSTER=security,quality,errors,perf,…          CHANGED_FILES=…   PRIOR_ISSUE
 
 **Eligibility guard.** `prepare` exits non-zero with `PR #N is <state> — aborting` before writing anything when the PR is not `OPEN` — reviewing a merged/closed PR wastes the entire specialist budget and risks posting to a finished thread. On that error, report it and stop (run Cleanup). A second, immediately-before-posting re-check lives at the top of step [5/5] to catch a PR that changed state mid-review. (The guard fires here rather than before the [1/5] GraphQL call, so a closed PR costs one wasted API call — the tradeoff for having exactly one place that decides eligibility.)
 
-Roster contents, for reference — `prepare` encodes all of these patterns:
+Which specialists the roster patterns select is `prepare`'s job, not yours — `internal/roster/roster.go` owns them and `ROSTER=` on stdout is the answer.
 
-- Always-on: `security`, `quality`, `errors`, `perf`.
-- Conditional: `typescript` (`.ts/.tsx/.cts/.mts`, plus `tsconfig*.json`/`jsconfig.json` and framework/bundler configs), `react` (`.tsx/.jsx`, plus framework/bundler configs), `infra` (`.sql`, `migrations/`, `db/migrations/`, `.tf`, `.hcl`, `terraform/`, `Dockerfile`, `docker-compose`/`compose.yml`, `k8s/`, `kubernetes/`, `helm/`, `deploy/`, `infra(structure)?/`, `.github/workflows/`, `Jenkinsfile`, `.circleci/`, `.buildkite/`), `claude-md` (any `CLAUDE.md` ancestor of a changed file exists at `$REPO_ROOT`). Framework/bundler configs = `{next,vite,nuxt,webpack,rollup,esbuild,babel}.config.{js,mjs,cjs,ts,mts,cts}`, `babel.config.json`, `.babelrc` — these feed both `typescript` and `react`.
-
-**Do not inspect the artifacts.** `ROSTER=` on stdout already tells you which specialists you'll spawn, and the only file you need to open is `spawn-manifest.json` in [3/5]. If you nevertheless need to look at one, these are the shapes — they are _not_ uniform, so don't guess:
-
-| File                                                        | Shape                                                                 |
-| ----------------------------------------------------------- | --------------------------------------------------------------------- |
-| `changed-files.json`, `roster.json`, `claude-md-files.json` | flat JSON array of strings — `jq -r '.[]'`, never `.[].path`          |
-| `valid-lines.json`                                          | object keyed by path → array of `[start,end]` pairs                   |
-| `prior-issues.json`                                         | `{last_review_date, last_review_commit, issues: [ {path, line, …} ]}` |
-| `spawn-manifest.json`                                       | array of objects — `{subagent_type, description, prompt}`             |
-| `consolidated.json` ([4/5])                                 | object of named buckets — see the summary `jq` in [4/5]               |
-
-Use `jq` (a pipeline filter — allowed) or a `Read` call for any such inspection — never bare `cat <file>`, which this repo's `enforce-builtin-tools` guardrail blocks. And keep a disposable inspection in its **own** Bash call: never `&&` it onto a command that writes state, or the inspection's exit code masks whether the real work succeeded. (That rule holds for every step in this file, not just this one.)
+**Do not inspect the artifacts.** `ROSTER=` already tells you which specialists you'll spawn, and the only file you need to open is `spawn-manifest.json` in [3/5]. If you nevertheless must look at one, note the shapes are _not_ uniform — `changed-files.json`, `roster.json` and `claude-md-files.json` are flat arrays of strings (`jq -r '.[]'`, never `.[].path`); the rest are objects. Use `jq` or a `Read` call rather than a bare `cat <file>`. And keep a disposable inspection in its **own** Bash call: never `&&` it onto a command that writes state, or the inspection's exit code masks whether the real work succeeded. (That rule holds for every step in this file, not just this one.)
 
 ---
 
@@ -132,7 +122,7 @@ Use `jq` (a pipeline filter — allowed) or a `Read` call for any such inspectio
 
 Read `$TMP/spawn-manifest.json` in a **single** `Read` call (or, if you must use the shell, one `jq -c '.[]'` invocation). Do not inspect it field-by-field across multiple Bash calls — no per-entry `jq '.[N].prompt'`, no `subagent_type` listing, no `head` preview. The manifest is forwarded verbatim, so printing individual fields first buys nothing and adds a round-trip per entry. It contains one object per roster entry, each with three pre-rendered fields: `subagent_type`, `description`, `prompt`. Emit one `Agent` `tool_use` block per entry, **all as sibling blocks in this single assistant message**. Forward each object's three fields verbatim — do not modify, truncate, summarize, or skip any entry. The manifest is the ground truth; if it has N entries your message must contain N `Agent` blocks.
 
-**Do NOT emit one `Agent` block, wait for its result, then emit the next.** That runs the specialists sequentially and is the exact bug this step exists to prevent. Every block belongs in THIS one message — the harness then runs them concurrently and their results return together. The manifest is not a to-do list to work through turn by turn; it is the complete set of sibling blocks for a single message.
+**Do NOT emit one `Agent` block, wait for its result, then emit the next.** That runs the specialists sequentially and is the exact bug this step exists to prevent. Every block belongs in THIS one message — the harness then runs them concurrently. The manifest is not a to-do list to work through turn by turn; it is the complete set of sibling blocks for a single message.
 
 Schematic — every manifest entry becomes one sibling `Agent` block inside the same message (not one block per turn):
 
@@ -144,9 +134,23 @@ Schematic — every manifest entry becomes one sibling `Agent` block inside the 
 </single assistant message>
 ```
 
-After all Agent calls return, verify each role's findings file exists at `$TMP/findings/<role>.json`. Missing files are surfaced as `missing_roles` by the finalize step — don't retry them.
-
 On harness rejection: see top-of-file stop rule. Because the whole batch is issued at once, a denial of any one block aborts the run — any findings files already on disk are abandoned, not posted. Skip the finalize/post phase and jump to Cleanup.
+
+### In flight, and resuming after an interruption
+
+**These `Agent` calls are asynchronous** (as of CC 2.1.246; agents have been background-by-default since v2.1.198). Each returns the moment it is accepted, _not_ when its specialist finishes — the tool result says so verbatim ("The agent is working in the background. You will be notified automatically"). The specialists then run concurrently and report **individually**, as task notifications arriving over the following minutes. So:
+
+- **End your turn after spawning.** Do not treat the `Agent` tool results as findings, and do not check `$TMP/findings/` in the same turn — at that instant it is empty.
+- **Do not poll.** The notifications arrive on their own; a `ListAgents` loop spends a full model turn each pass to re-learn what is already coming for free.
+- **Verify once every roster role has reported** — each role's findings file at `$TMP/findings/<role>.json`. Missing files are surfaced as `missing_roles` by finalize; don't retry them.
+
+**If you find yourself resumed mid-review** — an unexpected `Continue from where you left off`, or any turn where you cannot tell what landed (the orchestrator process can die while specialists are in flight) — run exactly this check, in this order, and then proceed:
+
+1. `ls -la "$TMP/findings/"` — **disk first.** It is the only durable record.
+2. `ListAgents` — which specialists are still alive.
+3. **A valid findings file on disk outranks a `status: failed` task-notification.** A process exit invalidates the harness's in-process view, not the bytes a specialist already wrote. On transcript `d67f09e0` the `claude-md` notification said "did not complete… its in-process state was lost" while `findings/claude-md.json` had been on disk, valid and complete, for 71 seconds. Treat that role as **done** and do not re-spawn it — a re-spawn races a second write against a file the rubric declares immutable once written.
+
+A role with **no** findings file and **no** live agent is a `missing_role`, full stop. Do not nudge it back to life: no `SendMessage`, no re-spawn, no `AskUserQuestion` asking whether to retry — that is the "invent workarounds" this file's first paragraph forbids, and it burns turns the run does not have. Continue to [4/5] with whatever landed; a partial roster still produces a useful review, and `missing_roles` reports the gap honestly. Only if _nothing_ landed, stop and jump to Cleanup.
 
 ---
 
@@ -196,7 +200,7 @@ Two of the remaining lines report on findings that **are** being posted rather t
 - **Off-vocabulary categories** — the finding still posts, but its `category` is outside the closed vocabulary in `references/code-review-rubrics.md` § "Category vocabulary", so it silently matches nothing in category-based dedup. A recurring value here means an agent file's guidance has drifted from the rubric.
 - **Potential conflicts** — two surviving findings anchored within five lines of each other where one's prose discusses the other's subject. This is a prompt to look, not a verdict: specialists scan independently with no cross-agent verification, so two of them can reach opposite conclusions about one symbol and both pass the gate (on PR #1784 one specialist flagged a variable's missing default as the defect while two others cited that same missing default as the correct pattern — all three posted). Read the pair before answering the post prompt; if they disagree, type the finding IDs you want into the prompt's free-text field rather than posting all.
 
-**`budget_exhausted_roles` is a self-report, not an enforced deadline.** Nothing in this plugin bounds a specialist's runtime — there is no `maxTurns` on any agent, no orchestrator wall-clock check, and because the whole batch is spawned in one message the harness returns every specialist together. A role only lands in this bucket by writing a findings file that says it stopped early, which means it was alive to write it. A specialist that hangs or dies produces no file at all and appears in **`missing_roles`**.
+**`budget_exhausted_roles` is a self-report, not an enforced deadline.** Nothing in this plugin bounds a specialist's runtime — there is no `maxTurns` on any agent and no orchestrator wall-clock check, and since the specialists run asynchronously in the background ([3/5]) nothing forces a slow one to finish either. A role only lands in this bucket by writing a findings file that says it stopped early, which means it was alive to write it. A specialist that hangs, dies, or was still running when you reached this step produces no file at all and appears in **`missing_roles`**.
 
 **The `Accounted:` line is the conservation check.** `finalize` requires every finding a specialist wrote to land in exactly one bucket — inline, summary-only, dropped-prior, reconciled, deduped, or invalid. When the totals match, the summary above is provably the complete account of this review. When they don't, the line reads `⚠ ACCOUNTING MISMATCH` and names the orphaned IDs: findings that entered the pipeline and left no trace. That is a helper bug, not something to work around — follow the **Accounting mismatch** procedure below.
 
@@ -276,7 +280,7 @@ TIER1_RC=$?
 printf '%s' "$TIER1_ERR" > "$TMP/tier1.err"
 ```
 
-`2>&1 >/dev/null` discards the success-path review JSON (tier 1 doesn't need it — success is the exit code) and captures any error text into `$TIER1_ERR`, persisted to `$TMP/tier1.err` for the tier-3 patch. **Branch on the variable, never by `cat`-ing the file** (the `enforce-builtin-tools` guardrail blocks bare `cat <file>`). Run this exact block — every branch ends in a plain `echo`, so the block's own exit status is always `0` and a successful post never gets misreported as a Bash failure (do **not** end the check on a bare `[ … ] && echo`, whose exit status is `1` on the success path where `$TIER1_ERR` is empty):
+`2>&1 >/dev/null` discards the success-path review JSON (tier 1 doesn't need it — success is the exit code) and captures any error text into `$TIER1_ERR`, persisted to `$TMP/tier1.err` for the tier-3 patch. **Branch on the variable, never by `cat`-ing the file** — the text is already in `$TIER1_ERR`. Run this exact block — every branch ends in a plain `echo`, so the block's own exit status is always `0` and a successful post never gets misreported as a Bash failure (do **not** end the check on a bare `[ … ] && echo`, whose exit status is `1` on the success path where `$TIER1_ERR` is empty):
 
 ```bash
 if [ "$TIER1_RC" -eq 0 ]; then
@@ -319,7 +323,9 @@ If tier 3 also fails, surface the full error and stop. Report `posted via tier 3
 
 ## Cleanup
 
-Cleanup always runs — after step [5/5] completes normally, after the user chose `Skip` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Two exceptions, and only two: skip it if `$TMP` is unset (the stop happened before step 0 created the scratch dir), and **skip the `rm -rf` if [4/5] reported an accounting mismatch** — there the raw findings are the only surviving copy of an orphaned finding, so deleting them destroys the evidence. Still delete the git ref in that case.
+Cleanup runs on every path you reach — after step [5/5] completes normally, after the user chose `Skip` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Two deliberate exceptions: skip it if `$TMP` is unset (the stop happened before step 0 created the scratch dir), and **skip the `rm -rf` if [4/5] reported an accounting mismatch** — there the raw findings are the only surviving copy of an orphaned finding, so deleting them destroys the evidence. Still delete the git ref in that case.
+
+**It is not, and cannot be, "always".** Cleanup is a turn _you_ take, so every abnormal termination — the Claude Code process exiting, a `kill`, context exhaustion, the machine sleeping — skips it by construction, because in those cases no turn of yours runs at all. That gap is real and it accumulates: on 2026-08-26 four orphaned `pr-review-*` dirs (one 22 hours old) and two dangling `refs/code-review/*` were found on a single machine. The [1/5] Turn 1 pre-flight sweep is the compensating half — it cannot save the run that dies, but it bounds the leak at one dir instead of letting it grow without limit.
 
 Defensive check: only `rm -rf` a path that is a `pr-review-*` directory **directly under the temp root** — matching the full path, not just its basename, so a `pr-review-*` component anywhere else on disk can't satisfy the guard. The pattern re-expands the same `${TMPDIR:-/tmp}` used to build `$TMP` in step 0, so it matches by construction whether or not `TMPDIR` carries a trailing slash:
 

@@ -32,6 +32,7 @@ func main() {
 		"finalize":       runFinalize,
 		"bundle-context": runBundleContext,
 		"spawn-manifest": runSpawnManifest,
+		"show":           runShow,
 	}
 	run, ok := subcommands[cmd]
 	if !ok {
@@ -50,6 +51,7 @@ func usage() {
 Usage:
   code-review-helper prepare         [flags]   # diff + roster + prior-issues + bundle + manifest
   code-review-helper finalize        [flags]   # dedup + gate + snap + render
+  code-review-helper show            [flags]   # cache one HEAD blob under $REVIEW_TMPDIR; print its local path
 
 Single-stage subcommands (composed by prepare; useful for debugging one stage):
   code-review-helper diff            [flags]

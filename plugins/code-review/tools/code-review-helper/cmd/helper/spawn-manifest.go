@@ -51,8 +51,7 @@ const promptTemplate = "Read {{TMP}}/spawn-context.md " +
 	"past your first page, Read up to it before anything else, then stop paging and use the index's " +
 	"`Bundle line` column to jump straight to the files you need) " +
 	"and {{TMP}}/rubric.md, once each. " +
-	"Scan {{TMP}}/pr-{{PR_NUMBER}}.diff for issues in your domain — the `## Diff map` on the bundle's first page " +
-	"gives you each file's line offset and hunk count, so never bare-Read the diff. " +
+	"Scan {{TMP}}/pr-{{PR_NUMBER}}.diff for issues in your domain — {{DIFF_GUIDANCE}} " +
 	"Then Write findings JSON to {{TMP}}/findings/{{ROLE}}.json per the rubric schema.\n\n" +
 	"HEAD_SHA: {{HEAD_SHA}}"
 
@@ -132,6 +131,8 @@ type spawnSubs struct {
 	owner        string
 	repo         string
 	repoRoot     string
+	diffBytes    int // raw diff size; 0 means unmeasured, which falls back to the diff-map guidance
+	diffLines    int
 }
 
 // buildSpawnEntries renders one Agent payload per roster role. Shared by the
@@ -148,6 +149,7 @@ func buildSpawnEntries(roles []string, s spawnSubs) ([]spawnEntry, error) {
 		"{{REPO_ROOT}}", s.repoRoot,
 		"{{OWNER}}", s.owner,
 		"{{REPO}}", s.repo,
+		"{{DIFF_GUIDANCE}}", diffGuidance(s.diffBytes, s.diffLines),
 	)
 	ordered := append([]string(nil), roles...)
 	// Longest-running roles first; unknown roles keep roster order behind the
@@ -170,6 +172,36 @@ func buildSpawnEntries(roles []string, s spawnSubs) ([]spawnEntry, error) {
 		})
 	}
 	return entries, nil
+}
+
+// Thresholds for reading the diff in one call. Read caps out at 256 KB and
+// 25,000 tokens, and its default line budget is 2,000 — so a diff comfortably
+// inside all three is cheaper to take whole than to visit file by file.
+const (
+	oneShotDiffBytes = 150_000
+	oneShotDiffLines = 1_500
+)
+
+// diffGuidance renders the diff-reading directive from the diff's measured
+// size, because the same sentence is right on one PR and wrong on the next.
+//
+// The rule used to be absolute — "never bare-Read the diff" — while its
+// rationale ("the raw diff often exceeds the Read byte cap on large PRs") was
+// conditional. On a small diff the map costs one Read per file to replace a
+// single Read of the whole thing, so the instruction was simply worse than
+// ignoring it, and specialists noticed: all five live roles on transcript
+// d67f09e0 bare-Read a 13,456-byte / 224-line diff in one call, in defiance of
+// this prompt. They were right. An always-false directive does not just waste
+// its own line, it teaches the reader to discount the ones around it — and
+// prepare already knows the number that settles the question.
+func diffGuidance(diffBytes, diffLines int) string {
+	if diffBytes <= 0 {
+		return "use the `## Diff map` on the bundle's first page to jump to each file's line offset instead of paging from 0."
+	}
+	if diffBytes <= oneShotDiffBytes && diffLines <= oneShotDiffLines {
+		return fmt.Sprintf("it is %d bytes / %d lines, so Read it in ONE call and work from that.", diffBytes, diffLines)
+	}
+	return fmt.Sprintf("it is %d bytes / %d lines — too big for one Read, so use the `## Diff map` on the bundle's first page to jump to each file's offset instead of paging from 0.", diffBytes, diffLines)
 }
 
 // rankOf returns role's spawn rank, sorting unranked roles last.

@@ -17,7 +17,7 @@ Pick the file set in this order:
 
 1. **`$1` is `--staged`**: run `git diff --name-only --cached` and use that file set.
 2. **`$1` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
-3. **`$1` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it via `Glob`. If it is a glob, expand it.
+3. **`$1` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it with the same union as case 4 scoped to that path — `git ls-files <dir>` plus `git ls-files --others --exclude-standard <dir>`. If it is a glob, expand it.
 4. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify:simplify-prose`'s job.
 
 After collecting candidates, drop anything that is obviously out of scope:

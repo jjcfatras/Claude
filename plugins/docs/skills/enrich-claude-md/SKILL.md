@@ -21,7 +21,7 @@ Resolve the investigation scope from `$1` (trimmed) — an optional positional a
 
 1. **`$1` is empty** — investigate the whole repo rooted at `$REPO_ROOT`.
 2. **`$1` resolves to an existing directory** (`test -d`) — investigate only that subtree, but still read the _nearest enclosing_ memory files (the root `CLAUDE.md` and any `.claude/rules/`) so you don't re-propose facts already documented upstream.
-3. **`$1` is any other non-empty value** — treat it as a glob, expand it with a single `find`/`Glob`, and investigate the matches. If it expands to nothing, stop and report "no files match `<arg>`".
+3. **`$1` is any other non-empty value** — treat it as a glob, expand it with a single `find`, and investigate the matches. If it expands to nothing, stop and report "no files match `<arg>`".
 
 The directory exclusions in Step 3 apply to every scope.
 
@@ -67,7 +67,7 @@ Because `-name 'CLAUDE.md'` matches at any depth, this also surfaces **nested** 
 
 Using the Step 1 taxonomy, scan the code for documentation-worthy facts. Read the high-signal sources first — `package.json` scripts, `Makefile`, `.nvmrc`/`.tool-versions`, CI workflows, hook configs (`.claude/settings.json`, `hooks/`), top-level directory layout, and any obvious config that changes tool behavior — then sample representative source to confirm conventions hold _consistently_ rather than in one file.
 
-**Batch independent reads.** Issue `Read`/`Grep` calls for unrelated sources in the same message; sequential single reads waste a round-trip each. On a large or unfamiliar repo (roughly >30 candidate files, or when you can't hold the layout in your head), spawn `Explore` subagents to fan out — one per area (build/CI, conventions, gotchas) — and collect their findings here. Investigation breadth is the whole point of this command; don't try to read everything yourself when fan-out is cheaper.
+**Batch independent reads.** Issue `Read`/`rg` calls for unrelated sources in the same message; sequential single reads waste a round-trip each. On a large or unfamiliar repo (roughly >30 candidate files, or when you can't hold the layout in your head), spawn `Explore` subagents to fan out — one per area (build/CI, conventions, gotchas) — and collect their findings here. Investigation breadth is the whole point of this command; don't try to read everything yourself when fan-out is cheaper.
 
 For each candidate fact, record:
 
@@ -161,8 +161,8 @@ After the last decision, summarize what was added and what was deferred.
 ## Operating notes
 
 - **Be a skeptic about your own findings** — before proposing a fact, ask "would a competent engineer reading this repo for the first time genuinely benefit, or is this noise?" When unsure, drop it. Missed additions cost nothing; bad ones erode trust in the memory file and get the whole thing ignored.
-- **Prefer `Grep` over `Bash(grep:*)` for content searches** — `Grep` exits 0 on empty matches and avoids shell glob-expansion pitfalls. Reserve `Bash(grep:*)` for flags `Grep` doesn't expose (`-l`, `-A`, `-B`, pipelines). When chaining probes in one `Bash` call, guard each subcommand allowed to find nothing with `|| true` so one empty match doesn't fail the whole call.
-- **Use `jq` for `package.json`** — `jq -r '.scripts | keys[]' package.json` to enumerate scripts; read plain version files (`.nvmrc`, `.tool-versions`) with `Read`, not `cat` (blocked by the `enforce-builtin-tools.sh` hook).
+- **Use `Bash(rg:*)` for content searches** — the `Grep`/`Glob` tools are removed on native macOS/Linux builds (CC 2.1.117+), where Bash `rg` is that same embedded ripgrep. Mind the exit-code flip: `rg` returns **1** on no match where the `Grep` tool returned 0, so guard every probe allowed to find nothing with `|| true`, or one empty match fails the whole `Bash` call. Quote patterns and globs (`rg 'foo' -g '*.ts'`) so the shell can't expand them first.
+- **Use `jq` for `package.json`** — `jq -r '.scripts | keys[]' package.json` to enumerate scripts; read plain version files (`.nvmrc`, `.tool-versions`) with `Read`, not `cat`.
 - **Match the house style** — a snippet that reads like the lines around it gets accepted; one that doesn't gets reformatted or rejected. Mirror table-vs-prose, heading depth, and terseness of the target file.
 - **Don't restate the obvious to pad the report** — a short report with three real additions beats a long one padded with facts the user already knows.
 - **Confirm scope before a full-repo pass** — this is a whole-repo scan. When auto-invoked mid-task rather than run explicitly, confirm the intended scope with the user before scanning the entire repo. Keep working notes in memory or a temp file; do not persist them to the repo.

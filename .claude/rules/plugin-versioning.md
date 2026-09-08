@@ -13,3 +13,4 @@ Bump rules:
 - Bumping a higher tier resets lower tiers to `0` (1.4.7 → MINOR → 1.5.0, not 1.5.7).
 - Pure non-plugin changes (root `CLAUDE.md`, `.claude/settings.json`, `.claude-plugin/marketplace.json`, repo-level docs, `code-review-workspace/`) do not require any plugin version bump.
 - Include the manifest version bump in the same commit as the plugin change.
+- Check for an unreleased bump before adding one: compare `git show HEAD:plugins/<name>/.claude-plugin/plugin.json | jq -r .version` against the working tree. If the working version is already ahead of `HEAD`, that bump is pending and unreleased — fold lower-tier work into it rather than bumping a second time.

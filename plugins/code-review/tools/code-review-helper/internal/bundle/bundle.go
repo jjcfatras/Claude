@@ -56,14 +56,17 @@ type Input struct {
 	PRNumber            int
 	Owner               string
 	Repo                string
-	RepoRoot            string // repo working-tree root for specialist `git -C <REPO_ROOT> ...` calls; emitted in Per-PR header so specialists never synthesize paths from cwd (which may be a worktree not checked out to HEAD)
-	SummaryParagraph    string // optional pre-composed summary. When empty, Build synthesizes a deterministic stub from the changed-files list. Kept for backwards compatibility with callers that still pass a prose summary via `--summary-paragraph`.
-	RubricPath          string // path to references/code-review-rubrics.md
-	RubricExternal      string // when non-empty, helper writes rubric to this path and emits `RUBRIC_PATH: <path>` in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 256 KB Read byte cap
-	MaxSourceBytes      int    // per-file embedding cap; 0 disables
-	MaxTotalSourceBytes int    // aggregate cap across all embedded files; 0 disables (only per-file cap applies). A file whose size would push the running total over the cap is marked _omitted_, but later smaller files still get their chance at the remaining headroom — only once the headroom is fully spent are the rest omitted unmeasured.
-	GitWorkdir          string // cwd for `git show` calls (repo root)
-	DiffPath            string // when non-empty and the file exists, helper emits a `## Diff map` section listing each file's byte offset, starting line, and hunk count in the raw diff — lets specialists jump to relevant ranges instead of scanning from offset 0
+	RepoRoot            string              // repo working-tree root for specialist `git -C <REPO_ROOT> ...` calls; emitted in Per-PR header so specialists never synthesize paths from cwd (which may be a worktree not checked out to HEAD)
+	SummaryParagraph    string              // optional pre-composed summary. When empty, Build synthesizes a deterministic stub from the changed-files list. Kept for backwards compatibility with callers that still pass a prose summary via `--summary-paragraph`.
+	RubricPath          string              // path to references/code-review-rubrics.md
+	RubricExternal      string              // when non-empty, helper writes rubric to this path and emits `RUBRIC_PATH: <path>` in the bundle header instead of inlining the rubric body — keeps spawn-context.md under the 256 KB Read byte cap
+	MaxSourceBytes      int                 // per-file embedding cap; 0 disables
+	MaxTotalSourceBytes int                 // aggregate cap across all embedded files; 0 disables (only per-file cap applies). A file whose size would push the running total over the cap is marked _omitted_, but later smaller files still get their chance at the remaining headroom — only once the headroom is fully spent are the rest omitted unmeasured.
+	GitWorkdir          string              // cwd for `git show` calls (repo root)
+	DiffPath            string              // when non-empty and the file exists, helper emits a `## Diff map` section listing each file's byte offset, starting line, and hunk count in the raw diff — lets specialists jump to relevant ranges instead of scanning from offset 0
+	HeadDir             string              // when non-empty, a changed file too big for either cap is written verbatim to <HeadDir>/<path> and the Source index points at that local copy instead of telling every specialist to run its own `git show`. Empty restores the pre-2.4.0 omit-and-refer behavior.
+	HelperPath          string              // absolute path to this binary; emitted as HELPER_PATH so specialists can run `helper show` for files outside the changed set
+	ValidLines          map[string][][2]int // changed-line ranges per path (as written to valid-lines.json); used to render hunk-neighbourhood Read windows for materialized files
 
 	// GitShowFn allows tests to inject a deterministic substitute for
 	// `git show HEAD_SHA:path`. Returns (content, size, error). When nil, the
@@ -141,6 +144,9 @@ func Build(in Input) (string, error) {
 	}
 	if in.RubricExternal != "" {
 		fmt.Fprintf(&b, "- RUBRIC_PATH: %s (Read this once after the bundle — moved out of the bundle body to keep spawn-context.md under the Read tool's 256 KB byte cap)\n", in.RubricExternal)
+	}
+	if in.HelperPath != "" {
+		fmt.Fprintf(&b, "- HELPER_PATH: %s — for a file OUTSIDE the changed list, run `Bash: \"%s\" show --review-tmpdir %s --repo-root %s --sha %s --path <repo-relative-path>`. It prints one local path (cached, so the first specialist to ask pays and the rest do not); Read that path with offset/limit. Never `git show` such a file yourself — on transcript d67f09e0 four specialists spent 19 redundant subprocesses re-fetching three shared files.\n", in.HelperPath, in.HelperPath, in.ReviewTmpDir, in.RepoRoot, in.HeadSHA)
 	}
 	fmt.Fprintf(&b, "- BUNDLE_LINES: %s — total lines in this file. Page with Read `offset`/`limit` up to this number; do not guess whether more content follows.\n", bundleLinesPlaceholder)
 	hasSourceSection := in.MaxSourceBytes > 0 && len(changedFiles) > 0
@@ -241,6 +247,9 @@ const (
 	sourceEmbedded  sourceStatus = "embedded"
 	sourceOmitted   sourceStatus = "omitted"
 	sourceDuplicate sourceStatus = "duplicate"
+	// sourceMaterialized: too big to embed, but written to <HeadDir>/<path> so
+	// specialists Read one local copy instead of each running `git show`.
+	sourceMaterialized sourceStatus = "materialized"
 )
 
 // sourceDecision is one row of the per-file embed-or-omit plan. `planSourceSection`
@@ -252,6 +261,8 @@ type sourceDecision struct {
 	Status      sourceStatus // sourceEmbedded | sourceOmitted | sourceDuplicate
 	Reason      string       // omission rationale (per-file cap, aggregate cap, git show error)
 	DuplicateOf string       // representative path whose body is byte-identical; set only when Status == sourceDuplicate
+	LocalPath   string       // on-disk copy under HeadDir; set only when Status == sourceMaterialized
+	Windows     string       // pre-rendered hunk-neighbourhood Read windows for LocalPath; may be empty when the diff had no ranges for this path
 }
 
 // writeSection emits a heading followed by raw bytes (trimmed of trailing
@@ -348,11 +359,9 @@ func planSourceSection(in Input, paths []string, diffHunks map[string]int) []sou
 			d.Status = sourceDuplicate
 			d.DuplicateOf = repByHash[hash]
 		case size > in.MaxSourceBytes:
-			d.Status = sourceOmitted
-			d.Reason = fmt.Sprintf("%d bytes > %d per-file cap — use `git show %s:%s`", size, in.MaxSourceBytes, in.HeadSHA, p)
+			d = spillToDisk(in, d, p, content, fmt.Sprintf("%d bytes > %d per-file cap", size, in.MaxSourceBytes))
 		case in.MaxTotalSourceBytes > 0 && running+size > in.MaxTotalSourceBytes:
-			d.Status = sourceOmitted
-			d.Reason = fmt.Sprintf("would exceed %d-byte aggregate bundle cap (running=%d, file=%d) — use `git show %s:%s`", in.MaxTotalSourceBytes, running, size, in.HeadSHA, p)
+			d = spillToDisk(in, d, p, content, fmt.Sprintf("would exceed %d-byte aggregate bundle cap (running=%d, file=%d)", in.MaxTotalSourceBytes, running, size))
 		default:
 			d.Status = sourceEmbedded
 			d.Content = content
@@ -362,6 +371,87 @@ func planSourceSection(in Input, paths []string, diffHunks map[string]int) []sou
 		out = append(out, d)
 	}
 	return out
+}
+
+// spillToDisk resolves a file that cleared neither cap. With HeadDir set it
+// writes the full content to <HeadDir>/<path> and marks the row `materialized`,
+// so the Source index can hand every specialist the same local path; without it
+// (or on a write error) it degrades to the historical `omitted` row.
+//
+// This is the upgrade path named in planSourceSection's "Known ceiling" note.
+// Raising the caps was never the answer — one 41 KB file is ~19k tokens, which
+// blows the bundle's own Read budget — but the file still has to be reachable
+// without six specialists each shelling out for it. Spilling to disk separates
+// the two: the bundle stays small because it carries a path, and the content
+// stays whole because nothing truncates it. On PR #1817 three of four changed
+// files were omitted this way while 93.6% of the aggregate budget went unspent,
+// and the one changed non-spec source file was read by no specialist at all.
+func spillToDisk(in Input, d sourceDecision, p, content, why string) sourceDecision {
+	if in.HeadDir != "" {
+		if local, err := writeHeadCopy(in.HeadDir, p, content); err == nil {
+			d.Status = sourceMaterialized
+			d.LocalPath = local
+			d.Windows = readWindows(in.ValidLines[p])
+			d.Reason = why
+			return d
+		}
+	}
+	d.Status = sourceOmitted
+	d.Reason = fmt.Sprintf("%s — use `git show %s:%s`", why, in.HeadSHA, p)
+	return d
+}
+
+// writeHeadCopy materializes one HEAD blob under headDir, preserving the
+// repo-relative path so the copy is self-describing in a Read call.
+func writeHeadCopy(headDir, p, content string) (string, error) {
+	dst := filepath.Join(headDir, filepath.FromSlash(p))
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
+// windowPad is how many lines of context each changed range carries into its
+// suggested Read window. 40 is not a tuned constant — it is what specialists
+// picked unprompted when they paged these files by hand (transcript d67f09e0:
+// offset:690 limit:180 against hunks at 726-864; offset:1415 limit:90 against a
+// hunk at 1460-1473). Wide enough for the enclosing function and its imports,
+// narrow enough that four 50-90 KB files reduce to ~21 KB of suggested reading.
+const windowPad = 40
+
+// readWindows renders the hunk neighbourhoods of one file as ready-to-use Read
+// arguments, padded by windowPad and with overlaps merged so no line is
+// suggested twice. Empty when the diff carried no ranges for the path — the
+// caller then just points at the whole local file.
+func readWindows(ranges [][2]int) string {
+	if len(ranges) == 0 {
+		return ""
+	}
+	type span struct{ lo, hi int }
+	spans := make([]span, 0, len(ranges))
+	for _, r := range ranges {
+		spans = append(spans, span{max(1, r[0]-windowPad), r[1] + windowPad})
+	}
+	slices.SortFunc(spans, func(a, b span) int { return a.lo - b.lo })
+	merged := []span{spans[0]}
+	for _, sp := range spans[1:] {
+		last := &merged[len(merged)-1]
+		if sp.lo <= last.hi+1 {
+			if sp.hi > last.hi {
+				last.hi = sp.hi
+			}
+			continue
+		}
+		merged = append(merged, sp)
+	}
+	parts := make([]string, 0, len(merged))
+	for _, m := range merged {
+		parts = append(parts, fmt.Sprintf("offset:%d limit:%d", m.lo, m.hi-m.lo+1))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // replicationGroup is one set of changed files whose HEAD content is
@@ -431,7 +521,7 @@ func renderReplicationGroups(decisions []sourceDecision) string {
 func renderSourceIndex(decisions []sourceDecision, bundleLine map[string]int) string {
 	var b bytes.Buffer
 	fmt.Fprint(&b, "## Source index\n\n")
-	fmt.Fprint(&b, "Specialists: search this index FIRST. `embedded` → Read `$REVIEW_TMPDIR/spawn-context.md` at the `Bundle line` offset. `duplicate` → byte-identical to another file; its `Bundle line` points at the shared body (see `## Replication groups`). `omitted` → fetch via `git show HEAD_SHA:path`. Do not `git show` a file marked `embedded` or `duplicate` — the body is already here, with HEAD line numbers in the gutter.\n\n")
+	fmt.Fprint(&b, "Specialists: search this index FIRST. `embedded` → Read `$REVIEW_TMPDIR/spawn-context.md` at the `Bundle line` offset. `duplicate` → byte-identical to another file; its `Bundle line` points at the shared body (see `## Replication groups`). `materialized` → too big to embed, already written to disk for you: **Read the local path in the Note column**, at the suggested offsets, and do NOT `git show` it. `omitted` → fetch via `git show HEAD_SHA:path`. Do not `git show` a file marked `embedded`, `duplicate`, or `materialized` — the content is already available, with HEAD line numbers intact.\n\n")
 	fmt.Fprint(&b, "| File | Status | Bundle line | Bytes | Note |\n")
 	fmt.Fprint(&b, "|------|--------|-------------|-------|------|\n")
 	for _, d := range decisions {
@@ -441,6 +531,11 @@ func renderSourceIndex(decisions []sourceDecision, bundleLine map[string]int) st
 			note = d.Reason
 		case sourceDuplicate:
 			note = fmt.Sprintf("identical to `%s`", d.DuplicateOf)
+		case sourceMaterialized:
+			note = fmt.Sprintf("%s — Read `%s`", d.Reason, d.LocalPath)
+			if d.Windows != "" {
+				note += fmt.Sprintf(" (changed regions: %s)", d.Windows)
+			}
 		}
 		line := bundleLine[d.Path]
 		if d.Status == sourceDuplicate {
@@ -482,6 +577,8 @@ func renderSourceContent(decisions []sourceDecision, in Input) (string, map[stri
 			fmt.Fprintf(&b, "### %s\n_omitted: %s_\n\n", d.Path, d.Reason)
 		case sourceDuplicate:
 			fmt.Fprintf(&b, "### %s\n_byte-identical to `%s` — body embedded there; see `## Replication groups`._\n\n", d.Path, d.DuplicateOf)
+		case sourceMaterialized:
+			fmt.Fprintf(&b, "### %s\n_%s — full content at `%s`; Read it there._\n\n", d.Path, d.Reason, d.LocalPath)
 		default:
 			fmt.Fprintf(&b, "### %s\n```%s\n%s```\n\n", d.Path, languageHint(d.Path), numberLines(d.Content))
 		}
