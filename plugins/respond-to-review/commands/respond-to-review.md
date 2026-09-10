@@ -1,7 +1,7 @@
 ---
 description: Respond to every flagged issue on a PR — inline comments and review-body findings alike, including reviews you posted yourself (e.g. via `/code-review --comment`) — dismissing false positives and preexisting issues, fixing valid ones
 argument-hint: <pr-number> [comment-id]
-allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, Grep, Glob, AskUserQuestion, mcp__*
+allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(echo *), Bash(npx nx *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, AskUserQuestion, mcp__*
 model: opus
 effort: high
 ---
@@ -10,10 +10,11 @@ Respond to every flagged issue on a pull request — both **inline review commen
 
 **Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which retires the old static-analysis prompts in favor of a classifier. The rules that still matter cover real concerns (allowed-tools gaps, the zsh `?ref=SHA` glob bug, no piping to a shell interpreter, harness backgrounding, destructive ops); the condensed version is included in every agent preamble below.
 
-**Tool discipline:** Three rules apply across every step. They are not stylistic — they keep the command working under stricter permission modes and cut wall time:
+**Tool discipline:** Four rules apply across every step. They are not stylistic — they keep the command working under stricter permission modes and cut wall time:
 
 - **Search with `Bash(rg *)`.** The `Grep`/`Glob` tools are removed on native macOS/Linux builds (CC 2.1.117+), where `rg` is that same embedded ripgrep; `Bash(rg *)` is in `allowed-tools` so it runs unprompted. Two gotchas: `rg` exits **1** on no match, so append `|| true` to any probe allowed to find nothing, or it fails the whole Bash call; and always quote patterns and globs (`rg 'foo' -g '*.ts'`) to sidestep the zsh "no matches found" glob bug.
-- **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. The GitHub-API JSON parsing in Step 1 is well within `jq`'s capabilities.
+- **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. The GitHub-API JSON parsing in Step 1 is well within `jq`'s capabilities. Pass **absolute** `$TMPDIR/...` paths — never `cd "$TMPDIR" && jq ...`. Prefix filters match the literal command string, so a leading `cd` is the token that gets matched and the `Bash(jq *)` grant never fires.
+- **Fetch with `Read` anything you intend to `Edit`.** `Edit` refuses a file the harness has no record of reading, so a range pulled with `sed -n`/`cat` does not satisfy it and you pay for the same bytes twice. Use `rg`/`sed` to **locate** (cheap, no precondition), then `Read` the range you will actually edit.
 - **Batch independent tool calls in parallel.** When a step says "for each X do Y" and the Y's have no ordering dependency (different file paths, different comment IDs, different verification targets), emit them as multiple tool calls in a single assistant message. Steps 1, 4, and 5 call this out explicitly where it matters.
 
 Follow these steps precisely:
@@ -110,7 +111,7 @@ For each pending item in `$TMPDIR/pending-items.json`, perform the following ana
 
 **CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
 
-> You are a review-response analysis agent. Use the Read/Write tools and `rg` for searching, rather than `sed`/`awk`/`du` — those aren't in this skill's `allowed-tools`, so they stop for a permission prompt on every call. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
+> You are a review-response analysis agent. Use the Read/Write tools and `rg` for searching, rather than `sed`/`awk`/`du` — those aren't in this skill's `allowed-tools`, so they prompt outside auto permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
 >
 > **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 
@@ -148,6 +149,7 @@ If the item is not preexisting, analyze whether the reviewer's concern is valid.
    - Is the concern about style/preference rather than correctness?
    - Would the suggested change actually be incorrect or unnecessary given the types/constraints?
 4. Use `rg` to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files). If the reviewer's concern hinges on external library behavior (React hooks, Prisma, Next.js, AWS SDK, etc.), verify the claim with Context7 (`mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_context7_context7__query-docs`) before deciding the verdict.
+   - If settling a claim needs a **throwaway script that imports the project's own dependencies**, do not put it in `$TMPDIR` — `/tmp` sits outside the repo and cannot resolve its `node_modules` (or its venv, or its repo-local binaries). Run the source with the repo root as cwd instead: `node --input-type=module -e "$(cat "$TMPDIR/probe.mjs")"`. Keep the script itself in `$TMPDIR`; only the _execution_ has to happen from the repo.
 5. If you can **definitively** demonstrate the concern is unfounded with concrete evidence → categorize as **false positive** and record the evidence.
 6. If there is any reasonable chance the reviewer is correct → categorize as **valid**.
 
@@ -167,6 +169,14 @@ For each item, produce:
 - **Evidence**: For preexisting — blame info or diff reasoning. For false positive — the specific code/pattern that addresses the concern. For valid — brief description of what needs to change. If the finding is too vague to act on mechanically, note that here; Step 4 will respect it.
 
 ## Step 3: Present triage results to user
+
+**Emit the table and the `AskUserQuestion` call in the SAME assistant message.** Rendering the summary is not the step — the step is the question. If your message ends after the table, the run stalls and the user has to prod you; a forward reference in your own prose ("asking below", "sending the prompt now") does not survive the message boundary. The shape is:
+
+```text
+[assistant message N]
+  text:      the triage table below
+  tool_use:  AskUserQuestion   ← same message, not the next one
+```
 
 Display a formatted summary of all items and their verdicts, split by source within each verdict category so the user can see at a glance where each concern came from:
 
@@ -194,7 +204,7 @@ Display a formatted summary of all items and their verdicts, split by source wit
 
 Omit a sub-section when it is empty (don't show an "Inline comments:" header with nothing under it). Omit the entire verdict category if its count is zero.
 
-Then call the **AskUserQuestion** tool (`multiSelect: false`, header `Triage`) to confirm before proceeding, with three options:
+In that same message, call the **AskUserQuestion** tool (`multiSelect: false`, header `Triage`) to confirm before proceeding, with three options:
 
 - `Approve all` — "Proceed with every verdict as shown."
 - `Override some` — "Change specific verdicts first — I'll ask which."
@@ -213,9 +223,13 @@ For each item triaged as **valid** (and approved by the user):
 5. After editing, re-read the modified section to verify the fix is correct and doesn't break surrounding code.
 6. Record what was changed (the file paths and a one-line description) for use in Step 5 (commit message) and Step 6 (reply body).
 
-If multiple valid issues exist in the same file, apply them carefully to avoid conflicts. Process them from bottom-to-top (highest line number first) so line numbers remain stable.
+If multiple valid issues exist in the same file, apply them carefully to avoid conflicts. `Edit` matches on strings rather than line numbers, so edit order does not shift later matches — but if one fix rewrites text a later fix targets, re-`Read` that range before editing it again.
 
-**Verification — after the last Edit, before Step 5:** Run the project's affected-project type-check, lint, and test (or equivalents) to confirm the fixes compile and pass. The specific commands depend on the project's tooling — pick the right targets for what you changed (e.g., `npx nx run-many -t check-types -p <projects>` for Nx, `pnpm typecheck && pnpm lint && pnpm test` for plain pnpm, `go test ./...` for Go). Issue type-check, lint, and test as parallel Bash tool calls in a single assistant message — independent targets with no ordering dependency. If any fails, fix it before committing in Step 5; a commit pushed to the PR branch that turns out to break CI is worse than a slower run.
+**Verification — after the last Edit, before Step 5:** Run the project's affected-project type-check, lint, and test (or equivalents) to confirm the fixes compile and pass. The specific commands depend on the project's tooling — pick the right targets for what you changed (e.g., `npx nx run-many -t check-types -p <projects>` for Nx, `pnpm typecheck && pnpm lint && pnpm test` for plain pnpm, `go test ./...` for Go). Issue **all three** as parallel Bash tool calls in a single assistant message — independent targets with no ordering dependency. If any fails, fix it before committing in Step 5; a commit pushed to the PR branch that turns out to break CI is worse than a slower run.
+
+**Read the outcome from the exit status, not from a grep.** Capture each run to a file and branch on its exit code — `npx nx run-many -t lint -p <projects> > "$TMPDIR/lint.log" 2>&1; echo "exit=$?"` — then `rg` the saved log for detail **only** when the exit code is nonzero. Do not pipe the command straight into `rg … | head -N`: in a pipeline the exit status you see belongs to `rg`, not the build, and the summary line ("`NX Successfully ran…`", "`Tests: N passed`") is routinely pushed past a `head` cutoff by warnings or by the app-under-test's own log output — at which point a passing run looks indeterminate and you re-run the whole target to find out. The saved log costs nothing and keeps the full output available if you do need it.
+
+Note that only `Bash(npx nx *)` is pre-approved; other runners (`pnpm`, `go`, `make`, `cargo`) will prompt outside auto permission mode. That is expected — no static prefix list can cover every project's toolchain.
 
 **Vague valid findings** — some review-body findings are valid concerns but too abstract to fix mechanically (e.g., "consider whether this module is doing too much"). For any item whose Step 2 evidence field was marked as vague/non-mechanical, do **not** attempt a speculative edit. Mark it as `noted` (distinct from `fixed`) and surface it in the Step 6 reply as "noted — will address in a follow-up PR". Silently dropping these leaves the reviewer in the dark; an explicit acknowledgement keeps the conversation honest.
 
