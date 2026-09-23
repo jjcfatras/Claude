@@ -14,7 +14,7 @@
       "name": "respond-to-review",
       "source": "./plugins/respond-to-review",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones",
-      "version": "1.5.1",
+      "version": "1.6.0",
       "category": "code-review"
     },
     {
@@ -42,7 +42,7 @@
       "name": "simplify",
       "source": "./plugins/simplify",
       "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose)",
-      "version": "2.0.1",
+      "version": "2.1.0",
       "category": "code-quality"
     },
     {

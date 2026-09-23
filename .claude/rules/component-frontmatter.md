@@ -126,7 +126,9 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 `SKILL.md` is not a valid level and falls back to the nearest supported one. To have a skill use
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
-opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7).
+opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7, and
+`plugins/respond-to-review/commands/respond-to-review.md` Step 2, which passes a shipped script via
+`scriptPath` so the schema never has to be retyped).
 
 ### Slash-command specifics
 

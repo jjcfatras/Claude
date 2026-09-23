@@ -1,7 +1,7 @@
 ---
 description: Respond to every flagged issue on a PR — inline comments and review-body findings alike, including reviews you posted yourself (e.g. via `/code-review --comment`) — dismissing false positives and preexisting issues, fixing valid ones
 argument-hint: <pr-number> [comment-id]
-allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(echo *), Bash(npx nx *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, AskUserQuestion, mcp__*
+allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(echo *), Bash(npx nx *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, AskUserQuestion, Agent, Workflow, mcp__*
 model: opus
 effort: high
 ---
@@ -25,7 +25,7 @@ Follow these steps precisely:
 2. Parse the PR number from `$ARGUMENTS`. If a second argument is present, treat it as a specific inline-comment ID to target; in that case, skip review-body processing entirely (the user is scoping to one inline thread).
 3. Run `gh repo view --json owner,name` to get the repository owner and name.
 4. Run `gh api user` and extract the `login` field — this is the current user. It is used **only** for dedup — spotting threads we already replied to (Step 1a) and findings we already answered (Step 1d) — never to exclude items. Reviews and comments you authored yourself are in scope.
-5. Run `gh pr view $PR_NUMBER --json headRefName,headRefOid,baseRefName,baseRefOid` to get branch info and commit SHAs.
+5. Run `gh pr view $PR_NUMBER --json headRefName,headRefOid,baseRefName,baseRefOid,commits` to get branch info and commit SHAs. Record `commits[].oid` as the PR commit list — the triage procedure's Check 1 compares blame SHAs against it, and Step 2 passes it to the workflow.
 6. Run `gh pr diff $PR_NUMBER` and save the output to `$TMPDIR/pr.diff` using the Write tool.
 7. Parse the diff to build a map of changed files and their hunk ranges (`file path → list of [newStart, newStart+newCount-1]` ranges), and whether each line is added (`+`) or context (` `).
 
@@ -107,66 +107,29 @@ Display the count of pending items. If zero, report "No unaddressed review items
 
 ## Step 2: Analyze each item
 
-For each pending item in `$TMPDIR/pending-items.json`, perform the following analysis. If there are 3 or fewer items total, analyze sequentially. If there are more than 3, launch parallel agents (up to 5) to analyze batches; spawn each `Agent` call with `mode: "auto"` so the auto-mode classifier replaces heuristic prompts and the agents can use straightforward shell forms.
+Every pending item gets a **verdict object** — `preexisting`, `false-positive`, or `valid` — produced by the procedure in `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md` (Check 1: preexisting? Check 2: false positive? plus the verdict-object fields and the reproduce-before-you-record rule). Read that file once now. It is the single source of truth for both paths below, so the inline and workflow paths return the same shape and Step 3 never re-parses prose.
 
-**CRITICAL — when launching parallel agents in this step, every agent prompt MUST begin with this exact text block:**
+**3 or fewer items** — analyze inline: apply the procedure yourself to each item, including its reproduce-before-you-record rule (re-run the blame / re-`Read` the cited lines before recording any dismissal). Record one verdict object per item.
+
+**More than 3 items** — call the **Workflow** tool. The user invoking this command _is_ the explicit opt-in Workflow requires, so don't ask again. Pass the shipped script, never a retyped one:
+
+- `scriptPath`: `${CLAUDE_PLUGIN_ROOT}/references/triage-workflow.js`
+- `args` (a real JSON object, not a string): `{ pr, headSha, baseSha, prCommits, tmpdir, checksPath, items }` — `pr` is the PR number; `headSha`, `baseSha`, and `prCommits` come from Step 0; `tmpdir` is `$TMPDIR`; `checksPath` is `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md`; `items` is the parsed array from `$TMPDIR/pending-items.json` (Read the file and pass its contents as an array — a stringified list makes the script throw on purpose).
+
+The script pipelines the items through two stages: one analysis agent per item, forced by `schema` to return a verdict object, then — for every `preexisting` or `false-positive` verdict only — an independent verifier agent whose job is to _refute_ the dismissal by reproducing its cited evidence (re-running the blame at the head SHA, `Read`ing the quoted lines, re-querying Context7). A dismissal the verifier cannot reproduce comes back as `valid` with `overturned: "<original verdict>"` and the verifier's reason; one it can reproduce carries `verified: true`. `valid` verdicts are not re-verified — they are already the safe default, and the user gates them in Step 3.
+
+The workflow runs in the background and the tool returns immediately. **Wait for its completion notification** — do not start Step 3 on partial results. The notification carries the script's return value, `{ verdicts }`, where `verdicts[i]` corresponds to `items[i]`. If the value is truncated, Read `journal.jsonl` in the workflow's transcript directory instead. Then:
+
+- For any entry that is `null` or has `verdict: null` (its analysis agent was skipped or died), analyze that item inline with the same procedure. **Never drop an item** — N items in, N verdicts out is the point of the pipeline.
+- Keep `verified` and `overturned` on the objects; Step 3 displays them.
+
+**Agent preamble.** The script's `PREAMBLE` constant is this exact text; when editing either copy, edit both (the same rule the code-review agents' shared `## Environment` block follows). Step 1c's parsing agents also reuse it with the role line adjusted, which is why it stays in this file:
 
 > You are a review-response analysis agent. Use the Read/Write tools and `rg` for searching, rather than `sed`/`awk`/`du` — those aren't in this skill's `allowed-tools`, so they prompt outside auto permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
 >
 > **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
 
-For each item, extract the fields relevant to its `source_type`:
-
-- **Inline comment** (`source_type: inline-comment`): `id`, `path`, `line`, `original_line`, `diff_hunk`, `body`, `reviewer`.
-- **Review-body finding** (`source_type: review-body-finding`): `id`, `review_id`, `reviewer`, `body` (the finding text), and optional `path` / `line` when the finding named a location.
-
-### Check 1 — Is this preexisting?
-
-Determine whether the code the item flags was introduced by this PR or existed before. Branch on `source_type`:
-
-**Inline comments:**
-
-1. **Parse the `diff_hunk`**: Look at the last line(s) of the `diff_hunk` (which correspond to the commented line). If the line starts with ` ` (space, context line) rather than `+` (added line), the code is **preexisting** — it was not added or modified by this PR.
-2. **Confirm with git blame**: Run `git blame -L LINE,LINE -- PATH` on the file. Check the commit SHA — if it is NOT the HEAD commit of the PR branch and NOT any commit in the PR, the code predates this PR.
-3. If confirmed preexisting → categorize as **preexisting** and record the blame commit SHA and date.
-
-**Review-body findings:**
-
-1. If the finding has both a `path` and a `line`, run the same `git blame -L LINE,LINE -- PATH` check and apply the same preexisting rule.
-2. If the finding has only a `path` (no line), skim `$TMPDIR/pr.diff` for that path. If the finding clearly describes code that isn't in the PR's added lines for that file (e.g., the reviewer says "the existing handler in `foo.ts` does X" and the diff shows no touching of that handler), categorize as **preexisting** and record the reasoning.
-3. If the finding has neither a path nor a line, or you cannot confidently localize it in the diff, **skip the preexisting verdict** and proceed to Check 2. This is a feature, not a gap — vague architectural concerns typically aren't about preexisting code.
-
-### Check 2 — Is this a false positive?
-
-If the item is not preexisting, analyze whether the reviewer's concern is valid. The check works the same way for both source types — the only difference is what context you read.
-
-1. **Read the relevant file(s)** to understand context (surrounding functions, imports, types, error handling). For inline comments, that's the commented path. For review-body findings, follow any file references in the finding text; if the finding is cross-cutting, read the most likely affected files based on the PR diff.
-2. **Understand the reviewer's concern** by carefully parsing the comment / finding text.
-3. **Evaluate the concern** against the actual code:
-   - Does the code already handle the scenario the reviewer is worried about?
-   - Is there handling elsewhere in the codebase (e.g., middleware, base class, framework feature) that addresses the concern?
-   - Is the reviewer misreading the code or missing context?
-   - Is the concern about style/preference rather than correctness?
-   - Would the suggested change actually be incorrect or unnecessary given the types/constraints?
-4. Use `rg` to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files). If the reviewer's concern hinges on external library behavior (React hooks, Prisma, Next.js, AWS SDK, etc.), verify the claim with Context7 (`mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_context7_context7__query-docs`) before deciding the verdict.
-   - If settling a claim needs a **throwaway script that imports the project's own dependencies**, do not put it in `$TMPDIR` — `/tmp` sits outside the repo and cannot resolve its `node_modules` (or its venv, or its repo-local binaries). Run the source with the repo root as cwd instead: `node --input-type=module -e "$(cat "$TMPDIR/probe.mjs")"`. Keep the script itself in `$TMPDIR`; only the _execution_ has to happen from the repo.
-5. If you can **definitively** demonstrate the concern is unfounded with concrete evidence → categorize as **false positive** and record the evidence.
-6. If there is any reasonable chance the reviewer is correct → categorize as **valid**.
-
-**Important**: Err on the side of treating issues as valid. Only categorize as false positive when you have clear, concrete evidence. When in doubt, it is a valid issue.
-
-### Output per item
-
-For each item, produce:
-
-- **Item ID** (inline comment ID or synthetic `review-<reviewId>-finding-<N>`) and **reviewer**
-- **Source type**: `inline-comment` or `review-body-finding`
-- **File:line** reference when available (may be absent for review-body findings)
-- **Review ID** (review-body findings only)
-- **Original text** (first 200 chars of the comment or finding)
-- **Verdict**: `preexisting`, `false-positive`, or `valid`
-- **Reasoning**: 2-3 sentences explaining why
-- **Evidence**: For preexisting — blame info or diff reasoning. For false positive — the specific code/pattern that addresses the concern. For valid — brief description of what needs to change. If the finding is too vague to act on mechanically, note that here; Step 4 will respect it.
+The checks themselves, the verdict-object fields, and the reproduce-before-you-record rule live in `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md` — not repeated here so the two paths cannot drift apart.
 
 ## Step 3: Present triage results to user
 
@@ -198,11 +161,14 @@ Display a formatted summary of all items and their verdicts, split by source wit
 ### Valid Issues (N)
   Inline comments:
     - **file.ts:120** (@reviewer): "Their comment..." → Plan: add null check before accessing .property
+    - **file.ts:7** (@reviewer): "Their comment..." → verifier could not reproduce the false-positive evidence: cited guard is not at handler.ts:88 → Plan: add the guard
   Review-body findings (@reviewer on review #12345):
     - "Their finding..." → Plan: add error boundary around the X call site
 ```
 
 Omit a sub-section when it is empty (don't show an "Inline comments:" header with nothing under it). Omit the entire verdict category if its count is zero.
+
+Mark each dismissal the workflow's verifier upheld (`verified: true`) with a `(verified)` suffix. A verdict the verifier overturned (`overturned` set) lands under **Valid Issues** with the note `→ verifier could not reproduce the <original verdict> evidence: <reason>`, so the user sees the flip and can use `Override some` to restore the original if they disagree. Inline-path dismissals carry no suffix — you reproduced them yourself, so there was no second reader.
 
 In that same message, call the **AskUserQuestion** tool (`multiSelect: false`, header `Triage`) to confirm before proceeding, with three options:
 
@@ -216,7 +182,7 @@ On `Approve all`, continue to Step 4. On `Override some` (or the user's Other-fi
 
 For each item triaged as **valid** (and approved by the user):
 
-1. Read the file at the item's path. For review-body findings without an explicit path, use the paths identified during Step 2's Check 2 analysis.
+1. Read the file at the item's path. For review-body findings without an explicit path, use the verdict object's `evidence.file` and `fix_plan`.
 2. Understand the reviewer's suggestion and the surrounding code context.
 3. Plan the minimal, targeted fix that addresses the reviewer's concern without unnecessary refactoring.
 4. Apply the fix using the Edit tool.
@@ -231,7 +197,7 @@ If multiple valid issues exist in the same file, apply them carefully to avoid c
 
 Note that only `Bash(npx nx *)` is pre-approved; other runners (`pnpm`, `go`, `make`, `cargo`) will prompt outside auto permission mode. That is expected — no static prefix list can cover every project's toolchain.
 
-**Vague valid findings** — some review-body findings are valid concerns but too abstract to fix mechanically (e.g., "consider whether this module is doing too much"). For any item whose Step 2 evidence field was marked as vague/non-mechanical, do **not** attempt a speculative edit. Mark it as `noted` (distinct from `fixed`) and surface it in the Step 6 reply as "noted — will address in a follow-up PR". Silently dropping these leaves the reviewer in the dark; an explicit acknowledgement keeps the conversation honest.
+**Vague valid findings** — some review-body findings are valid concerns but too abstract to fix mechanically (e.g., "consider whether this module is doing too much"). For any item whose verdict object has `vague: true`, do **not** attempt a speculative edit. Mark it as `noted` (distinct from `fixed`) and surface it in the Step 6 reply as "noted — will address in a follow-up PR". Silently dropping these leaves the reviewer in the dark; an explicit acknowledgement keeps the conversation honest.
 
 ## Step 5: Commit and push fixes
 
@@ -270,6 +236,8 @@ Inline comments get their own per-comment reply via the standard inline-reply en
 ### Reply templates (per-item body)
 
 Each of these templates produces the body for a single item. Inline replies post this directly. Aggregated review-body replies embed one of these under a per-finding heading (see "Review-body findings" below).
+
+**Fill every placeholder from the verdict object, never from memory.** `COMMIT_SHA` and `DATE` are `evidence.blame_sha` and `evidence.blame_date`; `SPECIFIC_EVIDENCE` is `evidence.file:line` plus `evidence.quote`; `DESCRIPTION_OF_CHANGE` is the Step 4 record. A reply may not cite anything the verdict's evidence does not contain — Step 2 verified exactly those fields, and embellishing here would throw that guarantee away.
 
 **When the item's reviewer is the current user** (a self-authored review), keep the same structure but drop the second-person flourishes: write `Fixed in commit …` instead of `Good catch! Fixed in commit …`, and open the aggregated body with `Re: my earlier review summary — addressing the findings below.` rather than @-mentioning yourself. Everything else, including the mandatory HTML-comment markers, is unchanged.
 
