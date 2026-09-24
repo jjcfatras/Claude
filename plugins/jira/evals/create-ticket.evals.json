@@ -4,7 +4,7 @@
     {
       "id": 0,
       "prompt": "We're adding a 'Remember me' checkbox to our web app's login page. When a user ticks it and logs in, their session should stay alive for 30 days instead of the usual 8 hours. If they leave it unticked it behaves like today. Make me a JIRA ticket for this.",
-      "expected_output": "A ticket with a user-facing Summary, checkbox acceptance criteria covering both ticked/unticked behavior and the 30-day vs 8-hour session, and QA testing steps a tester with no code access can run (log in with the box ticked, confirm session persists; log in unticked, confirm it expires) — each step has an observable Expected result. No references to code symbols or DB columns.",
+      "expected_output": "A ticket with a user-facing Summary, bulleted acceptance criteria covering both ticked/unticked behavior and the 30-day vs 8-hour session, and QA testing steps a tester with no code access can run (log in with the box ticked, confirm session persists; log in unticked, confirm it expires) — each step has an observable Expected result. No references to code symbols or DB columns.",
       "files": []
     },
     {

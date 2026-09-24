@@ -3,7 +3,7 @@ name: create-ticket
 disable-model-invocation: true
 description: Generate a structured JIRA ticket (summary, acceptance criteria, QA testing steps) from a diff, PR, or description and file it in JIRA after confirmation
 argument-hint: "[PR url/number | branch | freeform description] (optional — infers from context if omitted)"
-allowed-tools: Bash(git *), Read, Grep, Glob, mcp__plugin_github_github__pull_request_read, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__claude_ai_Atlassian_Rovo__getVisibleJiraProjects, mcp__claude_ai_Atlassian_Rovo__getJiraProjectIssueTypesMetadata, mcp__claude_ai_Atlassian_Rovo__searchJiraIssuesUsingJql, mcp__claude_ai_Atlassian_Rovo__createJiraIssue, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, AskUserQuestion
+allowed-tools: Bash(git *), Read, mcp__plugin_github_github__pull_request_read, mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources, mcp__claude_ai_Atlassian_Rovo__getVisibleJiraProjects, mcp__claude_ai_Atlassian_Rovo__getJiraProjectIssueTypesMetadata, mcp__claude_ai_Atlassian_Rovo__getJiraIssueTypeMetaWithFields, mcp__claude_ai_Atlassian_Rovo__searchJiraIssuesUsingJql, mcp__claude_ai_Atlassian_Rovo__createJiraIssue, mcp__claude_ai_Atlassian_Rovo__getJiraIssue, AskUserQuestion
 model: opus
 effort: medium
 ---
@@ -43,8 +43,8 @@ On `Edit wording` (or a free-text reply via Other), apply the changes, show the 
 <level> — <one sentence naming the concrete harm that earned it, and what it's calibrated against>
 
 ## Acceptance Criteria
-- [ ] <testable, outcome-oriented statement — Given/When/Then where it sharpens it>
-- [ ] <each criterion is something you can definitively call met or not met>
+- <testable, outcome-oriented statement — Given/When/Then where it sharpens it>
+- <each criterion is something you can definitively call met or not met>
 
 ## QA Testing Steps (no codebase access)
 1. <precondition: environment, base URL, test account or auth token, feature flag, seed data>
@@ -58,7 +58,7 @@ NA: <reason — e.g. tooling-only change, no user-/API-observable surface; verif
 
 ### Grading the priority
 
-**Default to the project's floor level (usually `Low`) and grade up only when you can name the concrete harm.** "It would be nice to fix", "it's good hygiene", "it blocks a future upgrade" — and the urgency in how the user described the change — are none of them concrete harm; grade the change, not the framing. A real defect with demonstrated impact or a security/authorization gap clears the top band; a real defect with bounded blast radius and no live exposure sits in the middle. See `${CLAUDE_PLUGIN_ROOT}/references/ticket-priority.md` for the full ladder, the observed-vs-speculative discriminator, and why an ungraded default stamp is a wrong answer rather than a neutral one.
+**Default to the project's floor level (usually `Low`) and grade up only when you can name the concrete harm.** "It would be nice to fix", "it's good hygiene", "it blocks a future upgrade" — and the urgency in how the user described the change — are none of them concrete harm; grade the change, not the framing. A real defect with demonstrated impact or a security/authorization gap clears the top band; a real defect with bounded blast radius and no live exposure sits in the middle. Read `${CLAUDE_PLUGIN_ROOT}/references/ticket-priority.md` for the full ladder, the observed-vs-speculative discriminator, and why an ungraded default stamp is a wrong answer rather than a neutral one.
 
 At this point the destination project isn't chosen yet, so this first pass grades against the reference's fallback ladder — Step 3 calibrates it against the project's own gradings once you know where the ticket is going.
 
@@ -92,36 +92,55 @@ For a UI change, apply the same rule in UI terms: the exact screen/URL, the fiel
 Don't hardcode or assume a project. Discover it at runtime:
 
 1. `getAccessibleAtlassianResources` → the `cloudId`. If more than one site is returned, call the **AskUserQuestion** tool (`multiSelect: false`, header `Site`) populated with one option per site (name/URL) and use the chosen site's `cloudId`.
-2. `getVisibleJiraProjects` → the projects the user can file into.
-3. `getJiraProjectIssueTypesMetadata` for the chosen project → its issue types and any required fields.
+2. `getVisibleJiraProjects` → the projects the user can file into. **Narrow it:** if a project key is already visible in the conversation (a ticket key like `BAU-1894`, a branch name, a PR title), pass it as `searchString` with `maxResults: 10`. Unfiltered, this returns every project the user can see — 45 of them is ~50KB, which overflows the tool result and costs two extra calls to dig back out. Fall back to the unfiltered call (`maxResults: 20`) only when nothing in context suggests a key; the user confirms the pick below either way.
+3. For the most likely project, in parallel: `getJiraProjectIssueTypesMetadata` → its issue types, and the epic query below → its open epics.
 
-Present the project and issue-type choices with `AskUserQuestion` (recommend the obvious one if there's a clear default, but let the user pick). If the issue type has required fields beyond summary/description, surface them and collect values before filing.
+### List the project's epics
 
-### Calibrate the priority against the chosen project
-
-Now that you know the destination, check the drafted `## Priority` against how that project actually uses the field — one `searchJiraIssuesUsingJql` call over its upper band:
+Unless the ticket is itself an `Epic` or a sub-task, list the project's open epics with one `searchJiraIssuesUsingJql` call, `fields: ["summary"]` and `maxResults: 10` — only three surface in the question below and the query is already sorted by recency:
 
 ```
-project = <KEY> AND priority in (High, Highest) AND created > -180d ORDER BY created DESC
+project = <KEY> AND issuetype = Epic AND statusCategory != Done ORDER BY updated DESC
 ```
 
-Read the summaries and see where the bar really sits. One page is enough — that tool caps at 5 issues per response and returns full descriptions regardless of the `fields` argument, so don't try to enumerate the project. If the ticket is going under a parent epic, scope to it instead (`parent = <EPIC-KEY> AND …`); the epic is the closer comparison.
+### Ask for the destination in one call
 
-If the observed bar differs from the fallback ladder, revise the `## Priority` line and its justification, and say plainly what changed and why when you confirm in Step 4. If the query returns nothing usable (no history, no permission, the field isn't in play), keep the drafted level and move on — don't stall the ticket over it. Full method in `${CLAUDE_PLUGIN_ROOT}/references/ticket-priority.md`.
+Call the **AskUserQuestion** tool once (`multiSelect: false`) with three questions — the issue-type and epic options both depend on the project, and the skill already answers that by fetching them for the most likely project up front:
+
+- header `Project` — the discovered projects, recommending the obvious one if there's a clear default, but let the user pick.
+- header `Issue type` — that project's issue types, again recommending the obvious one.
+- header `Epic` — up to three of the returned epics as options (label `<KEY>`, description its summary) plus a final `No epic` option ("File it at the project root, not under an epic."). The user can type any other epic key via Other; take it as given. If the query returned no epics, drop this question and say so when you confirm in Step 4.
+
+If the user's project answer differs from the one you fetched issue types and epics for, re-run both queries for their project and ask the issue-type and epic questions again on their own. Record the chosen epic key — the calibration below scopes to it and Step 4 files under it.
+
+Then `getJiraIssueTypeMetaWithFields` (`requiredFieldsOnly: true`) for the chosen issue type → the fields the project actually demands. `getJiraProjectIssueTypesMetadata` lists issue types only; projects commonly require a custom field beyond summary/description, so surface those fields and collect values before filing rather than discovering them from a `createJiraIssue` error.
+
+### Calibrate the priority against the chosen scope
+
+Only once the destination answer is in — this query is scoped to the chosen epic, so running it earlier wastes a call. Check the drafted `## Priority` against how that scope actually uses the field — one `searchJiraIssuesUsingJql` call over its upper band, with `maxResults: 5` and `fields: ["summary","priority","issuetype"]`:
+
+```
+parent = <EPIC-KEY> AND priority in (High, Highest) AND created > -180d ORDER BY created DESC
+```
+
+If the user picked `No epic`, swap the scope to `project = <KEY> AND …`; the epic is the closer comparison when there is one. Read the summaries and see where the bar really sits. Five is enough to read the bar — and the cap matters, because `maxResults` **is** honored: asking for 50 returns 50 nodes at ~900 characters each, which overflows the tool-result limit and forces a recovery round-trip. Do not enumerate the project.
+
+If the observed bar differs from the fallback ladder, revise the `## Priority` line and its justification, and say plainly what changed and why when you confirm in Step 4. If the query returns nothing usable (no history, no permission, the field isn't in play), keep the drafted level and move on — don't stall the ticket over it. Full method in `${CLAUDE_PLUGIN_ROOT}/references/ticket-priority.md` — open it with `Read`.
 
 ## Step 4: File it, only after explicit approval
 
-Filing a ticket is an outward-facing action that other people will see, so confirm before doing it — both the ticket text and the target project/issue type. Call the **AskUserQuestion** tool (`multiSelect: false`, header `File ticket`) with four options:
+Filing a ticket is an outward-facing action that other people will see, so confirm before doing it — both the ticket text and the target project, issue type, and epic (or none). Call the **AskUserQuestion** tool (`multiSelect: false`, header `File ticket`) with four options:
 
 - `Approve & file` — "File the ticket as shown in the chosen project."
 - `Edit text` — "Change the ticket wording first — I'll ask what to change."
-- `Change destination` — "Pick a different project or issue type first."
+- `Change destination` — "Pick a different project, issue type, or epic first."
 - `Cancel` — "Don't file anything."
 
 On `Edit text` or `Change destination` (or the user's Other-field reply), apply the requested change and re-confirm. On `Cancel`, stop without filing. Once the user approves (`Approve & file`):
 
 - Call `createJiraIssue` with the summary line (the `## Summary` distilled to one line if needed) and the full template as the description.
 - Set the graded level in the same call — priority has no dedicated parameter, so it goes through `additional_fields: { "priority": { "name": "<level>" } }`.
+- Pass the chosen epic's key as the top-level `parent` parameter — Jira Cloud's parent field covers epic children, not just sub-tasks. Omit it when the user picked `No epic`.
 - Report back the created issue key and its URL. Use `getJiraIssue` to confirm/fetch the link if the create response doesn't include it.
 
 If `createJiraIssue` fails, show the error **verbatim** and stop — don't silently retry with mangled fields. A common cause is a missing required field; if so, collect it and try once more with the user's go-ahead.

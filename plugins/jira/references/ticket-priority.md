@@ -4,17 +4,17 @@ A priority level is only meaningful relative to how _this team_ uses the field. 
 
 ## Calibrate against the project, not a personal scale
 
-Once the destination project is known, look at what actually earns the upper bands there:
+Once the destination is known — the epic when there is one, else the project — look at what actually earns the upper bands there:
 
 ```
-project = <KEY> AND priority in (High, Highest) AND created > -180d ORDER BY created DESC
+parent = <EPIC-KEY> AND priority in (High, Highest) AND created > -180d ORDER BY created DESC
 ```
 
-Read the **summaries** and note what they have in common — that's the bar. When the ticket is going under a parent epic, scope the query to it (`parent = <EPIC-KEY> AND …`): a maintenance queue and a product board grade the same defect differently, and the epic is the closer comparison.
+Read the **summaries** and note what they have in common — that's the bar. Scope to the epic whenever the ticket has one: a maintenance queue and a product board grade the same defect differently, and the epic is the closer comparison. With no epic, swap the scope to `project = <KEY> AND …`.
 
 Two things the calibration tells you that a static ladder can't. First, whether the upper bands are used at all — a project where nothing is above Medium is telling you its High means "page someone". Second, where the line actually sits: a team whose Highs cite tens of thousands of failed events has a very different bar from one whose most recent High cites 72.
 
-> **Trap:** `searchJiraIssuesUsingJql` caps at **5 issues per response** and returns full descriptions regardless of the `fields` argument. One page of the upper band is enough to calibrate — do not enumerate the project.
+> **Trap:** `searchJiraIssuesUsingJql` does **not** cap itself — pass `maxResults: 5` and `fields: ["summary","priority","issuetype"]` explicitly, or an active upper band returns 50+ issues at ~900 characters each and overflows into a saved file. One page of the upper band is enough to calibrate — do not enumerate the project.
 
 ## Fallback ladder
 
