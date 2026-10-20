@@ -2,22 +2,26 @@
 name: merge
 description: Merge a source branch into the current branch with conflict resolution. Use when the user asks to "merge branch X", "merge main into this branch", or "pull in changes from another branch".
 argument-hint: <source-branch>
-allowed-tools: Bash(git *), Read, Edit, Grep, AskUserQuestion
+allowed-tools: Bash(git *), Bash(rg *), Read, Edit, AskUserQuestion
 model: opus
 effort: high
 ---
 
 Merge a source branch into the current branch, automatically resolving any merge conflicts. Defaults to git's normal behavior: fast-forward when possible, otherwise create a merge commit.
 
+Arguments: `$ARGUMENTS`. The first whitespace-separated token is the **source branch**, written `<source>` below. If there is none, ask which branch to merge.
+
+Run shell work as `git` or `rg` commands and view files with `Read` (not `cat`, `sed -n`, or `ls`) — those are what `allowed-tools` pre-approves.
+
 ## Step 0: Validate preconditions
 
 1. Run `git status --porcelain` to check for uncommitted changes. If the working tree is dirty, **stop** and tell the user to commit or stash changes first.
-2. Run `git branch --show-current` to confirm the current branch. Display it and state that `$1` will be merged into it.
-3. Verify the source branch `$1` exists by running `git rev-parse --verify $1`. If it does not exist, try `origin/$1` and use that ref for the rest of the flow if found. If neither exists, stop and report the error.
+2. Run `git branch --show-current` to confirm the current branch. Display it and state that `<source>` will be merged into it.
+3. Verify the source branch `<source>` exists by running `git rev-parse --verify <source>`. If it does not exist, try `origin/<source>` and use that ref for the rest of the flow if found. If neither exists, stop and report the error.
 
 ## Step 1: Determine what will be merged
 
-1. Resolve the source ref (the local branch name if it exists, otherwise `origin/$1`) and store it as the merge source.
+1. Resolve the source ref (the local branch name if it exists, otherwise `origin/<source>`) and store it as the merge source.
 2. Run `git log --oneline --reverse <current-branch>..<source-ref>` to list the commits the merge would bring in.
 3. Run `git merge-base <current-branch> <source-ref>` and compare to both tips to classify the merge:
    - **Already up to date:** source is an ancestor of current branch. Report this and stop — nothing to do.
@@ -29,7 +33,7 @@ Merge a source branch into the current branch, automatically resolving any merge
 Display:
 
 - Current branch (target)
-- Source branch (and whether it resolved to local or `origin/$1`)
+- Source branch (and whether it resolved to local or `origin/<source>`)
 - Merge type (fast-forward or merge commit)
 - Number of commits to be brought in
 - List of commits (short SHA + message) from Step 1

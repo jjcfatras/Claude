@@ -15,11 +15,11 @@ This skill recreates the pre-2.1.147 `/simplify` workflow as a propose-then-appl
 
 Pick the file set in this order:
 
-1. **`$1` is `--staged`**: run `git diff --name-only --cached` and use that file set.
-2. **`$1` is `--diff`**: use the union of `git diff --name-only HEAD` (tracked files with staged or unstaged changes against `HEAD`) and `git ls-files --others --exclude-standard` (untracked, non-ignored files) — everything `git status` would report as changed.
-3. **`$1` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
-4. **`$1` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it with the same union as case 5 scoped to that path — `git ls-files <dir>` plus `git ls-files --others --exclude-standard <dir>`. If it is a glob, expand it.
-5. **`$1` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify:simplify-prose`'s job.
+1. **`$ARGUMENTS` is `--staged`**: run `git diff --name-only --cached` and use that file set.
+2. **`$ARGUMENTS` is `--diff`**: use the union of `git diff --name-only HEAD` (tracked files with staged or unstaged changes against `HEAD`) and `git ls-files --others --exclude-standard` (untracked, non-ignored files) — everything `git status` would report as changed.
+3. **`$ARGUMENTS` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
+4. **`$ARGUMENTS` is any other non-empty value**: treat it as a path or glob. If it is a directory, walk it with the same union as case 5 scoped to that path — `git ls-files <dir>` plus `git ls-files --others --exclude-standard <dir>`. If it is a glob, expand it.
+5. **`$ARGUMENTS` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files), then keep only source-code files — prose and docs are `/simplify:simplify-prose`'s job.
 
 After collecting candidates, drop anything that is obviously out of scope:
 

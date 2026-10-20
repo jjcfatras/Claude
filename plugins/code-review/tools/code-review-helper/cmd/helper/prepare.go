@@ -23,9 +23,10 @@ import (
 // and `spawn-manifest` — each of which cost ~7s of fixed harness overhead
 // regardless of how little work it did.
 //
-// The shell keeps only what needs credentials (`gh pr view`, `gh pr diff`,
-// `git fetch`, the GraphQL threads query); everything derivable from those
-// artifacts happens here. The two jq one-liners this absorbs were also the
+// With --fetch it also does the fetching (`gh pr view`, `gh pr diff`,
+// `git fetch`, the GraphQL threads query — see fetch.go); without it, it reads
+// those artifacts from --review-tmpdir as before, and everything derivable from
+// them happens here. The two jq one-liners this absorbs were also the
 // pipeline's most fragile parts: one broke silently when a rendered header's
 // wording changed, and the other required the orchestrator to guess a helper
 // output's JSON shape.
@@ -63,6 +64,8 @@ type prepareOpts struct {
 	maxSourceB    int
 	maxTotalSrcB  int
 	summaryInline string
+	fetch         bool
+	pr            int
 }
 
 func parsePrepareArgs(argv []string) (prepareOpts, error) {
@@ -80,11 +83,21 @@ func parsePrepareArgs(argv []string) (prepareOpts, error) {
 	fs.IntVar(&o.maxSourceB, "max-source-bytes", 32768, "embed each changed file <= this many bytes from HEAD; 0 disables source embedding")
 	fs.IntVar(&o.maxTotalSrcB, "max-total-source-bytes", 50000, "aggregate cap across all embedded files")
 	fs.StringVar(&o.summaryInline, "summary-paragraph", "", "path to a file containing a prep summary paragraph; empty renders the bundle's own deterministic summary")
+	fs.BoolVar(&o.fetch, "fetch", false, "first create --review-tmpdir, sweep stale pr-review-* dirs and refs/code-review/* refs, and fetch the PR into it (gh pr view, gh pr diff and git fetch concurrently, then the review-threads GraphQL query); prints TMP= before anything else; needs --pr")
+	fs.IntVar(&o.pr, "pr", 0, "PR number to fetch; required with --fetch")
 	if err := fs.Parse(argv); err != nil {
 		return prepareOpts{}, err
 	}
 	if o.reviewTmpDir == "" || o.repoRoot == "" || o.rubric == "" {
 		return prepareOpts{}, fmt.Errorf("prepare: --review-tmpdir, --repo-root and --rubric are required")
+	}
+	if o.fetch {
+		if o.pr <= 0 {
+			return prepareOpts{}, fmt.Errorf("prepare: --fetch needs a positive --pr")
+		}
+		if o.diffPath == "" {
+			o.diffPath = fmt.Sprintf("%s/pr-%d.diff", o.reviewTmpDir, o.pr)
+		}
 	}
 	if o.prMetaPath == "" {
 		o.prMetaPath = o.reviewTmpDir + "/pr-meta.json"
@@ -125,6 +138,11 @@ func runPrepare(argv []string) error {
 	opts, err := parsePrepareArgs(argv)
 	if err != nil {
 		return err
+	}
+	if opts.fetch {
+		if err := fetchPR(opts); err != nil {
+			return err
+		}
 	}
 
 	meta, owner, repo, err := loadPRMeta(opts.prMetaPath)

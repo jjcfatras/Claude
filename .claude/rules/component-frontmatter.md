@@ -49,6 +49,8 @@ automatic or background-knowledge behavior that an explicitly-invoked `/command`
 | `paths` `(skills only)`          | Globs that gate auto-activation to matching files. Comma string or YAML list. A `/command` is invoked explicitly, never path-gated.                                                                                                                                                             | `src/**/*.ts`                                         | No          |
 | `shell`                          | Shell for `` !`cmd` `` injection. `powershell` needs `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`.                                                                                                                                                                                                       | `bash` (default) \| `powershell`                      | No          |
 
+**Positional substitution is 0-indexed:** `$N` expands to `$ARGUMENTS[N]`, so `$0` is the first argument and `$1` the second. A `$1` meant as "the first argument" silently receives the second argument, or nothing at all. This was seen in a real `/git:cherry-pick` run, where the source branch slot rendered a commit SHA. Each `$N` (and each named `arguments:` slot) holds a single whitespace token, so a multi-value argument (several SHAs, inline prose) never fits one. Prefer `$ARGUMENTS` plus an explicit parse rule in the body, as `code-review`, `git:cherry-pick`, and `git:merge` do.
+
 **Not a Claude Code skill field:** `version` comes from the [Agent Skills](https://agentskills.io)
 open standard and appears in some upstream examples, but it is absent from the Claude Code skills
 frontmatter reference and ignored — none of this repo's `SKILL.md` files use it.
@@ -127,8 +129,11 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
 opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7, and
-`plugins/respond-to-review/commands/respond-to-review.md` Step 2, which passes a shipped script via
-`scriptPath` so the schema never has to be retyped).
+`plugins/respond-to-review/commands/respond-to-review.md` Step 2, which Reads a shipped script and passes
+its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
+script as `scriptPath`: Workflow only accepts paths under the working directory or an added
+directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every user not
+developing in this repo.
 
 ### Slash-command specifics
 

@@ -37,7 +37,7 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 **What happens:**
 
 1. Preflight: validates the working tree is clean and the source branch exists.
-2. Determines commits to apply — uses the SHA / range you passed, or lists the 20 most recent commits on the source branch and asks you to pick.
+2. Determines commits to apply — uses the SHA / range you passed (`sha1..sha2` includes both `sha1` and `sha2`, unlike plain git), or lists the 20 most recent commits on the source branch and asks you to pick.
 3. Shows a summary (target, source, commit list) and asks you to confirm.
 4. Applies commits one at a time in chronological order.
 5. On conflict: reads each conflicted file, resolves it by combining intent from both sides, strips conflict markers, `git add`s, then runs `git cherry-pick --continue`.

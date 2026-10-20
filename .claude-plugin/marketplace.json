@@ -7,28 +7,28 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, and merge",
-      "version": "0.9.2",
+      "version": "0.9.3",
       "category": "git"
     },
     {
       "name": "respond-to-review",
       "source": "./plugins/respond-to-review",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones",
-      "version": "1.6.0",
+      "version": "1.6.1",
       "category": "code-review"
     },
     {
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "category": "code-review"
     },
     {
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "category": "documentation"
     },
     {
@@ -42,7 +42,7 @@
       "name": "simplify",
       "source": "./plugins/simplify",
       "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose)",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "category": "code-quality"
     },
     {

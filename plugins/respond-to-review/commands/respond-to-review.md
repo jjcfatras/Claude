@@ -111,9 +111,9 @@ Every pending item gets a **verdict object** — `preexisting`, `false-positive`
 
 **3 or fewer items** — analyze inline: apply the procedure yourself to each item, including its reproduce-before-you-record rule (re-run the blame / re-`Read` the cited lines before recording any dismissal). Record one verdict object per item.
 
-**More than 3 items** — call the **Workflow** tool. The user invoking this command _is_ the explicit opt-in Workflow requires, so don't ask again. Pass the shipped script, never a retyped one:
+**More than 3 items** — call the **Workflow** tool. The user invoking this command _is_ the explicit opt-in Workflow requires, so don't ask again. Pass the shipped script, never a hand-written one:
 
-- `scriptPath`: `${CLAUDE_PLUGIN_ROOT}/references/triage-workflow.js`
+- `script`: the exact contents of `${CLAUDE_PLUGIN_ROOT}/references/triage-workflow.js` — Read it and pass it verbatim, no edits or abridging. Don't use `scriptPath`: Workflow only loads paths under the working directory or an added directory, never the plugin root, even after you've Read the file.
 - `args` (a real JSON object, not a string): `{ pr, headSha, baseSha, prCommits, tmpdir, checksPath, items }` — `pr` is the PR number; `headSha`, `baseSha`, and `prCommits` come from Step 0; `tmpdir` is `$TMPDIR`; `checksPath` is `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md`; `items` is the parsed array from `$TMPDIR/pending-items.json` (Read the file and pass its contents as an array — a stringified list makes the script throw on purpose).
 
 The script pipelines the items through two stages: one analysis agent per item, forced by `schema` to return a verdict object, then — for every `preexisting` or `false-positive` verdict only — an independent verifier agent whose job is to _refute_ the dismissal by reproducing its cited evidence (re-running the blame at the head SHA, `Read`ing the quoted lines, re-querying Context7). A dismissal the verifier cannot reproduce comes back as `valid` with `overturned: "<original verdict>"` and the verifier's reason; one it can reproduce carries `verified: true`. `valid` verdicts are not re-verified — they are already the safe default, and the user gates them in Step 3.

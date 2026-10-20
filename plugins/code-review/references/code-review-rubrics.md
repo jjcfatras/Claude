@@ -53,7 +53,8 @@ Every specialist follows this lifecycle. Don't deviate — the orchestrator's fi
 4. **Write `$REVIEW_TMPDIR/findings/<role>.json`** per the schema below, using the Write tool. The orchestrator pre-creates `$REVIEW_TMPDIR/findings/` — do not `mkdir -p` or pre-test it before your Write. Treat the file as immutable once written.
    - On a normal scan: set `scan_status: "complete"`.
    - If you cannot complete the scan (tool budget exhausted, repeated read failures, etc.): set `scan_status: "budget_exhausted"` and include whatever findings you accumulated. Partial signal is more useful than no signal. Nothing cuts you off — no deadline is enforced anywhere in this plugin — so this status only ever gets set by a specialist that chose to stop and still had a turn left to say so.
-5. **Return.** Your final assistant message can be a short status line ("Wrote 4 findings, scan complete"). The orchestrator captures the file at `$REVIEW_TMPDIR/findings/<role>.json`, not your message text.
+   - **If the Write itself is refused or errors** (a permission denial, an auto-mode "no verdict", a filesystem error): don't retry it, and don't create the file any other way (Bash redirection, a heredoc, another path) — that routes around the block. Make your final message start with the line `FINDINGS_NOT_WRITTEN: <the error, on one line>`, followed by the exact content you tried to write in a single ```json block, and nothing else. Don't ask anyone to write it for you: the orchestrator decides with the user whether to save it. (On transcript `dfac0a80` a classifier "no verdict" on quality's Write — while infra's and perf's identical writes to the same dir passed — turned a finished, clean scan into a dead end that cost the whole review.)
+5. **Return.** Your final assistant message can be a short status line ("Wrote 4 findings, scan complete"). The orchestrator captures the file at `$REVIEW_TMPDIR/findings/<role>.json`, not your message text — except after a refused Write (step 4), when your message is the only copy.
 
 There is no cross-specialist messaging in this plugin — each specialist scans independently and emits a single findings file. Calibrate cautiously when a finding depends on cross-domain knowledge you can't verify from the diff alone; lower the confidence rather than asserting it.
 
@@ -207,7 +208,7 @@ If you suspect your output may have a malformed escape, the cheapest sanity chec
 
 These apply to every `code-review-*` specialist in addition to the workflow above.
 
-- **Don't post to GitHub.** The orchestrator handles all posting. Your output is `$REVIEW_TMPDIR/findings/<role>.json` — nothing else.
+- **Don't post to GitHub.** The orchestrator handles all posting. Your output is `$REVIEW_TMPDIR/findings/<role>.json` — nothing else (unless that Write is refused; see step 4).
 - **Bash usage is rare.** When you do shell out: auto mode handles common patterns; the rules that still matter cover real concerns (allowed-tools gaps, destructive ops, RCE). Prefer `Read` for file contents and `jq` for JSON over ad-hoc shell parsing, keep each command a separate Bash call (no `&&` chaining, no leading `cd`), and never pipe to a shell interpreter.
 - **Build the findings JSON with the Write tool**, not `echo`/heredoc/redirection. Write is more reliable for embedding code snippets that contain quotes, backticks, and newlines (a quoting-fidelity concern, not a permission concern).
 - **The spawn-context bundle is authoritative.** Read it once at startup. Don't re-fetch what it already gives you.

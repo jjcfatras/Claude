@@ -49,7 +49,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `code-review-helper — deterministic backend for the /code-review plugin
 
 Usage:
-  code-review-helper prepare         [flags]   # diff + roster + prior-issues + bundle + manifest
+  code-review-helper prepare         [flags]   # [--fetch] + diff + roster + prior-issues + bundle + manifest
   code-review-helper finalize        [flags]   # dedup + gate + snap + render
   code-review-helper show            [flags]   # cache one HEAD blob under $REVIEW_TMPDIR; print its local path
 

@@ -1,6 +1,6 @@
 {
   "name": "git",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Git workflow skills (each also a slash command): commit (`--staged` to commit only the index), commit-push, commit-push-pr, push (push + PR-description refresh, no commit), pr (open a PR for already-pushed work), clean_gone (prune stale local branches), cherry-pick, and merge (both with conflict resolution)",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",

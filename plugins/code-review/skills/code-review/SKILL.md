@@ -29,9 +29,9 @@ Resolve once and reuse:
 
 - `PR_NUMBER` — from `$ARGUMENTS` (first positive-integer token, per the parse rule above).
 - `POST_MODE` — `auto` / `dry-run` / `interactive`, per the parse rule above.
-- `TMP` — scratch dir at `${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-$(date +%s)`; created in [1/5] Turn 1.
-- `REPO_ROOT` — `git rev-parse --show-toplevel`; printed by [1/5] Turn 1.
-- `HEAD_SHA`, `OWNER`, `REPO` — printed by `prepare` in [2/5]; never re-derive them with a separate call.
+- `TMP` — scratch dir at `${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-$(date +%s)`, built inline in the [1/5] command; read it back from that call's first stdout line, `TMP=…`.
+- `REPO_ROOT` — `git rev-parse --show-toplevel`, resolved inline in the same command; nothing later needs it.
+- `HEAD_SHA`, `OWNER`, `REPO` — printed by that same `prepare` call; never re-derive them with a separate call.
 - `HELPER` — `${CLAUDE_PLUGIN_ROOT}/bin/code-review-helper`.
 - `RUBRIC` — `${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md`.
 
@@ -39,78 +39,48 @@ All subsequent paths derive from `$TMP`. No path uses cwd.
 
 ---
 
-## [1/5] Fetch PR metadata, diff, and prior review threads
+## [1/5]+[2/5] Fetch the PR and prepare every pre-spawn artifact — ONE helper call
 
-This step is **three Bash turns**, in this order. Everything derivable from what they fetch happens in [2/5], not here — so if you find yourself running `jq` to pull a value out of a file just to pass it to the next command, you are in the wrong step.
-
-**Turn 1 — create the scratch dir and sweep the last run's corpse** (one call; everything downstream needs `$TMP`):
+Report `[1/5] Fetching PR #<N>…`, run exactly this as **one** Bash call, then report `[2/5] Prepared — roster: …`:
 
 ```bash
-TMP="${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-$(date +%s)"
-mkdir -p "$TMP/findings"
-echo "TMP=$TMP"
-echo "REPO_ROOT=$(git rev-parse --show-toplevel)"
-
-# Pre-flight sweep — see Cleanup for why this exists.
-find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'pr-review-*' -mtime +1 -exec rm -rf {} + 2> /dev/null
-for ref in $(git for-each-ref --format='%(refname)' refs/code-review/); do
-  n=${ref##*/pr-}
-  set -- "${TMPDIR:-/tmp}/pr-review-$n-"*
-  [ "$n" = "$PR_NUMBER" ] || [ -d "$1" ] || git update-ref -d "$ref"
-done
-echo "pre-flight sweep done"
+"$HELPER" prepare --fetch --pr "$PR_NUMBER" \
+  --review-tmpdir "${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-$(date +%s)" \
+  --repo-root "$(git rev-parse --show-toplevel)" \
+  --rubric "$RUBRIC"
 ```
 
-The sweep is the other half of **Cleanup**: cleanup is a turn _this_ orchestrator takes, so a run whose process dies never reaches it, and the leak is unbounded until someone notices. Having each run bury the previous one's corpse bounds it at one. Both halves are deliberately conservative — `-mtime +1` cannot touch a review that started today, and a ref is deleted only when **no** `pr-review-<n>-*` dir survives for that PR, which means no review of it is in flight. The trailing `echo` keeps the block's exit status `0` when the loop's last test is false (same trap as the tier-1 check in [5/5]).
+That is both steps. Don't run `gh`, `git fetch` or `jq` yourself around it. This used to be four model-typed Bash turns, and the three "parallel" fetches ran serially anyway: the harness only runs read-only Bash concurrently, and all three write files. On transcript `dfac0a80` that cost 27 s before `prepare` even started. `--fetch` moves all of it into the helper:
 
-**Turn 2 — the three fetches, ALL THREE in ONE message.** Each depends only on `PR_NUMBER` and `$TMP`, never on another's output, so they must be issued as three sibling `Bash` blocks in a single assistant message:
+1. **Scratch dir.** Creates `$TMP/findings` and prints `TMP=…` **first**, before anything can fail, so Cleanup has `$TMP` on every exit path. The path is built by the shell above, byte-for-byte the form Cleanup's guard re-expands.
+2. **Sweep the last run's corpse.** This is the other half of **Cleanup**. Cleanup is a turn _this_ orchestrator takes, so a run that dies never reaches it; having each run bury the previous one's corpse bounds the leak at one. The sweep is best-effort and silent, and deliberately conservative:
+   - It removes `pr-review-*` dirs directly under the temp root that are at least 48 h old (`find -mtime +1` semantics), so it cannot touch a review started today or yesterday.
+   - It deletes a `refs/code-review/pr-<n>` ref only when **no** `pr-review-<n>-*` dir survives for that PR, meaning no review of it is in flight, and never this PR's own ref.
+3. **Fetch, concurrently.**
+   - `gh pr view` → `pr-meta.json`
+   - `gh pr diff` → `pr-<N>.diff`
+   - `git fetch origin +pull/<N>/head:refs/code-review/pr-<N>`
+   - Then, once `pr-meta.json` has the owner and repo, the GraphQL `reviewThreads` query → `review-threads.json`.
 
-```bash
-gh pr view "$PR_NUMBER" --json headRefOid,url,number,title,headRefName,author,state > "$TMP/pr-meta.json"
-```
+**What fails how:**
 
-```bash
-gh pr diff "$PR_NUMBER" > "$TMP/pr-$PR_NUMBER.diff"
-```
+- **`gh pr view` or `gh pr diff` failure** — a non-zero exit carrying the command's stderr. Surface it verbatim and stop (run Cleanup; `TMP=` is already on stdout).
+- **`git fetch` failure** — only a `warning:` line on stderr; continue. This is an explicit exception to the surface-and-stop rule at the top of this file. The hidden ref is what lets `git show $HEAD_SHA:<path>` and `git grep <sym> $HEAD_SHA` resolve on a stale clone or a fork PR. Without it, specialists fall back to the bundle's embedded source, and line confirmation against `$HEAD_SHA` may degrade.
+- **GraphQL failure** — only a `warning:` line; no `review-threads.json` is written, `prepare` treats that as "no prior review", and prior-review dedup simply does nothing.
+  - Why GraphQL: `reviewThreads` gives thread-level state (`isResolved`, `isOutdated`) and every reply, which is how a PR author's dismissal of a finding as a false positive is detected. The REST review-comments endpoint exposes none of that.
+  - Its first page is 50 threads × 50 comments; a PR that exceeds it needs a cursor-paginated loop in the helper.
 
-```bash
-git fetch origin "+pull/$PR_NUMBER/head:refs/code-review/pr-$PR_NUMBER" --no-tags
-```
-
-**Do NOT issue one of these, wait for its result, then issue the next.** Each Bash round-trip costs several seconds of fixed harness overhead regardless of how little work it does. This is the same failure [3/5] guards against for specialist spawns — see the schematic there — and it is just as wrong here.
-
-The `git fetch` puts the PR head in a hidden local ref so `git show $HEAD_SHA:<path>` and `git grep <sym> $HEAD_SHA` resolve even on a stale clone or a fork PR (specialists and the bundle builder both depend on the HEAD_SHA objects being present locally). If it fails (offline, fork ref unavailable, restricted remote), print a one-line warning and continue — an explicit exception to the surface-and-stop rule at the top of this file. Specialists fall back to the bundle's embedded source; line confirmation against `$HEAD_SHA` may degrade on stale clones.
-
-**Turn 3 — prior review threads** (one call). This needs `OWNER`/`REPO`, which come from `pr-meta.json`; derive them with inline command substitution **in this same command** rather than spending a turn to print them:
-
-```bash
-OWNER=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").o' "$TMP/pr-meta.json")
-REPO=$(jq -r '.url | capture("github\\.com/(?<o>[^/]+)/(?<r>[^/]+)/pull/").r' "$TMP/pr-meta.json")
-gh api graphql -F owner="$OWNER" -F repo="$REPO" -F pr="$PR_NUMBER" -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:50){nodes{id isResolved isOutdated comments(first:50){nodes{databaseId author{login} body path line originalLine originalStartLine}}}}}}}' > "$TMP/review-threads.json"
-```
-
-GraphQL `reviewThreads` gives thread-level state (`isResolved`, `isOutdated`) and every reply — needed to detect when the PR author has already dismissed a finding as a false positive; the REST `pulls/{n}/reviews/{rid}/comments` endpoint exposes none of that. The first-page cap is 50 threads × 50 comments, well above any real review on this repo; if a PR ever exceeds it, this step needs a cursor-paginated loop. The GraphQL variables use `-F` (typed) for `pr` and `-f` for strings.
-
-If this call fails, `review-threads.json` will be absent or empty — that is not fatal. [2/5] treats a missing file as "no prior review" and continues; prior-review dedup simply does nothing.
-
----
-
-## [2/5] Prepare every pre-spawn artifact — ONE helper call
-
-```bash
-"$HELPER" prepare --review-tmpdir "$TMP" --repo-root "$REPO_ROOT" --rubric "$RUBRIC"
-```
-
-That is the whole step. `prepare` reads `pr-meta.json`, `pr-$PR_NUMBER.diff` and `review-threads.json` from `$TMP` and writes all eight downstream artifacts: `changed-files.json`, `valid-lines.json`, `claude-md-files.json`, `roster.json`, `prior-issues.json`, `spawn-context.md`, `rubric.md`, `spawn-manifest.json`. It also creates two directories the specialists use: `head/<HEAD_SHA>/` — where a changed file too large for the bundle's caps is written verbatim, so the Source index can hand every specialist one local path instead of six `git show` calls, and where `helper show` caches anything they ask for outside the changed set — and `scratch/`, for their own working copies. Both live under `$TMP` so Cleanup already covers them; that is the point, since specialist scratch written to bare `/tmp` is unreachable by any cleanup this skill runs. It replaces six separate calls (two `jq` projections plus `diff`, `roster`, `bundle-context`, `spawn-manifest`) whose outputs it reproduces byte for byte.
+Then `prepare` reads `pr-meta.json`, `pr-$PR_NUMBER.diff` and `review-threads.json` from `$TMP` and writes all eight downstream artifacts: `changed-files.json`, `valid-lines.json`, `claude-md-files.json`, `roster.json`, `prior-issues.json`, `spawn-context.md`, `rubric.md`, `spawn-manifest.json`. It also creates two directories the specialists use: `head/<HEAD_SHA>/` — where a changed file too large for the bundle's caps is written verbatim, so the Source index can hand every specialist one local path instead of six `git show` calls, and where `helper show` caches anything they ask for outside the changed set — and `scratch/`, for their own working copies. Both live under `$TMP` so Cleanup already covers them; that is the point, since specialist scratch written to bare `/tmp` is unreachable by any cleanup this skill runs. It replaces six separate calls (two `jq` projections plus `diff`, `roster`, `bundle-context`, `spawn-manifest`) whose outputs it reproduces byte for byte.
 
 It prints shell-safe `KEY=value` lines to stdout — this is where you get the values later steps need, so read them from the tool result rather than re-deriving any of them:
 
 ```
+TMP=…
 HEAD_SHA=…   OWNER=…   REPO=…   PR_NUMBER=…   PR_STATE=…   PR_AUTHOR=…
 ROSTER=security,quality,errors,perf,…          CHANGED_FILES=…   PRIOR_ISSUES=…
 ```
 
-**Eligibility guard.** `prepare` exits non-zero with `PR #N is <state> — aborting` before writing anything when the PR is not `OPEN` — reviewing a merged/closed PR wastes the entire specialist budget and risks posting to a finished thread. On that error, report it and stop (run Cleanup). A second, immediately-before-posting re-check lives at the top of step [5/5] to catch a PR that changed state mid-review. (The guard fires here rather than before the [1/5] GraphQL call, so a closed PR costs one wasted API call — the tradeoff for having exactly one place that decides eligibility.)
+**Eligibility guard.** `prepare` exits non-zero with `PR #N is <state> — aborting` before deriving any artifact when the PR is not `OPEN` — reviewing a merged/closed PR wastes the entire specialist budget and risks posting to a finished thread. On that error, report it and stop (run Cleanup). A second, immediately-before-posting re-check lives at the top of step [5/5] to catch a PR that changed state mid-review. (The guard fires after the fetch rather than before the GraphQL call, so a closed PR costs one wasted API call — the tradeoff for having exactly one place that decides eligibility.)
 
 Which specialists the roster patterns select is `prepare`'s job, not yours — `internal/roster/roster.go` owns them and `ROSTER=` on stdout is the answer.
 
@@ -151,6 +121,21 @@ On harness rejection: see top-of-file stop rule. Because the whole batch is issu
 3. **A valid findings file on disk outranks a `status: failed` task-notification.** A process exit invalidates the harness's in-process view, not the bytes a specialist already wrote. On transcript `d67f09e0` the `claude-md` notification said "did not complete… its in-process state was lost" while `findings/claude-md.json` had been on disk, valid and complete, for 71 seconds. Treat that role as **done** and do not re-spawn it — a re-spawn races a second write against a file the rubric declares immutable once written.
 
 A role with **no** findings file and **no** live agent is a `missing_role`, full stop. Do not nudge it back to life: no `SendMessage`, no re-spawn, no `AskUserQuestion` asking whether to retry — that is the "invent workarounds" this file's first paragraph forbids, and it burns turns the run does not have. Continue to [4/5] with whatever landed; a partial roster still produces a useful review, and `missing_roles` reports the gap honestly. Only if _nothing_ landed, stop and jump to Cleanup.
+
+**One carve-out: finished, but its file was refused.** A specialist whose findings Write is refused follows the rubric's step 4 failure protocol. Its report starts with a `FINDINGS_NOT_WRITTEN: <reason>` line, followed by its findings JSON. That role is not dead: its scan is complete, and the result is in your context.
+
+The refusal is still a block you must not route around on your own. Never Write that JSON unasked: the harness tells you to refuse a subagent's request to perform its denied action and to surface it to the user instead. So:
+
+- **`interactive`** — in the turn the report arrives, call AskUserQuestion once for that role.
+  - Header: `Save results`.
+  - Question: "<role> finished (<N> findings) but its findings file couldn't be saved — <reason>. Save it from <role>'s report?"
+  - Options: `Save` / `Treat as missing`.
+  - This is not the retry question banned above. Nothing re-runs; the answer only decides whether a finished result is kept, and the decision is the user's.
+  - On `Save`, Write the JSON block verbatim to `$TMP/findings/<role>.json`. That Write gets its own permission check.
+  - If that Write fails too, the role is a `missing_role`. Don't ask again.
+- **`auto` / `dry-run`** — don't prompt. The role is a `missing_role`. In your [4/5] report, say it "finished, not saved (<reason>)" so a clean scan doesn't read as a failed one.
+
+(On transcript `dfac0a80` quality's Write got an auto-mode classifier "no verdict", while infra's and perf's identical writes to the same dir passed. With no path for this case, the orchestrator could only offer a copy-paste shell line, and the user abandoned the run.)
 
 ---
 
@@ -325,7 +310,17 @@ If tier 3 also fails, surface the full error and stop. Report `posted via tier 3
 
 Cleanup runs on every path you reach — after step [5/5] completes normally, after the user chose `Skip` at the post-review prompt, and after any fatal stop (command failure, harness denial, missing helper output). Two deliberate exceptions: skip it if `$TMP` is unset (the stop happened before step 0 created the scratch dir), and **skip the `rm -rf` if [4/5] reported an accounting mismatch** — there the raw findings are the only surviving copy of an orphaned finding, so deleting them destroys the evidence. Still delete the git ref in that case.
 
-**It is not, and cannot be, "always".** Cleanup is a turn _you_ take, so every abnormal termination — the Claude Code process exiting, a `kill`, context exhaustion, the machine sleeping — skips it by construction, because in those cases no turn of yours runs at all. That gap is real and it accumulates: on 2026-08-26 four orphaned `pr-review-*` dirs (one 22 hours old) and two dangling `refs/code-review/*` were found on a single machine. The [1/5] Turn 1 pre-flight sweep is the compensating half — it cannot save the run that dies, but it bounds the leak at one dir instead of letting it grow without limit.
+**It is not, and cannot be, "always".** Cleanup is a turn _you_ take, so it is skipped by construction by every abnormal termination where no turn of yours runs at all. That includes:
+
+- the Claude Code process exiting;
+- a `kill`;
+- context exhaustion;
+- the machine sleeping;
+- the user stopping the in-flight specialists while you sit idle between notifications.
+
+The harness hands you no turn after that stop. On transcript `dfac0a80` the stop notice was consumed by the user's next slash command, and neither Cleanup nor a completion marker ever ran.
+
+That gap is real and it accumulates. On 2026-08-26 four orphaned `pr-review-*` dirs (one 22 hours old) and two dangling `refs/code-review/*` were found on a single machine. The pre-flight sweep that `prepare --fetch` runs in [1/5] is the compensating half. It cannot save the run that dies, but it bounds the leak at one dir instead of letting it grow without limit.
 
 Defensive check: only `rm -rf` a path that is a `pr-review-*` directory **directly under the temp root** — matching the full path, not just its basename, so a `pr-review-*` component anywhere else on disk can't satisfy the guard. The pattern re-expands the same `${TMPDIR:-/tmp}` used to build `$TMP` in step 0, so it matches by construction whether or not `TMPDIR` carries a trailing slash:
 

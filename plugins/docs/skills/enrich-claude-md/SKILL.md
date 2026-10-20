@@ -17,11 +17,11 @@ This skill is a one-shot investigate-and-report. Do not modify any files until t
 
 Run `git rev-parse --show-toplevel` to capture the repo root as `$REPO_ROOT`. Resolve all paths relative to it. If the command fails (not a git repo), use the current working directory and warn the user that path-relative evidence may be less reliable.
 
-Resolve the investigation scope from `$1` (trimmed) — an optional positional argument:
+Resolve the investigation scope from `$ARGUMENTS` (trimmed) — an optional positional argument:
 
-1. **`$1` is empty** — investigate the whole repo rooted at `$REPO_ROOT`.
-2. **`$1` resolves to an existing directory** (`test -d`) — investigate only that subtree, but still read the _nearest enclosing_ memory files (the root `CLAUDE.md` and any `.claude/rules/`) so you don't re-propose facts already documented upstream.
-3. **`$1` is any other non-empty value** — treat it as a glob, expand it with a single `find`, and investigate the matches. If it expands to nothing, stop and report "no files match `<arg>`".
+1. **`$ARGUMENTS` is empty** — investigate the whole repo rooted at `$REPO_ROOT`.
+2. **`$ARGUMENTS` resolves to an existing directory** (`test -d`) — investigate only that subtree, but still read the _nearest enclosing_ memory files (the root `CLAUDE.md` and any `.claude/rules/`) so you don't re-propose facts already documented upstream.
+3. **`$ARGUMENTS` is any other non-empty value** — treat it as a glob, expand it with a single `find`, and investigate the matches. If it expands to nothing, stop and report "no files match `<arg>`".
 
 The directory exclusions in Step 3 apply to every scope.
 
