@@ -527,6 +527,11 @@ func parseFile(path string) (*parsedFile, error) {
 		}
 
 		switch entry.Type {
+		case "api-request-blob":
+			// A replay of the request's message history (no timestamp, no uuid):
+			// its tool_use/tool_result blocks are copies of entries already seen,
+			// and counting them doubled every tool call and failure (f6147551).
+			continue
 		case "system":
 			switch entry.Subtype {
 			case "turn_duration":

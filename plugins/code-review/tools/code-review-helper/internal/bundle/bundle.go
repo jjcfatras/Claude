@@ -155,7 +155,7 @@ func Build(in Input) (string, error) {
 		// this line sits near the top of the bundle, so repeating them here
 		// would make an unanchored search for either section match the header
 		// prose instead of the real section.
-		fmt.Fprintf(&b, "- SOURCE_START: %s — first line of the per-file source bodies. Everything above it is orientation you need in full; everything below is per-file content you should reach via the Source index's `Bundle line` column rather than by paging. If your first Read stopped short of this line, read up to it before doing anything else.\n", sourceStartPlaceholder)
+		fmt.Fprintf(&b, "- SOURCE_START: %s — first line of the per-file source bodies. Everything above it is orientation you need in full; everything below is per-file content you should reach via the Source index's `Bundle line` column rather than by paging. If your first Read stopped short of this line, read up to it before doing anything else, using the offset/limit pieces your prompt lists (one Read across it can exceed the 25k-token cap).\n", sourceStartPlaceholder)
 	}
 	fmt.Fprintf(&b, "- The findings/ subdirectory is pre-created by the orchestrator — do not mkdir or pre-test it before your Write.\n\n")
 

@@ -13,7 +13,7 @@ The user prompt provides the spawn-context bundle path and rubric path. Read eac
 
 After the bundle and rubric, Read the diff. Per the bundle's Source index, prefer embedded `## Source at HEAD` content over `git show`. For a file NOT in the changed list, do not `git show` it yourself — run the `HELPER_PATH` command in the bundle's Per-PR header instead. It caches the blob under `<REVIEW_TMPDIR>/head/` and prints one local path for you to `Read` with `offset`/`limit`, so the first specialist to want a shared callee pays for it and the rest do not. For repo-wide symbol search use `Bash: git -C <REPO_ROOT> grep <symbol> <HEAD_SHA> -- '*.ts'`.
 
-If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
+If a Read returns `exceeds maximum allowed tokens (25000)`, retry at the **same** `offset` with half the `limit`, and keep halving until it fits — `offset: 0` would just re-read your first page.
 
 ## Environment
 

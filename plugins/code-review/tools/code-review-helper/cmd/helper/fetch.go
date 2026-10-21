@@ -61,11 +61,11 @@ func fetchPR(o prepareOpts) error {
 
 	n := strconv.Itoa(o.pr)
 	var wg sync.WaitGroup
-	var metaErr, diffErr error
+	var metaErr, diffErr, refErr error
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		metaErr = runCmd(o.repoRoot, o.prMetaPath, "gh", "pr", "view", n, "--json", "headRefOid,url,number,title,headRefName,author,state")
+		metaErr = runCmd(o.repoRoot, o.prMetaPath, "gh", "pr", "view", n, "--json", "headRefOid,url,number,title,headRefName,baseRefName,author,state")
 		if metaErr != nil {
 			return
 		}
@@ -89,12 +89,49 @@ func fetchPR(o prepareOpts) error {
 		// The hidden ref makes HEAD_SHA's objects resolvable on a stale clone or
 		// a fork PR. Failure (offline, restricted remote) only degrades
 		// specialists to the bundle's embedded source, so warn and carry on.
-		if err := runCmd(o.repoRoot, "", "git", "fetch", "origin", "+pull/"+n+"/head:refs/code-review/pr-"+n, "--no-tags"); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: %v — specialists fall back to the bundle's embedded source\n", err)
+		if refErr = runCmd(o.repoRoot, "", "git", "fetch", "origin", "+pull/"+n+"/head:refs/code-review/pr-"+n, "--no-tags"); refErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v — specialists fall back to the bundle's embedded source\n", refErr)
 		}
 	}()
 	wg.Wait()
+	if diffErr != nil && metaErr == nil && refErr == nil && diffTooLarge(diffErr) {
+		diffErr = localDiff(o, n, diffErr)
+	}
 	return errors.Join(metaErr, diffErr)
+}
+
+// diffTooLarge matches GitHub's refusal to serve a PR diff over 20,000 lines
+// (`HTTP 406 … PullRequest.diff too_large`). Transcript f6147551: a 48.5k-line
+// PR hard-failed here, and the orchestrator rebuilt --fetch's outputs by hand.
+func diffTooLarge(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "too_large") || strings.Contains(s, "HTTP 406")
+}
+
+// localDiff builds the PR diff from the hidden ref the concurrent fetch just
+// wrote, against the merge base with the PR's base branch — GitHub's own
+// three-dot semantics, so valid-lines and inline posting still line up. The
+// base fetch is best-effort: a stale origin/<base> only widens the diff. The
+// explicit prefixes pin the a/ b/ form the diff parser expects, whatever the
+// user's diff.noprefix / diff.mnemonicPrefix config says. On failure it returns
+// GitHub's original error with the local one attached.
+func localDiff(o prepareOpts, n string, ghErr error) error {
+	meta, _, _, err := loadPRMeta(o.prMetaPath)
+	if err == nil && meta.BaseRefName == "" {
+		err = errors.New("pr-meta.json has no baseRefName")
+	}
+	if err != nil {
+		return errors.Join(ghErr, fmt.Errorf("local diff fallback: %w", err))
+	}
+	base := meta.BaseRefName
+	if err := runCmd(o.repoRoot, "", "git", "fetch", "origin", base, "--no-tags"); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v — diffing against the existing origin/%s\n", err, base)
+	}
+	if err := runCmd(o.repoRoot, o.diffPath, "git", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "origin/"+base+"...refs/code-review/pr-"+n); err != nil {
+		return errors.Join(ghErr, fmt.Errorf("local diff fallback: %w", err))
+	}
+	fmt.Fprintf(os.Stderr, "warning: gh pr diff refused the PR as too large; built %s locally from origin/%s...refs/code-review/pr-%s\n", filepath.Base(o.diffPath), base, n)
+	return nil
 }
 
 // sweep reaps what a previous run's skipped Cleanup left behind (see SKILL.md

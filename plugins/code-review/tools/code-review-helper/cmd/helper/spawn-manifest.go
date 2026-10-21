@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -45,11 +47,12 @@ import (
 // on the critical path. 400 clears the orientation payload on a normal PR;
 // SOURCE_START makes the tail self-correcting when the index is taller, which is
 // why the fallback is phrased as "read up to SOURCE_START" and not "keep paging".
+//
+// When prepare has the bundle in hand it replaces that fallback with an exact,
+// byte-sized read plan (see orientationReads): transcript f6147551 showed "Read
+// up to it" becoming one ~59k-token Read on a 263-file PR.
 const promptTemplate = "Read {{TMP}}/spawn-context.md " +
-	"(offset:0, limit:400 — this covers the orientation payload, ending with the `## Source index`. " +
-	"Its `SOURCE_START` header field is the first line of per-file source content: if that number is " +
-	"past your first page, Read up to it before anything else, then stop paging and use the index's " +
-	"`Bundle line` column to jump straight to the files you need) " +
+	"({{ORIENTATION_READS}}) " +
 	"and {{TMP}}/rubric.md, once each. " +
 	"Scan {{TMP}}/pr-{{PR_NUMBER}}.diff for issues in your domain — {{DIFF_GUIDANCE}} " +
 	"Then Write findings JSON to {{TMP}}/findings/{{ROLE}}.json per the rubric schema.\n\n" +
@@ -109,6 +112,7 @@ func runSpawnManifest(argv []string) error {
 		return fmt.Errorf("parse --roster: %w", err)
 	}
 
+	bundle, _ := os.ReadFile(*reviewTmpDir + "/spawn-context.md") // absent → legacy first-page directive
 	entries, err := buildSpawnEntries(roles, spawnSubs{
 		reviewTmpDir: *reviewTmpDir,
 		headSHA:      *headSHA,
@@ -116,6 +120,7 @@ func runSpawnManifest(argv []string) error {
 		owner:        *owner,
 		repo:         *repo,
 		repoRoot:     *repoRoot,
+		bundle:       string(bundle),
 	})
 	if err != nil {
 		return err
@@ -133,6 +138,58 @@ type spawnSubs struct {
 	repoRoot     string
 	diffBytes    int // raw diff size; 0 means unmeasured, which falls back to the diff-map guidance
 	diffLines    int
+	bundle       string // rendered spawn-context.md; empty falls back to the open-ended first-page directive
+}
+
+// legacyOrientation is the first-page directive used when the bundle isn't
+// available to plan exact reads from.
+const legacyOrientation = "offset:0, limit:400 — this covers the orientation payload, ending with the `## Source index`. " +
+	"Its `SOURCE_START` header field is the first line of per-file source content: if that number is " +
+	"past your first page, Read up to it before anything else, then stop paging and use the index's " +
+	"`Bundle line` column to jump straight to the files you need"
+
+// Read caps out at 25,000 tokens and 2,000 lines by default. Source-index rows
+// are dense with paths and digits: transcript f6147551 measured one 450-line
+// page at 117,624 bytes = 59,259 tokens, ~2 bytes/token including the line
+// gutter. 32 KB is ~17k tokens at that density, leaving room for denser rows.
+const (
+	maxReadBytes = 32_000
+	maxReadLines = 2_000
+)
+
+var sourceStartRe = regexp.MustCompile(`(?m)^- SOURCE_START: (\d+) `)
+
+// orientationReads plans the Reads that cover spawn-context.md up to
+// SOURCE_START (the whole file when it has no source section), each at most
+// maxReadBytes. A fixed line limit can't do this: on transcript f6147551 one
+// page of the same bundle ran ~180 tokens/line and another ~45.
+func orientationReads(bundle string) string {
+	lines := strings.SplitAfter(bundle, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	end := len(lines)
+	if m := sourceStartRe.FindStringSubmatch(bundle); m != nil {
+		if n, _ := strconv.Atoi(m[1]); n > 0 && n < end {
+			end = n
+		}
+	}
+	var reads []string
+	for start := 0; start < end; {
+		n, size := 0, 0
+		for start+n < end && n < maxReadLines && (n == 0 || size+len(lines[start+n]) <= maxReadBytes) {
+			size += len(lines[start+n])
+			n++
+		}
+		reads = append(reads, fmt.Sprintf("offset:%d limit:%d", start, n))
+		start += n
+	}
+	plan := strings.Join(reads, "; then ")
+	if len(reads) > 1 {
+		plan = fmt.Sprintf("%d Reads, each sized under the 25k-token cap — issue them exactly as given, never merged: %s", len(reads), plan)
+	}
+	return plan + " — together these cover the orientation payload, ending with the `## Source index`, up to the `SOURCE_START` header line. " +
+		"Then stop paging and use the index's `Bundle line` column to jump straight to the files you need"
 }
 
 // buildSpawnEntries renders one Agent payload per roster role. Shared by the
@@ -142,7 +199,12 @@ func buildSpawnEntries(roles []string, s spawnSubs) ([]spawnEntry, error) {
 	if len(roles) == 0 {
 		return nil, fmt.Errorf("spawn-manifest: roster is empty; nothing to spawn")
 	}
+	orientation := legacyOrientation
+	if s.bundle != "" {
+		orientation = orientationReads(s.bundle)
+	}
 	subs := strings.NewReplacer(
+		"{{ORIENTATION_READS}}", orientation,
 		"{{TMP}}", s.reviewTmpDir,
 		"{{PR_NUMBER}}", fmt.Sprintf("%d", s.prNumber),
 		"{{HEAD_SHA}}", s.headSHA,

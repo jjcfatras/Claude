@@ -13,25 +13,30 @@ import (
 )
 
 // stubRunCmd replaces gh/git with canned outputs, failing any command whose
-// "name sub sub" key is in fail. It returns the recorded calls.
+// full command line starts with an entry in fail; an entry "prefix: msg" also
+// sets the error text. It returns the recorded calls.
 func stubRunCmd(t *testing.T, fail ...string) func() []string {
 	t.Helper()
 	orig := runCmd
 	t.Cleanup(func() { runCmd = orig })
 	bodies := map[string]string{
-		"gh pr view":     `{"headRefOid":"abc","url":"https://github.com/o/r/pull/7","number":7,"state":"OPEN"}`,
-		"gh pr diff":     "diff --git a/x b/x\n",
-		"gh api graphql": "{}",
+		"gh pr view":          `{"headRefOid":"abc","baseRefName":"main","url":"https://github.com/o/r/pull/7","number":7,"state":"OPEN"}`,
+		"gh pr diff":          "diff --git a/x b/x\n",
+		"gh api graphql":      "{}",
+		"git diff --no-color": "diff --git a/x b/x\n",
 	}
 	var mu sync.Mutex
 	var calls []string
 	runCmd = func(dir, outPath, name string, args ...string) error {
 		key := name + " " + strings.Join(args[:2], " ")
+		call := name + " " + strings.Join(args, " ")
 		mu.Lock()
-		calls = append(calls, name+" "+strings.Join(args, " "))
+		calls = append(calls, call)
 		mu.Unlock()
-		if slices.Contains(fail, key) {
-			return fmt.Errorf("%s failed", key)
+		for _, f := range fail {
+			if prefix, msg, _ := strings.Cut(f, ": "); strings.HasPrefix(call, prefix) {
+				return fmt.Errorf("%s failed: %s", key, msg)
+			}
 		}
 		if outPath != "" {
 			return os.WriteFile(outPath, []byte(bodies[key]), 0o644)
@@ -57,12 +62,17 @@ func TestFetchPR(t *testing.T) {
 		fail        []string
 		wantErr     bool
 		wantThreads bool
+		wantLocal   bool // git-diff fallback attempted
 	}{
 		{name: "all succeed", wantThreads: true},
 		{name: "git fetch failure only warns", fail: []string{"git fetch origin"}, wantThreads: true},
 		{name: "threads failure only warns", fail: []string{"gh api graphql"}},
 		{name: "pr view failure is fatal", fail: []string{"gh pr view"}, wantErr: true},
 		{name: "pr diff failure is fatal", fail: []string{"gh pr diff"}, wantErr: true, wantThreads: true},
+		{name: "too-large diff falls back to local git diff", fail: []string{"gh pr diff: HTTP 406 PullRequest.diff too_large"}, wantThreads: true, wantLocal: true},
+		{name: "too-large diff survives a failed base fetch", fail: []string{"gh pr diff: HTTP 406 PullRequest.diff too_large", "git fetch origin main"}, wantThreads: true, wantLocal: true},
+		{name: "too-large diff without the hidden ref is fatal", fail: []string{"gh pr diff: HTTP 406 PullRequest.diff too_large", "git fetch origin"}, wantErr: true, wantThreads: true},
+		{name: "too-large diff with failing local diff is fatal", fail: []string{"gh pr diff: HTTP 406 PullRequest.diff too_large", "git diff --no-color"}, wantErr: true, wantThreads: true, wantLocal: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,6 +87,13 @@ func TestFetchPR(t *testing.T) {
 			}
 			if _, err := os.Stat(o.threadsPath); (err == nil) != tc.wantThreads {
 				t.Errorf("threads file present = %v, want %v", err == nil, tc.wantThreads)
+			}
+			if _, err := os.Stat(o.diffPath); err != nil && !tc.wantErr {
+				t.Errorf("diff file missing: %v", err)
+			}
+			const local = "git diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ origin/main...refs/code-review/pr-7"
+			if got := slices.Contains(calls(), local); got != tc.wantLocal {
+				t.Errorf("local diff issued = %v, want %v: %v", got, tc.wantLocal, calls())
 			}
 			if tc.wantThreads {
 				i := slices.IndexFunc(calls(), func(c string) bool { return strings.HasPrefix(c, "gh api graphql") })

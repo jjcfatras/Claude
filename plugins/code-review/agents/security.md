@@ -15,7 +15,7 @@ After the bundle and rubric, Read the diff. The bundle embeds every changed file
 
 Never Read absolute paths from cwd — cwd may be a worktree not at HEAD. For repo-wide symbol search use `Bash: git -C <REPO_ROOT> grep <symbol> <HEAD_SHA> -- '*.ts'` — never `find <repo> | xargs grep`.
 
-If a Read returns `exceeds maximum allowed tokens (25000)`, retry with `offset: 0, limit: 200` and paginate.
+If a Read returns `exceeds maximum allowed tokens (25000)`, retry at the **same** `offset` with half the `limit`, and keep halving until it fits — `offset: 0` would just re-read your first page.
 
 ## Environment
 

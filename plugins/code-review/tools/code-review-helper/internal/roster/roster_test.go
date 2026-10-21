@@ -134,6 +134,71 @@ func TestClaudeMdFiles_None(t *testing.T) {
 	}
 }
 
+func TestClaudeMdFiles_PathScopedRules(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "root")
+	rules := filepath.Join(dir, ".claude", "rules")
+	mustWrite(t, filepath.Join(rules, "api.md"), "---\npaths:\n  - \"src/api/**\"\n---\nbody")
+	mustWrite(t, filepath.Join(rules, "always.md"), "no frontmatter, loads at startup")
+	mustWrite(t, filepath.Join(rules, "docs.md"), "---\npaths: docs/**/*.md\n---\n")
+	mustWrite(t, filepath.Join(rules, "nested", "ui.md"), "---\ndescription: x\npaths: [\"src/**/*.{tsx,jsx}\", 'other/**']\n---\n")
+	mustWrite(t, filepath.Join(rules, "notes.txt"), "---\npaths: src/**\n---\n")
+
+	got, err := ClaudeMdFiles([]string{"./src/api/handler.ts", "src/web/App.tsx"}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".claude/rules/api.md", ".claude/rules/nested/ui.md", "CLAUDE.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+func TestRulePaths(t *testing.T) {
+	cases := map[string][]string{
+		"---\npaths:\n  - src/**\n  - 'lib/*.ts'\nother: 1\n---\n": {"src/**", "lib/*.ts"},
+		"---\r\npaths: [a/**, \"b/*.{ts,tsx}\"]\r\n---\r\n":        {"a/**", "b/*.{ts,tsx}"},
+		"---\npaths: src/**/*.{ts,tsx}, docs/**\n---\n":            {"src/**/*.{ts,tsx}", "docs/**"},
+		"---\ndescription: none\n---\npaths: body-only\n":          nil,
+		"paths: no-frontmatter\n":                                  nil,
+	}
+	for doc, want := range cases {
+		if got := rulePaths(doc); !reflect.DeepEqual(got, want) {
+			t.Errorf("rulePaths(%q) = %v, want %v", doc, got, want)
+		}
+	}
+}
+
+func TestGlobRegexp(t *testing.T) {
+	cases := []struct {
+		glob, path string
+		want       bool
+	}{
+		{"src/**", "src/a/b.ts", true},
+		{"src/**/*.ts", "src/a.ts", true},
+		{"src/**/*.ts", "src/a/b/c.ts", true},
+		{"**/*.ts", "a.ts", true},
+		{"src/*.ts", "src/a/b.ts", false},
+		{"src/*.{ts,tsx}", "src/a.tsx", true},
+		{"src/*.{ts,tsx}", "src/a.js", false},
+		{"a?.md", "ab.md", true},
+		{"a.md", "aXmd", false},
+		{"src/components/**", "src/componentsX/a.ts", false},
+	}
+	for _, tc := range cases {
+		re, err := globRegexp(tc.glob)
+		if err != nil {
+			t.Fatalf("globRegexp(%q): %v", tc.glob, err)
+		}
+		if got := re.MatchString(tc.path); got != tc.want {
+			t.Errorf("glob %q vs %q = %v, want %v", tc.glob, tc.path, got, tc.want)
+		}
+	}
+	if _, err := globRegexp("src/{a,b"); err == nil {
+		t.Error("unbalanced brace should fail to compile")
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

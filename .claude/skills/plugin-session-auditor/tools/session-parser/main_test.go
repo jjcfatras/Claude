@@ -55,3 +55,30 @@ func TestCorrelateAndStat_ClassifiesDenials(t *testing.T) {
 		t.Errorf("stats.ToolFailureCount = %d, want %d", got, want)
 	}
 }
+
+// api-request-blob entries replay earlier tool_use/tool_result blocks with no
+// timestamp; counting them doubled every call and failure (transcript f6147551).
+func TestParseFile_IgnoresAPIRequestBlobs(t *testing.T) {
+	const transcript = `{"type":"assistant","uuid":"u1","timestamp":"2026-10-20T20:00:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"false"}}]}}
+{"type":"user","uuid":"u2","timestamp":"2026-10-20T20:00:01.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Exit code 1"}]}}
+{"type":"api-request-blob","hash":"h","sessionId":"s","message":{"role":"assistant","content":[{"type":"text","text":"x"},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"false"}},{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Exit code 1"}]}}
+`
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(path, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+	pf, err := parseFile(path)
+	if err != nil {
+		t.Fatalf("parseFile: %v", err)
+	}
+	events, stats := correlateAndStat(pf)
+	if got := len(events.ToolCalls); got != 1 {
+		t.Errorf("ToolCalls = %d, want 1", got)
+	}
+	if got := stats.ToolFailureCount; got != 1 {
+		t.Errorf("ToolFailureCount = %d, want 1", got)
+	}
+	if got := events.ToolFailures[0].Timestamp; got == "" {
+		t.Error("failure lost its timestamp to the blob's replayed tool_result")
+	}
+}

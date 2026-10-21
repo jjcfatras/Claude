@@ -35,14 +35,15 @@ import (
 // remain — this is additive, and they are still the right tool for debugging one
 // stage in isolation.
 
-// prMeta is the subset of `gh pr view --json headRefOid,url,number,title,headRefName,author,state`
+// prMeta is the subset of `gh pr view --json headRefOid,url,number,title,headRefName,baseRefName,author,state`
 // that the pipeline consumes.
 type prMeta struct {
-	HeadRefOid string `json:"headRefOid"`
-	URL        string `json:"url"`
-	Number     int    `json:"number"`
-	State      string `json:"state"`
-	Author     struct {
+	HeadRefOid  string `json:"headRefOid"`
+	BaseRefName string `json:"baseRefName"`
+	URL         string `json:"url"`
+	Number      int    `json:"number"`
+	State       string `json:"state"`
+	Author      struct {
 		Login string `json:"login"`
 	} `json:"author"`
 }
@@ -74,7 +75,7 @@ func parsePrepareArgs(argv []string) (prepareOpts, error) {
 	fs.StringVar(&o.reviewTmpDir, "review-tmpdir", "", "path to $REVIEW_TMPDIR; every output is written here")
 	fs.StringVar(&o.repoRoot, "repo-root", "", "absolute path to the repo root")
 	fs.StringVar(&o.rubric, "rubric", "", "path to references/code-review-rubrics.md")
-	fs.StringVar(&o.prMetaPath, "pr-meta", "", "path to pr-meta.json (from `gh pr view --json headRefOid,url,number,title,headRefName,author,state`); defaults to <review-tmpdir>/pr-meta.json")
+	fs.StringVar(&o.prMetaPath, "pr-meta", "", "path to pr-meta.json (from `gh pr view --json headRefOid,url,number,title,headRefName,baseRefName,author,state`); defaults to <review-tmpdir>/pr-meta.json")
 	fs.StringVar(&o.threadsPath, "review-threads", "", "path to review-threads.json (the GraphQL reviewThreads response); defaults to <review-tmpdir>/review-threads.json. Missing file is not an error — it yields an empty prior-issues set")
 	fs.StringVar(&o.diffPath, "diff", "", "path to the unified diff; defaults to <review-tmpdir>/pr-<number>.diff")
 	fs.StringVar(&o.rubricOut, "rubric-out", "", "copy the rubric here and reference it from the bundle header; defaults to <review-tmpdir>/rubric.md")
@@ -262,6 +263,7 @@ func runPrepare(argv []string) error {
 		repoRoot:     opts.repoRoot,
 		diffBytes:    diffBytes,
 		diffLines:    diffLines,
+		bundle:       bundleStr,
 	})
 	if err != nil {
 		return err

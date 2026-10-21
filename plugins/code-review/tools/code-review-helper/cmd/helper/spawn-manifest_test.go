@@ -3,7 +3,9 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -279,6 +281,63 @@ func TestAgentFilesCarryEnvironmentNotes(t *testing.T) {
 				t.Errorf("%s.md `## Environment` is missing the %q guardrail note", role, note)
 			}
 		}
+	}
+}
+
+// TestOrientationReads pins the page plan that replaced "Read up to
+// SOURCE_START": every planned Read stays under maxReadBytes, and together they
+// cover lines [0, SOURCE_START) exactly once, in order.
+func TestOrientationReads(t *testing.T) {
+	line := strings.Repeat("x", 999) + "\n" // 1,000 bytes
+	big := "- SOURCE_START: 120 — first line\n" + strings.Repeat(line, 200)
+	cases := []struct {
+		name   string
+		bundle string
+		end    int
+		reads  int
+	}{
+		{"small PR is one read", "# h\n- SOURCE_START: 3 — x\nindex\nsrc\nsrc\n", 3, 1},
+		{"large orientation is split by bytes", big, 120, (120*1000 + maxReadBytes - 1) / maxReadBytes},
+		{"no source section covers the whole file", "a\nb\nc\n", 3, 1},
+		{"oversized single line still advances", strings.Repeat("y", maxReadBytes*2) + "\n- SOURCE_START: 2 — x\nsrc\n", 2, 2},
+	}
+	re := regexp.MustCompile(`offset:(\d+) limit:(\d+)`)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := orientationReads(tc.bundle)
+			lines := strings.SplitAfter(tc.bundle, "\n")
+			next := 0
+			ms := re.FindAllStringSubmatch(got, -1)
+			for _, m := range ms {
+				off, _ := strconv.Atoi(m[1])
+				lim, _ := strconv.Atoi(m[2])
+				if off != next {
+					t.Fatalf("read starts at %d, want %d: %s", off, next, got)
+				}
+				size := len(strings.Join(lines[off:off+lim], ""))
+				if lim > 1 && size > maxReadBytes {
+					t.Errorf("read offset:%d limit:%d is %d bytes > %d", off, lim, size, maxReadBytes)
+				}
+				next = off + lim
+			}
+			if next != tc.end || len(ms) != tc.reads {
+				t.Errorf("covered [0,%d) in %d reads, want [0,%d) in %d: %s", next, len(ms), tc.end, tc.reads, got)
+			}
+			if !strings.Contains(got, "SOURCE_START") {
+				t.Errorf("plan lost its SOURCE_START anchor: %s", got)
+			}
+		})
+	}
+}
+
+func TestBuildSpawnEntries_UsesBundlePlan(t *testing.T) {
+	entries, err := buildSpawnEntries([]string{"security"}, spawnSubs{reviewTmpDir: "/t", headSHA: "abc", prNumber: 1, bundle: "a\n- SOURCE_START: 2 — x\nsrc\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := entries[0].Prompt
+	if !strings.Contains(p, "(offset:0 limit:2 — together") || strings.Contains(p, "limit:400") || strings.Contains(p, "{{") {
+		t.Errorf("prompt did not use the bundle's page plan: %s", p)
 	}
 }
 
