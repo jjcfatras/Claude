@@ -51,8 +51,7 @@ Good — discriminated-union narrowing:
 
 ```ts
 type Shape =
-  | { kind: "circle"; radius: number }
-  | { kind: "square"; size: number };
+  { kind: "circle"; radius: number } | { kind: "square"; size: number };
 
 function area(shape: Shape) {
   switch (shape.kind) {

@@ -151,8 +151,8 @@ allowed-tools:
   - Read
   - Write
   - Bash(git:*)
-allowed-tools: Bash(git:*)   # only git; also Bash(npm:*), Bash(docker:*)
-allowed-tools: "*"            # all tools — avoid
+allowed-tools: Bash(git:*) # only git; also Bash(npm:*), Bash(docker:*)
+allowed-tools: "*" # all tools — avoid
 ```
 
 Example (from `plugins/git/skills/commit/SKILL.md`):

@@ -4,9 +4,9 @@ Guidance for Claude Code (claude.ai/code) when working with code in this reposit
 
 ## Development Environment
 
-- **Node.js**: v24.15.0 (see `.nvmrc`)
-- **Package manager**: pnpm (v10.32.1)
-- **Formatting**: Prettier 3.8.1 (config in `prettier.config.ts`, `prettier-plugin-sh` for shell)
+- **Node.js**: v24.22.2 (see `.nvmrc`)
+- **Package manager**: pnpm (v12.16.1)
+- **Formatting**: Prettier 3.9.10 (config in `prettier.config.ts`, `prettier-plugin-sh` for shell)
 
 ## Commands
 
