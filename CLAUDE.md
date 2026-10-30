@@ -35,13 +35,16 @@ All four match on `Edit|Write` only — a scripted multi-file edit (`python3` he
 
 ## Project Structure
 
-This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping eight plugins under `plugins/`:
+This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping nine plugins under `plugins/`:
 
 - `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
 - `jira` — JIRA workflow skills (`create-ticket`, `implement-ticket`, `create-tests`), all user-only (`disable-model-invocation: true`)
+- `caffeine` — hooks only, no commands or skills. It keeps macOS awake while a session works, via the built-in `caffeinate -i`, and replaces `cc-caffeine@samber`, whose synchronous `npx` hooks cost ~3 s per tool call.
+  - The `on` hooks are async, and per-session state lives in `${CLAUDE_PLUGIN_DATA}`.
+  - `caffeinate -i <cmd>` keeps `<cmd>` in the original pid and asserts from a forked child. So `$!` and the pid file name the heartbeat loop, not caffeinate; killing the loop releases the assertion.
 - `code-review` — multi-specialist review using parallel native Claude Code subagents (no SDK, no agent team, no cross-agent verification); ships the orchestrator as a user-only skill (`skills/code-review/SKILL.md`, `disable-model-invocation: true`), plus .md agent files, references, a Go helper, and prebuilt binaries
   - The eight `agents/*.md` duplicate their `## Environment` block and source-fetching paragraph near-verbatim, so shared guidance must be edited in all eight. The `## Environment` block (three bullets) is byte-identical in seven; only `claude-md` adds a clause, exempting CLAUDE.md and `.claude/rules/` files from the never-read-a-live-path rule. The oversized-Read retry line just above the block is identical in all eight. The source-fetching paragraph has four variants that differ only in the trailing `git grep` pathspec (`'*.ts'`, `'*.tsx'`, or none) and an optional "never `find | xargs grep`" clause. Check the outliers individually rather than blind-replacing.
 

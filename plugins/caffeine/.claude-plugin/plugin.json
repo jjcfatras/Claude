@@ -1,0 +1,9 @@
+{
+  "name": "caffeine",
+  "version": "0.1.0",
+  "description": "Keep macOS awake while Claude Code works, via the built-in caffeinate (no Electron, no npx, non-blocking hooks)",
+  "author": { "name": "jjcfatras" },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": ["sleep", "caffeinate", "macos", "hooks"]
+}

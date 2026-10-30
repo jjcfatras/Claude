@@ -14,7 +14,7 @@ You are the orchestrator for /code-review. Execute the numbered steps below in o
 
 A "stop" includes harness-side Agent rejections. All specialists are spawned together in a single message (see [3/5]), so a rejection means the harness denied one block of an already-issued batch — it is **not** a cue to issue the remaining specialists one at a time. If any `Agent` call returns a message containing `"user doesn't want to proceed"` or `"tool use was rejected"`, treat it as a fatal stop: do not retry, abandon the finalize/post phase. Report which subagent was denied, then jump to **Cleanup**.
 
-**One carve-out: an interrupt is not a denial.** The harness emits that same `"user doesn't want to proceed"` text when the user cancels an _open_ permission prompt by typing ahead — queuing a message or a slash command while the prompt is pending — which is a request for attention, not a verdict on the tool call. Tell them apart by what arrives with it: a genuine denial stands alone, while an interrupt is accompanied by `[Request interrupted by user…]` and/or a new user turn at effectively the same instant. On an interrupt, do not fatally abort a healthy run — say which call was cancelled, answer whatever the user typed, and re-issue that one call. (On transcript `d67f09e0`, `/transcript` typed at 13:58:52.487 cancelled an open prompt and produced this exact string. It landed on a `SendMessage` and cost only a re-invocation; on an `Agent` block the rule above would have killed a working review over a keystroke.)
+**One carve-out: an interrupt is not a denial.** The harness emits that same `"user doesn't want to proceed"` text when the user cancels an _open_ permission prompt by typing ahead — queuing a message or a slash command while the prompt is pending — which is a request for attention, not a verdict on the tool call. Tell them apart by what arrives with it: an interrupt comes with a new user message or slash command at effectively the same instant. The `[Request interrupted by user…]` marker proves nothing on its own. The harness appends it to nearly every plain rejection too (22 of 23 sampled main-thread rejections, `d81303f3` among them), so a rejection followed only by that marker is a denial. On an interrupt, do not fatally abort a healthy run — say which call was cancelled, answer whatever the user typed, and re-issue that one call. (On transcript `d67f09e0`, `/transcript` typed at 13:58:52.487 cancelled an open prompt and produced this exact string. It landed on a `SendMessage` and cost only a re-invocation; on an `Agent` block the rule above would have killed a working review over a keystroke.)
 
 All agents in this plugin are namespaced under `code-review:` — use the fully-qualified form for every `subagent_type` value (`code-review:security`, `code-review:quality`, etc.). The unqualified bare names are not registered and will fail with "Agent type not found".
 
@@ -125,7 +125,17 @@ A role with **no** findings file and **no** live agent is a `missing_role`, full
 
 **One carve-out: finished, but its file was refused.** A specialist whose findings Write is refused follows the rubric's step 4 failure protocol. Its report starts with a `FINDINGS_NOT_WRITTEN: <reason>` line, followed by its findings JSON. That role is not dead: its scan is complete, and the result is in your context.
 
-The refusal is still a block you must not route around on your own. Never Write that JSON unasked: the harness tells you to refuse a subagent's request to perform its denied action and to surface it to the user instead. So:
+The refusal is still a block you must not route around on your own. Never Write that JSON unasked: the harness tells you to refuse a subagent's request to perform its denied action and to surface it to the user instead.
+
+**A clean payload is never worth a prompt.** If the JSON has `"findings": []` and `"scan_status": "complete"`, don't ask, in any `POST_MODE`:
+
+- The role is a `missing_role`, and your [4/5] report says it "finished clean, not saved (<reason>)".
+- Saving it would change nothing that gets posted: the review body names specialists only when no finding survives at all.
+- The prompt, meanwhile, blocks the main thread while other specialists are still running.
+
+Both refusals seen so far were empty: `dfac0a80`'s quality and `d81303f3`'s claude-md. On `d81303f3` the user dismissed this prompt after 110 s and abandoned the run.
+
+Otherwise:
 
 - **`interactive`** — in the turn the report arrives, call AskUserQuestion once for that role.
   - Header: `Save results`.
@@ -134,6 +144,7 @@ The refusal is still a block you must not route around on your own. Never Write 
   - This is not the retry question banned above. Nothing re-runs; the answer only decides whether a finished result is kept, and the decision is the user's.
   - On `Save`, Write the JSON block verbatim to `$TMP/findings/<role>.json`. That Write gets its own permission check.
   - If that Write fails too, the role is a `missing_role`. Don't ask again.
+  - A dismissed or rejected question means `Treat as missing`. Don't re-ask, and don't abort the run.
 - **`auto` / `dry-run`** — don't prompt. The role is a `missing_role`. In your [4/5] report, say it "finished, not saved (<reason>)" so a clean scan doesn't read as a failed one.
 
 (On transcript `dfac0a80` quality's Write got an auto-mode classifier "no verdict", while infra's and perf's identical writes to the same dir passed. With no path for this case, the orchestrator could only offer a copy-paste shell line, and the user abandoned the run.)
@@ -342,7 +353,7 @@ On normal completion report `[5/5] Done.`. On a fatal stop report which step fai
 
 ## Completion marker (always the last line)
 
-On **every** exit path, your final message must end with exactly one completion-marker line so the agent-view job classifier resolves this run to a definite state instead of leaving it stale at "awaiting input". The classifier reads only your latest message's text and matches a literal lowercase line-prefix — `result:` (run finished) or `failed:` (fatal stop, could not complete). `needs input:` is not used here: the post-review prompt is a tool call, so while it's pending the harness already shows awaiting-input; by the time your final text turn lands the run is either complete or fatally stopped.
+On **every** exit path that gives you a turn (a turn-less exit, see **Cleanup**, gets none and can emit nothing), your final message must end with exactly one completion-marker line so the agent-view job classifier resolves this run to a definite state instead of leaving it stale at "awaiting input". The classifier reads only your latest message's text and matches a literal lowercase line-prefix — `result:` (run finished) or `failed:` (fatal stop, could not complete). `needs input:` is not used here: the post-review prompt is a tool call, so while it's pending the harness already shows awaiting-input; by the time your final text turn lands the run is either complete or fatally stopped.
 
 - It must be the **last line** of your final message, at the start of its own line, plain text — no backticks, bold, tag, or emoji. `Done` / `✅` and the `[5/5] Done.` progress line do **not** count; only the literal token flips the badge.
 - The text after the token is a **self-contained one-line headline** — readable by someone who never saw the request.

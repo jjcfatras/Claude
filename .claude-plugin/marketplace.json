@@ -21,7 +21,7 @@
       "name": "code-review",
       "source": "./plugins/code-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.6.0",
+      "version": "2.6.1",
       "category": "code-review"
     },
     {
@@ -50,6 +50,13 @@
       "source": "./plugins/transcript",
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript",
       "version": "0.3.2",
+      "category": "session-tools"
+    },
+    {
+      "name": "caffeine",
+      "source": "./plugins/caffeine",
+      "description": "Keep macOS awake while Claude Code works, via the built-in caffeinate (no Electron, no npx, non-blocking hooks)",
+      "version": "0.1.0",
       "category": "session-tools"
     },
     {
