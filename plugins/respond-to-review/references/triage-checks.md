@@ -7,7 +7,7 @@ Work from these item fields, by `source_type`:
 - **Inline comment** (`inline-comment`): `id`, `path`, `line`, `original_line`, `diff_hunk`, `body`, `reviewer`.
 - **Review-body finding** (`review-body-finding`): `id`, `review_id`, `reviewer`, `body` (the finding text), and optional `path` / `line` when the finding named a location.
 
-You also have the PR's head SHA, base SHA, and full commit list, plus the path to the saved PR diff.
+You also have the PR's head SHA, base SHA, and full commit list, the path to the saved PR diff, and the worktree where the PR head is checked out — resolve every repo-relative path against it.
 
 ## Check 1 — Is this preexisting?
 
@@ -38,7 +38,7 @@ If the item is not preexisting, analyze whether the reviewer's concern is valid.
    - Is the concern about style/preference rather than correctness?
    - Would the suggested change actually be incorrect or unnecessary given the types/constraints?
 4. Use `rg` to search for relevant patterns if needed (e.g., if the reviewer asks about error handling, search for try/catch or error middleware in related files). If the reviewer's concern hinges on external library behavior (React hooks, Prisma, Next.js, AWS SDK, etc.), verify the claim with Context7 (`mcp__plugin_context7_context7__resolve-library-id` then `mcp__plugin_context7_context7__query-docs`) before deciding the verdict.
-   - If settling a claim needs a **throwaway script that imports the project's own dependencies**, do not put it in the temp dir — `/tmp` sits outside the repo and cannot resolve its `node_modules` (or its venv, or its repo-local binaries). Run the source with the repo root as cwd instead: `node --input-type=module -e "$(cat "$TMPDIR/probe.mjs")"`. Keep the script itself in the temp dir; only the _execution_ has to happen from the repo.
+   - If settling a claim needs a **throwaway script that imports the project's own dependencies**, do not put it in the temp dir — `/tmp` sits outside the repo and cannot resolve its `node_modules` (or its venv, or its repo-local binaries). Run the source with the worktree root as cwd instead: `node --input-type=module -e "$(cat "$REVIEW_DIR/probe.mjs")"`. Keep the script itself in the temp dir; only the _execution_ has to happen from the worktree.
 5. If you can **definitively** demonstrate the concern is unfounded with concrete evidence → verdict `false-positive`, with the evidence recorded per the next section.
 6. If there is any reasonable chance the reviewer is correct → verdict `valid`.
 

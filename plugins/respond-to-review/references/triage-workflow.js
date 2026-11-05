@@ -60,7 +60,8 @@ if (!Array.isArray(args.items)) {
 const prCommits = (args.prCommits || []).join(", ") || "(none listed)";
 const ctx = [
   `PR #${args.pr}. Head ${args.headSha}, base ${args.baseSha}. PR commits: ${prCommits}.`,
-  `The PR diff is saved at ${args.tmpdir}/pr.diff.`,
+  `The review dir ($REVIEW_DIR) is ${args.reviewDir}; the PR diff is saved there as pr.diff.`,
+  `The PR head is checked out at ${args.worktree} — resolve every repo-relative path against it.`,
   `Procedure: Read ${args.checksPath} and apply it exactly, including its "Reproduce before you record" rule.`,
   "MCP tools (Context7) load on demand here — call ToolSearch for them before use.",
 ].join(" ");

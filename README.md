@@ -69,15 +69,15 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 
 **Invoke:** `/respond-to-review <pr-number> [comment-id]` — passing a comment ID scopes the run to one inline thread and skips review-body parsing.
 
-**Prereqs:** `gh` CLI authenticated for the repo; the PR exists.
+**Prereqs:** `gh` CLI authenticated for the repo; the PR exists and its branch lives on `origin` (fork PRs are not supported). Run it from any checkout — your branch and working tree are never touched.
 
 **What happens:**
 
-1. Fetches the PR diff, all inline comments, and all review bodies.
+1. Fetches the PR diff, all inline comments, and all review bodies. If anything needs a response, it creates a throwaway worktree at the PR head (`.claude/worktrees/pr-<number>`), and all triage and fixing happen there.
 2. Filters to actionable items only — drops replies, anything you've already replied to, and trivial acks like "LGTM". Reviews you posted yourself (e.g. via `/code-review --comment`) stay in scope.
 3. Parses review bodies into discrete findings (one per bullet / heading / paragraph).
 4. Triages each item as **false positive**, **preexisting code (not introduced by this PR)**, or **valid issue**. With more than three items this runs as a Workflow: one analysis agent per item returns a schema-checked verdict, then an independent verifier tries to refute every dismissal by reproducing its cited evidence; a dismissal that can't be reproduced is promoted back to valid before you see the triage.
-5. Implements fixes for the valid items and replies confirming the change; replies to the others with an explanation dismissing the finding.
+5. Implements fixes for the valid items, then commits and pushes them from the worktree and refreshes the PR description. It removes the worktree afterwards, but keeps it if a stop leaves unpushed work. Finally it replies confirming each change, and replies to the rest explaining each dismissal.
 
 ### `/code-review`
 
@@ -139,7 +139,7 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 **What happens:**
 
 1. Resolves the transcript path as `$HOME/.claude/projects/<encoded-cwd>/$CLAUDE_CODE_SESSION_ID.jsonl`, where `<encoded-cwd>` replaces every `/` and `.` in `$PWD` with `-`.
-2. If the expected file is missing but the encoded directory exists, falls back to the most-recently-modified `*.jsonl` in that directory.
+2. If the expected file is missing (e.g. `$PWD` moved into a worktree mid-session), searches every `~/.claude/projects/*/` dir for `$CLAUDE_CODE_SESSION_ID.jsonl` by exact name; failing that, falls back to the most-recently-modified `*.jsonl` in the encoded directory, accepted only if it records this session.
 3. Prints one line: the transcript path. Nothing else.
 
 Use this to hand the file to `/plugin-session-auditor` or any other transcript-consuming workflow.

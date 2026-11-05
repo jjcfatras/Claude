@@ -14,9 +14,9 @@ Run the bash block below exactly once and print only its stdout. No preamble, no
 
 Claude Code exports `$CLAUDE_CODE_SESSION_ID` and stores each session's transcript at `$HOME/.claude/projects/<encoded-cwd>/<session-id>.jsonl`, where `<encoded-cwd>` is the absolute current working directory with every `/` and `.` replaced by `-`.
 
-If the env-derived path exists, print it. If not, fall back to the most-recently-modified `*.jsonl` in the encoded directory — but only if that file actually belongs to this session.
+If the env-derived path exists, print it. If not, `$PWD` has usually moved since the session started — `EnterWorktree` relocates it while the transcript stays under the original cwd's project dir — so search every project dir for `<session-id>.jsonl` by exact name. Only if that also misses, fall back to the most-recently-modified `*.jsonl` in the encoded directory — but only if that file belongs to this session.
 
-That last condition matters. The primary lookup is exact: `$dir/$sid.jsonl` can only succeed by naming the right file. The fallback is a guess, and without a check it fails silently in the worst possible way — returning some _other_ session's transcript with exit 0 and no warning. Callers treat this path as authoritative (the `plugin-session-auditor` skill feeds it straight into its parser), so a wrong-but-plausible answer means auditing the wrong session and never knowing. Verifying that the candidate contains `$sid` converts that into the loud error the script already has two lines below.
+That last condition matters. The first two lookups are exact: session ids are unique, so `<session-id>.jsonl` can only match the right file. The fallback is a guess, and without a check it fails silently in the worst possible way — returning some _other_ session's transcript with exit 0 and no warning. Callers treat this path as authoritative (the `plugin-session-auditor` skill feeds it straight into its parser), so a wrong-but-plausible answer means auditing the wrong session and never knowing. Verifying that the candidate contains `$sid` converts that into the loud error the script already has two lines below.
 
 ```bash
 set -u
@@ -31,19 +31,22 @@ dir="$HOME/.claude/projects/$encoded"
 file="$dir/$sid.jsonl"
 
 if [ ! -f "$file" ]; then
+  # $PWD moved since the session started (e.g. EnterWorktree).
+  file="$(find "$HOME/.claude/projects" -maxdepth 2 -name "$sid.jsonl" -print -quit 2> /dev/null)"
+fi
+
+if [ -z "$file" ]; then
   # Best-effort recovery: newest transcript in this project dir, accepted only
   # if it actually records this session. `grep -q -m1` stops at the first hit,
   # so the cost is bounded regardless of transcript size.
   cand="$(ls -t "$dir"/*.jsonl 2> /dev/null | awk 'NR==1')"
   if [ -n "$cand" ] && grep -q -m1 -F "\"$sid\"" "$cand" 2> /dev/null; then
     file="$cand"
-  else
-    file=""
   fi
 fi
 
 if [ -z "$file" ] || [ ! -f "$file" ]; then
-  echo "error: no transcript for session $sid in $dir" >&2
+  echo "error: no transcript for session $sid under $HOME/.claude/projects" >&2
   exit 1
 fi
 
