@@ -18,6 +18,7 @@ All scripts live in `package.json` and are invoked with `pnpm <script>`:
 - `pnpm lint:go` — `go vet ./...` across both Go modules (same module list as `format:go`); stdlib only, no external linter
 - `pnpm build:go` — `make release` for the `code-review` helper; cross-compiles prebuilts into `plugins/code-review/bin/` (darwin/linux/windows × amd64/arm64; Windows binaries get a `.exe` suffix). Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
 - `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json`
+- `pnpm validate:plugins` — Anthropic's `claude plugin validate --strict` on the marketplace and every `plugins/*/`; needs the `claude` CLI, not wired into pre-commit. Checks more than the PostToolUse hooks below (all component frontmatter, path containment)
 - `pnpm test` — runs the `code-review` Go test suite via `make -C plugins/code-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change. They cover the `diff` and `finalize` outputs only — the bundle (`spawn-context.md`) and spawn prompt (`spawn-manifest.json`) have no golden, so changes there pass silently and need their own unit tests. `spawn-manifest_test.go` also reads the eight `agents/*.md` files and asserts substrings in their `## Environment` block — rewording an agent can fail `pnpm test`
 - `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
 
@@ -60,8 +61,10 @@ plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # single slash command, named `<plugin-name>.md`
   skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships eight, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `code-review` ships one (`code-review`) instead of commands
-  agents/, references/, bin/, tools/, hooks/      # only where needed
+  agents/, references/, bin/, tools/, hooks/, scripts/  # only where needed
 ```
+
+Plugin layout against Anthropic's standard layout (what each folder means, manifest rules, `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PLUGIN_DATA}`, accepted deviations): see `.claude/rules/plugin-structure.md`. Skill folder layout (skill-level vs plugin-level files, `references/`/`assets/`/`scripts/`, `${CLAUDE_SKILL_DIR}` vs `${CLAUDE_PLUGIN_ROOT}`): see `.claude/rules/skill-structure.md`.
 
 Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`, `jira-ticket-workspace/`, `debate-workspace/`, `plugin-session-auditor-workspace/`) are gitignored scratch space for the skill-creator / audit / command workflows — safe to ignore. Each is listed individually in `.gitignore` (no `*-workspace/` glob — add new workspace dirs there explicitly).
 

@@ -9,6 +9,7 @@
     "format:go": "for d in plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w \"$d\" && go -C \"$d\" mod edit -fmt || exit 1; done",
     "lint:go": "for d in plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do go -C \"$d\" vet ./... || exit 1; done",
     "build:go": "make -C plugins/code-review/tools/code-review-helper release",
+    "validate:plugins": "claude plugin validate --strict . && for p in plugins/*/; do claude plugin validate --strict \"$p\" || exit 1; done",
     "prepare": "husky",
     "check-types": "tsc --noEmit"
   },

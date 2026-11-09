@@ -1,5 +1,6 @@
 {
   "name": "jjcfatras-tools",
+  "description": "Claude Code plugins for code review, PR review responses, git and JIRA workflows, docs auditing, adversarial debate, code and prose simplification, transcript lookup, and keeping macOS awake",
   "owner": { "name": "jjcfatras" },
   "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
   "plugins": [
