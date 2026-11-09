@@ -7,6 +7,7 @@
     "test": "make -C plugins/code-review/tools/code-review-helper test",
     "format": "prettier --write .",
     "format:go": "for d in plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do gofmt -w \"$d\" && go -C \"$d\" mod edit -fmt || exit 1; done",
+    "lint:go": "for d in plugins/code-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do go -C \"$d\" vet ./... || exit 1; done",
     "build:go": "make -C plugins/code-review/tools/code-review-helper release",
     "prepare": "husky",
     "check-types": "tsc --noEmit"
