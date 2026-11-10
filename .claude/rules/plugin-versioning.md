@@ -8,7 +8,7 @@ When a change touches anything under `plugins/<name>/` (commands, agents, refere
 
 Bump rules:
 
-- Bump only the affected plugin(s). A change scoped to `plugins/code-review/` does not touch `plugins/transcript/.claude-plugin/plugin.json`.
+- Bump only the affected plugin(s). A change scoped to `plugins/review-pr/` does not touch `plugins/transcript/.claude-plugin/plugin.json`.
 - A single change picks one tier — the highest tier triggered by any part of the diff. (A breaking command rename plus a bug fix is MAJOR, not MAJOR + PATCH.)
 - Bumping a higher tier resets lower tiers to `0` (1.4.7 → MINOR → 1.5.0, not 1.5.7).
 - Pure non-plugin changes (root `CLAUDE.md`, `.claude/settings.json`, `.claude-plugin/marketplace.json`, repo-level docs, `code-review-workspace/`) do not require any plugin version bump.

@@ -3,6 +3,7 @@
   "description": "Claude Code plugins for code review, PR review responses, git and JIRA workflows, docs auditing, adversarial debate, code and prose simplification, transcript lookup, and keeping macOS awake",
   "owner": { "name": "jjcfatras" },
   "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
+  "renames": { "code-review": "review-pr" },
   "plugins": [
     {
       "name": "git",
@@ -19,10 +20,10 @@
       "category": "code-review"
     },
     {
-      "name": "code-review",
-      "source": "./plugins/code-review",
+      "name": "review-pr",
+      "source": "./plugins/review-pr",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "2.6.2",
+      "version": "3.0.0",
       "category": "code-review"
     },
     {
