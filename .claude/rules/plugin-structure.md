@@ -15,13 +15,13 @@ Every plugin follows Anthropic's [standard layout](https://code.claude.com/docs/
 | `.claude-plugin/plugin.json` | The manifest. The only file in `.claude-plugin/`: components saved there don't load                                                 | all                     |
 | `skills/<name>/SKILL.md`     | Skills, one folder each                                                                                                             | most                    |
 | `commands/*.md`              | Legacy single-file commands. Write new ones as skills                                                                               | `debate`                |
-| `agents/*.md`                | Subagents. A subfolder becomes part of the name: `agents/review/x.md` loads as `<plugin>:review:x`                                  | `review-pr`, `debate`   |
+| `agents/*.md`                | Subagents. A subfolder becomes part of the name: `agents/review/x.md` loads as `<plugin>:review:x`                                  | `pr-review`, `debate`   |
 | `hooks/hooks.json`           | Hooks, wrapped in a top-level `"hooks"` key                                                                                         | `caffeine`              |
-| `scripts/`                   | Files that hooks or skills run by path. A convention, not a folder Claude Code scans                                                | `caffeine`, `review-pr` |
+| `scripts/`                   | Files that hooks or skills run by path. A convention, not a folder Claude Code scans                                                | `caffeine`, `pr-review` |
 | `bin/`                       | Executables. Put on the Bash tool's `PATH` while the plugin is enabled, and makes claude.ai and Cowork refuse to install the plugin | —                       |
-| `references/`, `tools/`      | Repo conventions, not scanned: docs shared by a plugin's skills and agents; source for a helper built into `scripts/`               | `review-pr`, `jira`, …  |
+| `references/`, `tools/`      | Repo conventions, not scanned: docs shared by a plugin's skills and agents; source for a helper built into `scripts/`               | `pr-review`, `jira`, …  |
 
-No plugin here ships a top-level `bin/`. `review-pr` keeps its prebuilt helper in `scripts/` and calls it by its `${CLAUDE_PLUGIN_ROOT}` path, so it never needs `bin/`'s `PATH` entry and stays installable on claude.ai and Cowork. `.mcp.json`, `.lsp.json`, `settings.json`, `output-styles/`, `monitors/` and the rest of the standard layout are unused here.
+No plugin here ships a top-level `bin/`. `pr-review` keeps its prebuilt helper in `scripts/` and calls it by its `${CLAUDE_PLUGIN_ROOT}` path, so it never needs `bin/`'s `PATH` entry and stays installable on claude.ai and Cowork. `.mcp.json`, `.lsp.json`, `settings.json`, `output-styles/`, `monitors/` and the rest of the standard layout are unused here.
 
 Add only the folders a plugin uses. Don't put a `CLAUDE.md` at a plugin root: Claude Code doesn't load it, and `claude plugin validate` warns about it. Put instructions in a skill.
 

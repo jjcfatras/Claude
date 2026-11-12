@@ -49,7 +49,7 @@ automatic or background-knowledge behavior that an explicitly-invoked `/command`
 | `paths` `(skills only)`          | Globs that gate auto-activation to matching files. Comma string or YAML list. A `/command` is invoked explicitly, never path-gated.                                                                                                                                                             | `src/**/*.ts`                                         | No          |
 | `shell`                          | Shell for `` !`cmd` `` injection. `powershell` needs `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`.                                                                                                                                                                                                       | `bash` (default) \| `powershell`                      | No          |
 
-**Positional substitution is 0-indexed:** `$N` expands to `$ARGUMENTS[N]`, so `$0` is the first argument and `$1` the second. A `$1` meant as "the first argument" silently receives the second argument, or nothing at all. This was seen in a real `/git:cherry-pick` run, where the source branch slot rendered a commit SHA. Each `$N` (and each named `arguments:` slot) holds a single whitespace token, so a multi-value argument (several SHAs, inline prose) never fits one. Prefer `$ARGUMENTS` plus an explicit parse rule in the body, as `review-pr`, `git:cherry-pick`, and `git:merge` do.
+**Positional substitution is 0-indexed:** `$N` expands to `$ARGUMENTS[N]`, so `$0` is the first argument and `$1` the second. A `$1` meant as "the first argument" silently receives the second argument, or nothing at all. This was seen in a real `/git:cherry-pick` run, where the source branch slot rendered a commit SHA. Each `$N` (and each named `arguments:` slot) holds a single whitespace token, so a multi-value argument (several SHAs, inline prose) never fits one. Prefer `$ARGUMENTS` plus an explicit parse rule in the body, as `pr-review`, `git:cherry-pick`, and `git:merge` do.
 
 **Not a Claude Code skill field:** `version` comes from the [Agent Skills](https://agentskills.io)
 open standard and appears in some upstream examples, but it is absent from the Claude Code skills
@@ -73,6 +73,9 @@ description: This skill should be used when the user asks to "specific phrase 1"
   are plugin-shipped skills using the fuller command-style subset — `description`,
   `argument-hint`, `model: opus`, `effort: high`, `allowed-tools` — and are model-invocable (no
   `disable-model-invocation`).
+- `plugins/docs/skills/revise/SKILL.md` is user-only (`disable-model-invocation: true`) and the
+  only plugin skill that leaves `model` and `effort` unset. It reflects on the live conversation,
+  and a mid-turn model switch would re-read the whole session without the prompt cache.
 - The eight `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
   `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`) use the command-style subset —
   `description`, `argument-hint` (commit/cherry-pick/merge only), `allowed-tools` (all but clean_gone),
@@ -88,23 +91,25 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `create-tests`) migrated from `commands/*.md` keeping the command-style subset — `description`,
   `argument-hint`, `allowed-tools`, `model`, `effort` — plus `disable-model-invocation: true`:
   the repo's first user-only skills, invocable via `/jira:*` but never auto-loaded by Claude.
-- `plugins/review-pr/skills/review-pr/SKILL.md` migrated from `commands/code-review.md`
+- `plugins/pr-review/skills/pr-review/SKILL.md` migrated from `commands/code-review.md`
   keeping the command-style subset — `description`, `argument-hint`, `model: opus`,
-  `effort: medium`, `allowed-tools` — plus an explicit `name: review-pr` and
+  `effort: medium`, `allowed-tools` — plus an explicit `name: pr-review` and
   `disable-model-invocation: true`: user-only like the jira skills, invocable as
-  `/review-pr` (namespaced `/review-pr:review-pr`) but never auto-loaded by Claude. Until
-  3.0.0 both the plugin and the skill were named `code-review`. They were renamed because a
-  bare `/<name>` reaches a plugin skill only when no other command uses that name, and
-  Claude Code's bundled `/code-review` already does.
-- `plugins/respond-to-review/skills/respond-to-review/SKILL.md` migrated from
+  `/pr-review` (namespaced `/pr-review:pr-review`) but never auto-loaded by Claude. Until
+  4.0.0 both the plugin and the skill were named `review-pr`, and until 3.0.0 `code-review`.
+  They left `code-review` because a bare `/<name>` reaches a plugin skill only when no other
+  command uses that name, and Claude Code's bundled `/code-review` already does.
+- `plugins/pr-respond/skills/pr-respond/SKILL.md` migrated from
   `commands/respond-to-review.md` keeping the command-style subset — `description`,
   `argument-hint`, `allowed-tools`, `model: opus`, `effort: high` — plus an explicit
-  `name: respond-to-review` and a `when_to_use`. It stays model-invocable; invocation is
-  unchanged, so the migration was a MINOR bump (1.7.0 → 1.8.0).
+  `name` and a `when_to_use`. It stays model-invocable; invocation was unchanged, so the
+  migration was a MINOR bump (1.7.0 → 1.8.0). Until 2.0.0 both the plugin and the skill
+  were named `respond-to-review`; the rename also changed the prefix of the HTML markers
+  it posts on PRs to `pr-respond:`.
 - Every plain `commands/*.md` slash command in this repo uses only the common subset —
   `description`, `argument-hint`, `disable-model-invocation`, `model`, `effort`, `allowed-tools` —
   and none of the `(skills only)` fields; among skills, only the git `commit`/`push`/`pr` and
-  `respond-to-review` `when_to_use` breaks that pattern.
+  `pr-respond` `when_to_use` breaks that pattern.
 
 ### `model` tier semantics
 
@@ -114,7 +119,7 @@ These govern the `model` row above for both skills and slash commands.
   - `haiku` — fastest and cheapest, smallest reasoning budget. For simple, mechanical, deterministic commands or skills (e.g. the `transcript` skill). Typically pairs with `effort: low`.
   - `sonnet` — balanced cost vs. capability; the practical default. For standard single-agent workflows and routine commands (e.g. `commit`, `jira:create-ticket`). Typically pairs with `effort: low`/`medium`.
   - `opus` — most capable and most expensive of the standard tiers. Reserve for genuinely complex multi-agent orchestration and the hardest reasoning / design judgment (e.g. `debate`, `jira:implement-ticket`, `simplify`). Typically pairs with `effort: high`/`xhigh`.
-  - `fable` — Mythos-class tier above Opus (Claude Fable 5); the most capable model, for the hardest, longest-running tasks. Never a default. Cybersecurity/bio content trips its input classifiers and falls back to Opus automatically, and Fable's documented code-review gains explicitly exclude security analysis for the same reason — so it is the wrong pin for security-domain work despite being the top tier. Unused in this repo (the review-pr `security` agent ran on it until 2026-07-28, now `opus`).
+  - `fable` — Mythos-class tier above Opus (Claude Fable 5); the most capable model, for the hardest, longest-running tasks. Never a default. Cybersecurity/bio content trips its input classifiers and falls back to Opus automatically, and Fable's documented code-review gains explicitly exclude security analysis for the same reason — so it is the wrong pin for security-domain work despite being the top tier. Unused in this repo (the pr-review `security` agent ran on it until 2026-07-28, now `opus`).
 
 ### `effort` tier semantics
 
@@ -122,7 +127,7 @@ These govern the `effort` row above for both skills and slash commands.
 
 - `effort` — how thoroughly the model reasons through the command. Five levels (availability varies by model; an unsupported level falls back to the nearest supported one; if unset, inherits the session effort):
   - `low` — minimal thinking, fastest, biggest token savings. For mechanical / deterministic commands.
-  - `medium` — moderate thinking; balances cost/latency vs. depth. For light reasoning without deep multi-step planning (e.g. `/review-pr`, `/jira:create-ticket`).
+  - `medium` — moderate thinking; balances cost/latency vs. depth. For light reasoning without deep multi-step planning (e.g. `/pr-review`, `/jira:create-ticket`).
   - `high` — deep reasoning; the practical default for substantive commands. For multi-step workflows, conflict resolution, design judgment.
   - `xhigh` — extended reasoning; Opus-only (4.7+), falls back to `high` elsewhere, so pair with `model: opus`. For the hardest analysis / refactor judgment.
   - `max` — maximum reasoning budget; highest cost/latency. Reserve for the most demanding tasks. (Unused in this repo.)
@@ -136,7 +141,7 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
 opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7, and
-`plugins/respond-to-review/skills/respond-to-review/SKILL.md` Step 2, which Reads a shipped script and passes
+`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, which Reads a shipped script and passes
 its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
 script as `scriptPath`: Workflow only accepts paths under the working directory or an added
 directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every user not
@@ -212,14 +217,14 @@ the hooks and MCP servers at plugin level (`hooks/hooks.json`, `.mcp.json`).
 **In practice (this repo):**
 
 - Repo agents use only `name`/`description`/`tools`/`model`/`effort`/`color` — none of the other 13
-  fields. `effort` is used by the eight review-pr specialists only; the `debate` agents and the
+  fields. `effort` is used by the eight pr-review specialists only; the `debate` agents and the
   `plugin-session-auditor` analyzers still pin `model` alone.
 - `color: magenta` (`plugins/debate/agents/rebuttal.md`) is the one value outside the documented
   set; `purple`, `orange`, and `pink` (also used here) are now officially documented.
 - `model` is pinned explicitly, never left to the `inherit` default — `sonnet`/`opus` throughout.
-  No agent uses `fable`; the review-pr `security` specialist did until 2026-07-28 (see §1's
+  No agent uses `fable`; the pr-review `security` specialist did until 2026-07-28 (see §1's
   `fable` bullet for why security work in particular should not).
-- `effort` is pinned across all eight review-pr specialists so review depth doesn't drift with
+- `effort` is pinned across all eight pr-review specialists so review depth doesn't drift with
   the invoking session's effort — `medium` for the mechanical `claude-md` compliance check, `high`
   for six, `xhigh` for `security`. `security`'s `xhigh` pairs with `model: opus` exactly as §1
   recommends — `xhigh` is Opus-only and falls back to `high` elsewhere.
@@ -237,12 +242,12 @@ model: inherit
 ---
 ```
 
-Repo example (`plugins/review-pr/agents/security.md`, MCP tool names in `tools` + pinned model):
+Repo example (`plugins/pr-review/agents/security.md`, MCP tool names in `tools` + pinned model):
 
 ```yaml
 ---
 name: security
-description: Security specialist for /review-pr. Reviews PR diffs for authentication, authorization, input validation, injection vectors (SQL, NoSQL, command, prompt), request forgery (SSRF/CSRF), path traversal, cryptography misuse, secret handling, and API contract integrity. Always-on specialist; spawned by the /review-pr orchestrator.
+description: Security specialist for /pr-review. Reviews PR diffs for authentication, authorization, input validation, injection vectors (SQL, NoSQL, command, prompt), request forgery (SSRF/CSRF), path traversal, cryptography misuse, secret handling, and API contract integrity. Always-on specialist; spawned by the /pr-review orchestrator.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
 color: red

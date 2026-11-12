@@ -3,7 +3,11 @@
   "description": "Claude Code plugins for code review, PR review responses, git and JIRA workflows, docs auditing, adversarial debate, code and prose simplification, transcript lookup, and keeping macOS awake",
   "owner": { "name": "jjcfatras" },
   "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
-  "renames": { "code-review": "review-pr" },
+  "renames": {
+    "code-review": "review-pr",
+    "review-pr": "pr-review",
+    "respond-to-review": "pr-respond"
+  },
   "plugins": [
     {
       "name": "git",
@@ -13,24 +17,24 @@
       "category": "git"
     },
     {
-      "name": "respond-to-review",
-      "source": "./plugins/respond-to-review",
+      "name": "pr-respond",
+      "source": "./plugins/pr-respond",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones; verify responses to your own review threads and resolve the ones that hold",
-      "version": "1.9.0",
+      "version": "2.0.0",
       "category": "code-review"
     },
     {
-      "name": "review-pr",
-      "source": "./plugins/review-pr",
+      "name": "pr-review",
+      "source": "./plugins/pr-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "3.0.0",
+      "version": "4.0.0",
       "category": "code-review"
     },
     {
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.5.3",
+      "version": "1.6.0",
       "category": "documentation"
     },
     {
