@@ -10,7 +10,7 @@
     "lint:go": "for d in plugins/pr-review/tools/code-review-helper .claude/skills/plugin-session-auditor/tools/session-parser; do go -C \"$d\" vet ./... || exit 1; done",
     "build:go": "make -C plugins/pr-review/tools/code-review-helper release",
     "validate:plugins": "claude plugin validate --strict . && for p in plugins/*/; do claude plugin validate --strict \"$p\" || exit 1; done",
-    "prepare": "husky",
+    "prepare": "go tool lefthook install",
     "check-types": "tsc --noEmit"
   },
   "keywords": [],
@@ -19,8 +19,6 @@
   "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",
   "devDependencies": {
     "@types/node": "^24.12.4",
-    "husky": "^9.1.7",
-    "lint-staged": "^17.0.2",
     "prettier": "3.9.10",
     "prettier-plugin-sh": "0.20.2",
     "typescript": "^6.0.3"

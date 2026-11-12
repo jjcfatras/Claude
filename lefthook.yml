@@ -1,0 +1,19 @@
+lefthook: go tool lefthook # hook scripts call the version pinned in go.mod; no PATH install needed
+glob_matcher: doublestar # `**` matches zero+ dirs, like lint-staged's micromatch
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: gofmt
+      glob: "**/*.go"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+    - name: go-mod-fmt
+      glob: "**/go.mod"
+      # `go mod edit -fmt` takes a single file.
+      run: for f in {staged_files}; do go mod edit -fmt "$f" || exit 1; done
+      stage_fixed: true
+    - name: prettier
+      exclude: ["**/*.go", "**/go.mod"]
+      run: pnpm exec prettier --ignore-unknown --write {staged_files}
+      stage_fixed: true

@@ -7,6 +7,7 @@ Guidance for Claude Code (claude.ai/code) when working with code in this reposit
 - **Node.js**: v24.22.2 (see `.nvmrc`)
 - **Package manager**: pnpm (v12.16.1)
 - **Formatting**: Prettier 3.9.10 (config in `prettier.config.ts`, `prettier-plugin-sh` for shell)
+- **Git hooks**: lefthook v2.2.2, a Go tool pinned in the root `go.mod`; run it as `go tool lefthook`. The root module is tools-only: it has no packages and is not in the `format:go`/`lint:go` loops.
 
 ## Commands
 
@@ -20,7 +21,7 @@ All scripts live in `package.json` and are invoked with `pnpm <script>`:
 - `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json`
 - `pnpm validate:plugins` — Anthropic's `claude plugin validate --strict` on the marketplace and every `plugins/*/`; needs the `claude` CLI, not wired into pre-commit. Checks more than the PostToolUse hooks below (all component frontmatter, path containment)
 - `pnpm test` — runs the `pr-review` Go test suite via `make -C plugins/pr-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change. They cover the `diff` and `finalize` outputs only — the bundle (`spawn-context.md`) and spawn prompt (`spawn-manifest.json`) have no golden, so changes there pass silently and need their own unit tests. `spawn-manifest_test.go` also reads the eight `agents/*.md` files and asserts substrings in their `## Environment` block, plus each one's own `$REVIEW_TMPDIR/findings/<role>.json` path (the spawn prompt no longer carries it) — rewording an agent can fail `pnpm test`
-- `pnpm prepare` — installs the Husky git hooks; runs automatically after `pnpm install`. The repo's `pre-commit` hook runs `pnpm exec lint-staged` per `lint-staged.config.mjs`
+- `pnpm prepare` — `go tool lefthook install`; installs the git hooks defined in `lefthook.yml`. The `pre-commit` hook runs `gofmt`, `go mod edit -fmt`, and Prettier on staged files, then re-stages them. pnpm skips `prepare` when it reports "Already up to date", so after editing hook names run `pnpm prepare` directly. A clone that predates lefthook needs `git config --unset core.hooksPath` first (husky had set it to `.husky/_`)
 
 To build the Go helper, run `make release` (or `make test`) directly from inside `plugins/pr-review/tools/code-review-helper/`.
 
