@@ -58,9 +58,9 @@ No Go toolchain is needed. The plugin ships prebuilt helper binaries.
 
 The Go helper `code-review-helper` parses diffs and assembles review payloads deterministically.
 
-- Prebuilt binaries for `darwin`, `linux`, and `windows` × `amd64`/`arm64` live in `scripts/`. Windows binaries carry a `.exe` suffix.
-- The `scripts/code-review-helper` shell wrapper dispatches to the right binary.
-- They live in `scripts/` rather than a top-level `bin/` because claude.ai and Cowork refuse to install a plugin that has a `bin/`.
+- Prebuilt binaries for `darwin`, `linux`, and `windows` × `amd64`/`arm64` live in `skills/pr-review/scripts/`. Windows binaries carry a `.exe` suffix.
+- The `skills/pr-review/scripts/code-review-helper` shell wrapper dispatches to the right binary.
+- They live in the skill's `scripts/` rather than a top-level `bin/` because claude.ai and Cowork refuse to install a plugin that has a `bin/`.
 
 ### Building from source
 
@@ -68,7 +68,7 @@ The source is in `tools/code-review-helper/`.
 
 ```sh
 cd tools/code-review-helper
-make release # cross-compile all platforms into ../../scripts/
+make release # cross-compile all platforms into ../../skills/pr-review/scripts/
 make test
 ```
 

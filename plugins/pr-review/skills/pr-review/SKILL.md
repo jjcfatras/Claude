@@ -32,8 +32,8 @@ Resolve once and reuse:
 - `TMP` — scratch dir at `${TMPDIR:-/tmp}/pr-review-${PR_NUMBER}-$(date +%s)`, built inline in the [1/5] command; read it back from that call's first stdout line, `TMP=…`.
 - `REPO_ROOT` — `git rev-parse --show-toplevel`, resolved inline in the same command; nothing later needs it.
 - `HEAD_SHA`, `OWNER`, `REPO` — printed by that same `prepare` call; never re-derive them with a separate call.
-- `HELPER` — `${CLAUDE_PLUGIN_ROOT}/scripts/code-review-helper`.
-- `RUBRIC` — `${CLAUDE_PLUGIN_ROOT}/references/code-review-rubrics.md`.
+- `HELPER` — `${CLAUDE_SKILL_DIR}/scripts/code-review-helper`.
+- `RUBRIC` — `${CLAUDE_SKILL_DIR}/references/code-review-rubrics.md`.
 
 All subsequent paths derive from `$TMP`. No path uses cwd.
 

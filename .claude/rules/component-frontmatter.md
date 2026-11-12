@@ -49,7 +49,7 @@ automatic or background-knowledge behavior that an explicitly-invoked `/command`
 | `paths` `(skills only)`          | Globs that gate auto-activation to matching files. Comma string or YAML list. A `/command` is invoked explicitly, never path-gated.                                                                                                                                                             | `src/**/*.ts`                                         | No          |
 | `shell`                          | Shell for `` !`cmd` `` injection. `powershell` needs `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`.                                                                                                                                                                                                       | `bash` (default) \| `powershell`                      | No          |
 
-**Positional substitution is 0-indexed:** `$N` expands to `$ARGUMENTS[N]`, so `$0` is the first argument and `$1` the second. A `$1` meant as "the first argument" silently receives the second argument, or nothing at all. This was seen in a real `/git:cherry-pick` run, where the source branch slot rendered a commit SHA. Each `$N` (and each named `arguments:` slot) holds a single whitespace token, so a multi-value argument (several SHAs, inline prose) never fits one. Prefer `$ARGUMENTS` plus an explicit parse rule in the body, as `pr-review`, `git:cherry-pick`, and `git:merge` do.
+**Positional substitution is 0-indexed:** `$N` expands to `$ARGUMENTS[N]`, so `$0` is the first argument and `$1` the second. A `$1` meant as "the first argument" silently receives the second argument, or nothing at all. This was seen in a real `/git:cherry-pick` run, where the source branch slot rendered a commit SHA. Each `$N` (and each named `arguments:` slot) holds a single whitespace token, so a multi-value argument (several SHAs, inline prose) never fits one. Prefer `$ARGUMENTS` plus an explicit parse rule in the body, as `pr-review`, `git:cherry-pick`, `git:merge`, and `git:rebase` do.
 
 **Not a Claude Code skill field:** `version` comes from the [Agent Skills](https://agentskills.io)
 open standard and appears in some upstream examples, but it is absent from the Claude Code skills
@@ -76,12 +76,12 @@ description: This skill should be used when the user asks to "specific phrase 1"
 - `plugins/docs/skills/revise/SKILL.md` is user-only (`disable-model-invocation: true`) and the
   only plugin skill that leaves `model` and `effort` unset. It reflects on the live conversation,
   and a mid-turn model switch would re-read the whole session without the prompt cache.
-- The eight `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
-  `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`) use the command-style subset —
-  `description`, `argument-hint` (commit/cherry-pick/merge only), `allowed-tools` (all but clean_gone),
-  `model`, `effort` — and are model-invocable. Six migrated from `commands/*.md`; `push` (push +
-  PR-description refresh, no commit) and `pr` (open a PR for already-pushed work, extracted from
-  `commit-push-pr`) were authored as skills directly. `commit`, `push`, and `pr` also carry
+- The nine `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
+  `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`, `rebase`) use the command-style subset —
+  `description`, `argument-hint` (commit/cherry-pick/merge/rebase only), `allowed-tools` (all but
+  clean_gone), `model`, `effort` — and are model-invocable. Six migrated from `commands/*.md`;
+  `push` (push + PR-description refresh, no commit), `pr` (open a PR for already-pushed work,
+  extracted from `commit-push-pr`), and `rebase` were authored as skills directly. `commit`, `push`, and `pr` also carry
   `when_to_use` (their trigger phrases extracted out of `description`) — the repo's first use of
   a `(skills only)` field.
 - The two `plugins/simplify/skills/*/SKILL.md` skills (`simplify-code`, `simplify-prose`) migrated from

@@ -16,8 +16,8 @@
     {
       "name": "git",
       "source": "./plugins/git",
-      "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, and merge",
-      "version": "0.9.4",
+      "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, merge, and rebase",
+      "version": "0.10.0",
       "category": "git"
     },
     {
@@ -31,7 +31,7 @@
       "name": "pr-review",
       "source": "./plugins/pr-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "4.0.1",
+      "version": "4.0.2",
       "category": "code-review"
     },
     {
@@ -59,7 +59,7 @@
       "name": "transcript",
       "source": "./plugins/transcript",
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "category": "session-tools"
     },
     {

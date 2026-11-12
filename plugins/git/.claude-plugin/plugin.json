@@ -1,7 +1,7 @@
 {
   "name": "git",
-  "version": "0.9.4",
-  "description": "Git workflow skills (each also a slash command): commit (`--staged` to commit only the index), commit-push, commit-push-pr, push (push + PR-description refresh, no commit), pr (open a PR for already-pushed work), clean_gone (prune stale local branches), cherry-pick, and merge (both with conflict resolution)",
+  "version": "0.10.0",
+  "description": "Git workflow skills (each also a slash command): commit (`--staged` to commit only the index), commit-push, commit-push-pr, push (push + PR-description refresh, no commit), pr (open a PR for already-pushed work), clean_gone (prune stale local branches), cherry-pick, merge, and rebase (all three with conflict resolution; rebase offers a force-with-lease push)",
   "author": {
     "name": "jjcfatras"
   },
@@ -15,6 +15,7 @@
     "branch-cleanup",
     "cherry-pick",
     "merge",
+    "rebase",
     "conflict-resolution"
   ]
 }
