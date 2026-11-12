@@ -1,9 +1,16 @@
 {
   "name": "pr-respond",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones; verify responses to your own review threads and resolve the ones that hold",
-  "author": { "name": "jjcfatras" },
+  "author": {
+    "name": "jjcfatras"
+  },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",
-  "keywords": ["github", "pull-request", "code-review", "review-response"]
+  "keywords": [
+    "github",
+    "pull-request",
+    "code-review",
+    "review-response"
+  ]
 }

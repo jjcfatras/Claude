@@ -2,7 +2,11 @@ module github.com/jjcfatras/Claude
 
 go 1.27.3
 
-tool github.com/evilmartians/lefthook/v2
+tool (
+	github.com/evilmartians/lefthook/v2
+	github.com/google/yamlfmt/cmd/yamlfmt
+	mvdan.cc/sh/v3/cmd/shfmt
+)
 
 require (
 	al.essio.dev/pkg/shellescape v1.6.1 // indirect
@@ -24,6 +28,9 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/renameio/v2 v2.0.2 // indirect
+	github.com/google/yamlfmt v0.21.0 // indirect
 	github.com/kaptinlin/jsonpointer v0.4.28 // indirect
 	github.com/kaptinlin/jsonschema v0.9.10 // indirect
 	github.com/knadh/koanf/maps v0.1.3 // indirect
@@ -45,6 +52,8 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/rogpeppe/go-internal v1.16.0 // indirect
+	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06 // indirect
 	github.com/schollz/progressbar/v3 v3.19.1 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/tidwall/jsonc v0.3.3 // indirect
@@ -58,4 +67,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
+	mvdan.cc/editorconfig v0.3.0 // indirect
+	mvdan.cc/sh/v3 v3.14.1 // indirect
+	sigs.k8s.io/yaml v1.6.0 // indirect
 )

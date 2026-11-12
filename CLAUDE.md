@@ -4,24 +4,20 @@ Guidance for Claude Code (claude.ai/code) when working with code in this reposit
 
 ## Development Environment
 
-- **Node.js**: v24.22.2 (see `.nvmrc`)
-- **Package manager**: pnpm (v12.16.1)
-- **Formatting**: Prettier 3.9.10 (config in `prettier.config.ts`, `prettier-plugin-sh` for shell)
-- **Git hooks**: lefthook v2.2.2, a Go tool pinned in the root `go.mod`; run it as `go tool lefthook`. The root module is tools-only: it has no packages and is not in the `format:go`/`lint:go` loops.
+- **Toolchain**: Go only — no Node/pnpm. Tasks live in the root `Makefile`.
+- **Formatting**: `scripts/format.sh` routes files by type — `gofmt` (`.go`), `go mod edit -fmt` (`go.mod`), `shfmt -i 2 -bn -ci -sr` (`.sh` + `#!…sh` shebangs), `yamlfmt` (`.yml`/`.yaml`, `retain_line_breaks_single`), `tools/jsonfmt` (`.json`; stdlib `json.Indent`, 2-space, whitespace-only), and go-prettier (`.md`/`.js`; real Prettier in wazero, default options). Native Go formatters were tried for Markdown and all broke YAML frontmatter or list nesting. go-prettier runs via `go run …@<version>` (pinned in the script) because it doesn't support `go tool`. The script skips `plugins/pr-review/tools/code-review-helper/testdata/`.
+- **Root Go module**: pins lefthook v2.2.2, shfmt, and yamlfmt as `go tool`s, and holds the one package `tools/jsonfmt`. Make targets use `./tools/...`, never `./...` — root `./...` also walks gitignored `*-workspace/` scratch packages.
 
 ## Commands
 
-All scripts live in `package.json` and are invoked with `pnpm <script>`:
+All tasks live in the root `Makefile` and are invoked with `make <target>`:
 
-- `pnpm install` — install dependencies; also runs `pnpm prepare` automatically
-- `pnpm format` — `prettier --write .` across the repo (uses `prettier-plugin-sh` for shell files)
-- `pnpm format:go` — `gofmt -w` + `go mod edit -fmt` across both Go modules (`plugins/pr-review/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`)
-- `pnpm lint:go` — `go vet ./...` across both Go modules (same module list as `format:go`); stdlib only, no external linter
-- `pnpm build:go` — `make release` for the `pr-review` helper; cross-compiles prebuilts into `plugins/pr-review/scripts/` (darwin/linux/windows × amd64/arm64; Windows binaries get a `.exe` suffix). Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
-- `pnpm check-types` — `tsc --noEmit` using the root `tsconfig.json`
-- `pnpm validate:plugins` — Anthropic's `claude plugin validate --strict` on the marketplace and every `plugins/*/`; needs the `claude` CLI, not wired into pre-commit. Checks more than the PostToolUse hooks below (all component frontmatter, path containment)
-- `pnpm test` — runs the `pr-review` Go test suite via `make -C plugins/pr-review/tools/code-review-helper test` (`go test ./...`). No JS/TS test suite exists; the session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and excluded from Prettier — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change. They cover the `diff` and `finalize` outputs only — the bundle (`spawn-context.md`) and spawn prompt (`spawn-manifest.json`) have no golden, so changes there pass silently and need their own unit tests. `spawn-manifest_test.go` also reads the eight `agents/*.md` files and asserts substrings in their `## Environment` block, plus each one's own `$REVIEW_TMPDIR/findings/<role>.json` path (the spawn prompt no longer carries it) — rewording an agent can fail `pnpm test`
-- `pnpm prepare` — `go tool lefthook install`; installs the git hooks defined in `lefthook.yml`. The `pre-commit` hook runs `gofmt`, `go mod edit -fmt`, and Prettier on staged files, then re-stages them. pnpm skips `prepare` when it reports "Already up to date", so after editing hook names run `pnpm prepare` directly. A clone that predates lefthook needs `git config --unset core.hooksPath` first (husky had set it to `.husky/_`)
+- `make format` — runs `scripts/format.sh` over every tracked file (Go files included)
+- `make lint-go` — `go vet` on `./tools/...` plus both Go modules (`plugins/pr-review/tools/code-review-helper`, `.claude/skills/plugin-session-auditor/tools/session-parser`); stdlib only, no external linter
+- `make build-go` — `make release` for the `pr-review` helper; cross-compiles prebuilts into `plugins/pr-review/scripts/` (darwin/linux/windows × amd64/arm64; Windows binaries get a `.exe` suffix). Does **not** build the plugin-session-auditor session-parser (no prebuilt is shipped — it runs via `go run .`)
+- `make validate-plugins` — Anthropic's `claude plugin validate --strict` on the marketplace and every `plugins/*/`; needs the `claude` CLI, not wired into pre-commit. Checks more than the PostToolUse hooks below (all component frontmatter, path containment)
+- `make test` — `go test ./tools/...` plus the `pr-review` Go test suite via `make -C plugins/pr-review/tools/code-review-helper test` (`go test ./...`). The session-parser Go module ships no tests. The helper's e2e goldens (`testdata/golden/`) are byte-compared and skipped by `scripts/format.sh` — never hand-edit or format them; regenerate with `go test ./cmd/helper -update` from the helper dir after an intentional behavior change. They cover the `diff` and `finalize` outputs only — the bundle (`spawn-context.md`) and spawn prompt (`spawn-manifest.json`) have no golden, so changes there pass silently and need their own unit tests. `spawn-manifest_test.go` also reads the eight `agents/*.md` files and asserts substrings in their `## Environment` block, plus each one's own `$REVIEW_TMPDIR/findings/<role>.json` path (the spawn prompt no longer carries it) — rewording an agent can fail `make test`
+- `make hooks` — `go tool lefthook install`; installs the git hooks defined in `lefthook.yml`. Run it once after cloning, and again after editing hook names; nothing installs them automatically. `assert_lefthook_installed: true` makes lefthook fail loudly when they're missing. The `pre-commit` hook runs `scripts/format.sh` on staged files, then re-stages them, then runs `make lint-go` and `make test`. A clone that predates lefthook needs `git config --unset core.hooksPath` first (husky had set it to `.husky/_`)
 
 To build the Go helper, run `make release` (or `make test`) directly from inside `plugins/pr-review/tools/code-review-helper/`.
 
@@ -29,12 +25,12 @@ To build the Go helper, run `make release` (or `make test`) directly from inside
 
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
 
-- **Auto-format** (`PostToolUse`): `gofmt -w` for `.go`, `go mod edit -fmt` for `go.mod`, `prettier --write` for everything else. Don't run formatters manually.
+- **Auto-format** (`PostToolUse`): `.claude/hooks/format.sh` hands the edited file to `scripts/format.sh`. Don't run formatters manually.
 - **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
 - **Frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md`, `plugins/*/skills/*/SKILL.md`, and `.claude/skills/*/SKILL.md` must start with `---` and include a `description:` field.
 - **Version-sync validator** (`PostToolUse`): a plugin's `plugin.json` `version` must match its entry in `.claude-plugin/marketplace.json`; editing either file triggers the check.
 
-All four match on `Edit|Write` only — a scripted multi-file edit (`python3` heredoc, shell redirect) bypasses every one of them. After one, run `pnpm format` / `pnpm format:go` and re-check manifests yourself.
+All four match on `Edit|Write` only — a scripted multi-file edit (`python3` heredoc, shell redirect) bypasses every one of them. After one, run `make format` and re-check manifests yourself.
 
 ## Project Structure
 

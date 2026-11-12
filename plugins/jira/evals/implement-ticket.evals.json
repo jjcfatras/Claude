@@ -58,7 +58,9 @@
         {
           "text": "Reconciliation names per-dimension winners and mines the proposed solution for its useful parts (dedup goal / signature concept) rather than discarding or rubber-stamping it"
         },
-        { "text": "Stops at an approval gate before editing any file" }
+        {
+          "text": "Stops at an approval gate before editing any file"
+        }
       ]
     },
     {

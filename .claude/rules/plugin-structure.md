@@ -41,4 +41,4 @@ Add only the folders a plugin uses. Don't put a `CLAUDE.md` at a plugin root: Cl
 
 ## Validate
 
-Run `pnpm validate:plugins` after a structural change. It runs Anthropic's `claude plugin validate --strict` on the marketplace and every plugin. The PostToolUse hooks only check frontmatter `description` and the manifest `name`/`version`. `validate` also checks every skill, agent and command frontmatter, and catches paths that are missing or escape the plugin.
+Run `make validate-plugins` after a structural change. It runs Anthropic's `claude plugin validate --strict` on the marketplace and every plugin. The PostToolUse hooks only check frontmatter `description` and the manifest `name`/`version`. `validate` also checks every skill, agent and command frontmatter, and catches paths that are missing or escape the plugin.

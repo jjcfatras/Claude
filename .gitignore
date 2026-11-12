@@ -1,5 +1,3 @@
-node_modules
-
 # Build artifacts
 **/.DS_Store
 # Local Go build output (not the plugin's bin/ — those prebuilts are tracked).
