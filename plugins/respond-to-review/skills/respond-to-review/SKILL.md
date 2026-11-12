@@ -1,7 +1,7 @@
 ---
 name: respond-to-review
-description: Respond to every flagged issue on a PR — inline comments and review-body findings alike, including reviews you posted yourself (e.g. via `/code-review --comment`) — dismissing false positives and preexisting issues, fixing valid ones in a throwaway worktree on the PR head
-when_to_use: Use when the user asks to "respond to the review", "address review comments", "reply to PR feedback", "triage the review on PR #N", or "fix what the reviewer flagged", including after posting a review with `/code-review --comment`.
+description: Respond to every flagged issue on a PR — inline comments and review-body findings alike, including reviews you posted yourself (e.g. via `/code-review --comment`) — dismissing false positives and preexisting issues, fixing valid ones in a throwaway worktree on the PR head — and verify responses to your own review threads, resolving a thread when its fix or deferral holds and pushing back when it doesn't
+when_to_use: Use when the user asks to "respond to the review", "address review comments", "reply to PR feedback", "triage the review on PR #N", or "fix what the reviewer flagged", including after posting a review with `/code-review --comment`. Also use when the user asks to "check the responses to my review", "verify the fixes on PR #N", or "resolve the threads that were addressed".
 argument-hint: <pr-number> [comment-id]
 allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(echo *), Bash(npx nx *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, AskUserQuestion, Agent, Workflow, EnterWorktree, ExitWorktree, mcp__*
 model: opus
@@ -9,6 +9,8 @@ effort: high
 ---
 
 Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix, **commit and push it before posting any reply**, refresh the PR description to match the branch as it now stands, and reply confirming the change — so reviewers never see a "Fixed" reply that points at code still sitting in the local working tree, or a PR description that predates the fixes.
+
+Inline threads **you started** that someone has since answered are **review responses**: instead of triaging the original concern again, the skill checks the response. If the fix resolves the concern, or the deferral or rebuttal holds up, it posts an affirmative reply and resolves the thread. Otherwise it replies with what is still wrong. It never edits code for these threads.
 
 All of it runs in a throwaway worktree at the PR head — created after Step 1, removed after the push — so the checkout you invoke the skill from (its branch, uncommitted changes, untracked files) is never touched, and the skill works from any checkout of the repo.
 
@@ -30,13 +32,18 @@ Follow these steps precisely:
 1. Run `mktemp -d /tmp/review-respond-XXXXXX` to create a temp directory. Store the path as `$REVIEW_DIR`.
 2. Parse the PR number from `$ARGUMENTS`. If a second argument is present, treat it as a specific inline-comment ID to target; in that case, skip review-body processing entirely (the user is scoping to one inline thread).
 3. Run `gh repo view --json owner,name` to get the repository owner and name.
-4. Run `gh api user` and extract the `login` field — this is the current user. It is used **only** for dedup — spotting threads we already replied to (Step 1a) and findings we already answered (Step 1d) — never to exclude items. Reviews and comments you authored yourself are in scope.
+4. Run `gh api user` and extract the `login` field — this is the current user. It is used **only** for dedup — spotting threads we already replied to (Step 1a) and findings we already answered (Step 1d) — and to spot threads we started, whose responses Step 1a routes to verification; never to exclude items. Reviews and comments you authored yourself are in scope.
 5. Run `gh pr view $PR_NUMBER --json headRefName,headRefOid,baseRefName,baseRefOid,commits,isCrossRepository` to get branch info and commit SHAs. Record `commits[].oid` as the PR commit list — the triage procedure's Check 1 compares blame SHAs against it, and Step 2 passes it to the workflow. If `isCrossRepository` is `true`, stop: fixes are pushed to `origin/<headRefName>`, which for a fork PR would create a stray branch on the base repo instead of updating the PR.
-6. Save the PR diff with a shell redirect: `gh pr diff $PR_NUMBER > "$REVIEW_DIR/pr.diff"`. Redirect every raw `gh` fetch in Steps 0–1 the same way — the Write tool would make you re-emit every byte as output tokens. Keep Write for content you compose (reply bodies, the PR description). Issue this fetch and Step 1's three (1a, 1b, 1d) as four parallel Bash calls in one message, one `gh` per call with nothing chained after it: each call then reports its own exit status, whereas in a `;` chain only the last fetch's status is visible and a failed fetch silently leaves an error body where the comments should be.
+6. Save the PR diff with a shell redirect: `gh pr diff $PR_NUMBER > "$REVIEW_DIR/pr.diff"`. Redirect every raw `gh` fetch in Steps 0–1 the same way — the Write tool would make you re-emit every byte as output tokens. Keep Write for content you compose (reply bodies, the PR description). Issue this fetch, Step 1's three (1a, 1b, 1d) and the thread-state fetch below as five parallel Bash calls in one message, one `gh` per call with nothing chained after it: each call then reports its own exit status, whereas in a `;` chain only the last fetch's status is visible and a failed fetch silently leaves an error body where the comments should be.
+7. Save review-thread state. REST has no thread resolution state and no thread node ID, and Step 1a needs both:
+
+   ```bash
+   gh api graphql --paginate -f owner=OWNER -f repo=REPO -F number=NUMBER -f query='query($owner:String!,$repo:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){pageInfo{hasNextPage endCursor} nodes{id isResolved comments(first:1){nodes{databaseId}}}}}}}' > "$REVIEW_DIR/threads.json"
+   ```
 
 ## Step 1: Fetch and filter flagged items
 
-"Flagged items" covers two sources: **inline comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). Both flow through the same downstream steps. Produce a unified `$REVIEW_DIR/pending-items.json` whose entries have a common shape plus a `source_type` of `inline-comment` or `review-body-finding`.
+"Flagged items" covers two sources: **inline comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). Both flow through the same downstream steps. Produce a unified `$REVIEW_DIR/pending-items.json` whose entries have a common shape plus a `source_type` of `inline-comment`, `review-response` (a thread you started that has a response to verify), or `review-body-finding`.
 
 **Filter the fetched JSON with `jq`.** All three downstream filters (1a inline-comment dedup, 1b review filtering, 1d marker dedup) operate on the JSON files saved in Step 0. Use `jq` — not `node -e` / `python -c` — per the Tool discipline rules above. The three filters are independent (different files, no shared state); issue them as parallel Bash tool calls in a single assistant message rather than serializing.
 
@@ -44,13 +51,18 @@ Follow these steps precisely:
 
 1. Fetch all review comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/comments`
 2. Redirect the raw JSON to `$REVIEW_DIR/all-comments.json`.
-3. Filter to **actionable comments** — top-level (`in_reply_to_id` is null), scoped to the Step 0 comment ID if one was given, and with no reply yet from the current user — using exactly this filter. Substitute the login from Step 0, and replace `null` with the comment ID when one was given:
+3. Split the top-level comments (`in_reply_to_id` is null), scoped to the Step 0 comment ID if one was given, into two kinds of pending item using exactly this filter. Substitute the login from Step 0, and replace `null` with the comment ID when one was given:
 
    ```bash
-   jq --arg me "<login>" --argjson only null '. as $all | [.[] | select(.in_reply_to_id == null and ($only == null or .id == $only)) | . as $c | select(any($all[]; .in_reply_to_id == $c.id and .user.login == $me) | not) | {id, source_type: "inline-comment", reviewer: .user.login, path, line, original_line, body, diff_hunk}]' "$REVIEW_DIR/all-comments.json"
+   jq --arg me "<login>" --argjson only null --slurpfile pages "$REVIEW_DIR/threads.json" '([$pages[].data.repository.pullRequest.reviewThreads.nodes[] | {key: (.comments.nodes[0].databaseId | tostring), value: .}] | from_entries) as $threads | . as $all | [.[] | select(.in_reply_to_id == null and ($only == null or .id == $only)) | . as $c | ($all | map(select(.in_reply_to_id == $c.id)) | sort_by(.created_at)) as $replies | {id, reviewer: .user.login, path, line, original_line, body, diff_hunk} as $base | if .user.login == $me and ($replies | length) > 0 then $threads[(.id | tostring)] as $t | select(($t.isResolved | not) and ($replies[-1].body | contains("<!-- respond-to-review:verify -->") | not)) | $base + {source_type: "review-response", thread_id: $t.id, responses: [$replies[] | {author: .user.login, created_at, body}]} elif any($replies[]; .user.login == $me) then empty else $base + {source_type: "inline-comment"} end]' "$REVIEW_DIR/all-comments.json"
    ```
 
-   Its output is already in Step 1e's `pending-items.json` shape. Do **not** filter on author. Top-level comments you wrote yourself are in scope — a review posted by `/code-review --comment` lands under your own login, and those findings are exactly what this skill exists to triage. With them in scope, the reply check is the **only** guard against answering the same thread twice — never skip it, and never substitute reading the raw comments for it.
+   Its output is already in Step 1e's `pending-items.json` shape. Each thread lands in exactly one bucket:
+   - **`review-response`** — you started it, someone has replied, it is unresolved, and its last reply is not one of this skill's verification replies (they end with `<!-- respond-to-review:verify -->`). Step 2 checks the response, not the original concern. A thread whose last reply is our verification is waiting on the author, so it is skipped until someone replies again.
+   - **`inline-comment`** — you started it and nobody has replied (a self-review, triaged like any other), or someone else started it and you have not replied.
+   - **skipped** — someone else started it and you already replied, or it is one of yours that is resolved or waiting on the author.
+
+   Do **not** filter on author beyond this. Top-level comments you wrote yourself are in scope — a review posted by `/code-review --comment` lands under your own login, and those findings are exactly what this skill exists to triage. With them in scope, the reply check and the verification marker are the **only** guards against answering the same thread twice — never skip them, and never substitute reading the raw comments for them. The marker, not the reply's author, is what marks a verification: on a self-reviewed PR the reviewer, the responder and the verifier are all the same login.
 
 ### 1b — Reviews
 
@@ -101,11 +113,12 @@ Findings under an "Additional issues (could not attach inline)" heading are **no
 Each entry in `$REVIEW_DIR/pending-items.json` must contain:
 
 - `id`
-- `source_type`: `inline-comment` or `review-body-finding`
-- `reviewer` (`user.login` for inline, `review.user.login` for review-body)
-- `body` (the comment text for inline, `text` for review-body)
+- `source_type`: `inline-comment`, `review-response`, or `review-body-finding`
+- `reviewer` (`user.login` for inline and review-response, `review.user.login` for review-body)
+- `body` (the comment text for inline and review-response, `text` for review-body)
 - `path`, `line`: populated when available; review-body findings may have neither
-- `diff_hunk`: for inline comments only
+- `diff_hunk`: for inline comments and review responses only
+- `thread_id`, `responses`: for review responses only — the GraphQL thread node ID Step 6 resolves, and every reply in the thread (`author`, `created_at`, `body`), oldest first
 - `review_id`: for review-body findings only
 
 Display the count of pending items. If zero, report "No unaddressed review items found" and stop.
@@ -132,7 +145,7 @@ Triage reads and every fix happen in a worktree at the PR head, never in the che
 
 ## Step 2: Analyze each item
 
-Every pending item gets a **verdict object** — `preexisting`, `false-positive`, or `valid` — produced by the procedure in `${CLAUDE_SKILL_DIR}/references/triage-checks.md` (Check 1: preexisting? Check 2: false positive? plus the verdict-object fields and the reproduce-before-you-record rule). Read that file once now. It is the single source of truth for both paths below, so the inline and workflow paths return the same shape and Step 3 never re-parses prose.
+Every pending item gets a **verdict object** — `preexisting`, `false-positive`, or `valid`, or for a `review-response` item `accepted` or `disputed` — produced by the procedure in `${CLAUDE_SKILL_DIR}/references/triage-checks.md` (Check 1: preexisting? Check 2: false positive? Check 3: does the response hold? plus the verdict-object fields and the reproduce-before-you-record rule). Read that file once now. It is the single source of truth for both paths below, so the inline and workflow paths return the same shape and Step 3 never re-parses prose.
 
 **3 or fewer items** — analyze inline: apply the procedure yourself to each item, including its reproduce-before-you-record rule (re-run the blame / re-`Read` the cited lines before recording any dismissal). Record one verdict object per item.
 
@@ -141,7 +154,7 @@ Every pending item gets a **verdict object** — `preexisting`, `false-positive`
 - `script`: the exact contents of `${CLAUDE_SKILL_DIR}/assets/triage-workflow.js` — Read it and pass it verbatim, no edits or abridging. Don't use `scriptPath`: Workflow only loads paths under the working directory or an added directory, never the skill's install folder, even after you've Read the file.
 - `args` (a real JSON object, not a string): `{ pr, headSha, baseSha, prCommits, reviewDir, worktree, checksPath, items }` — `pr` is the PR number; `headSha`, `baseSha`, and `prCommits` come from Step 0; `reviewDir` is `$REVIEW_DIR`; `worktree` is `$WORKTREE`; `checksPath` is `${CLAUDE_SKILL_DIR}/references/triage-checks.md`; `items` is the parsed array from `$REVIEW_DIR/pending-items.json` (Read the file and pass its contents as an array — a stringified list makes the script throw on purpose).
 
-The script pipelines the items through two stages: one analysis agent per item, forced by `schema` to return a verdict object, then — for every `preexisting` or `false-positive` verdict only — an independent verifier agent whose job is to _refute_ the dismissal by reproducing its cited evidence (re-running the blame at the head SHA, `Read`ing the quoted lines, re-querying Context7). A dismissal the verifier cannot reproduce comes back as `valid` with `overturned: "<original verdict>"` and the verifier's reason; one it can reproduce carries `verified: true`. `valid` verdicts are not re-verified — they are already the safe default, and the user gates them in Step 3.
+The script pipelines the items through two stages: one analysis agent per item, forced by `schema` to return a verdict object, then — for every `preexisting`, `false-positive` or `accepted` verdict only — an independent verifier agent whose job is to _refute_ the verdict by reproducing its cited evidence (re-running the blame at the head SHA, `Read`ing the quoted lines, re-querying Context7, confirming a cited fix commit is in the PR). A verdict the verifier cannot reproduce comes back with `overturned: "<original verdict>"` and the verifier's reason — as `valid` for a dismissal, as `disputed` for an `accepted` response; one it can reproduce carries `verified: true`. `valid` and `disputed` verdicts are not re-verified — they are already the safe default, and the user gates them in Step 3.
 
 The workflow runs in the background and the tool returns immediately. **Wait for its completion notification** — do not start Step 3 on partial results. The notification carries the script's return value, `{ verdicts }`, where `verdicts[i]` corresponds to `items[i]`. If the value is truncated, Read `journal.jsonl` in the workflow's transcript directory instead. Then:
 
@@ -173,6 +186,8 @@ In that same message, call the **AskUserQuestion** tool (`multiSelect: false`, h
 On `Approve all`, continue to Step 4. On `Override some` (or the user's Other-field reply), collect the overrides as free-text — e.g. "treat #3 as valid", "skip #5" — apply them to the verdict set, then continue. On `Cancel`, run Worktree teardown, then stop. Wait for the response before continuing.
 
 ## Step 4: Implement fixes for valid issues
+
+`review-response` items are never edited here: an `accepted` one needs no change, and a `disputed` one gets a reply with the findings in Step 6, not a fix.
 
 For each item triaged as **valid** (and approved by the user):
 
@@ -235,11 +250,11 @@ Runs after Step 5 (or in its place when Step 5 is skipped) and on the Step 3 `Ca
 
 ## Step 6: Post replies to all items
 
-Inline comments get their own per-comment reply via the standard inline-reply endpoint. Review-body findings cannot be "replied to" in place — GitHub has no per-finding reply endpoint for review bodies — so they are **grouped by `review_id` and answered with one aggregated PR-level comment per review**. This matches the user intent of replying "in place where possible" (one response per external review) while keeping the PR conversation readable.
+Inline comments and review responses get their own per-comment reply via the standard inline-reply endpoint; an `accepted` review response's thread is then resolved. Review-body findings cannot be "replied to" in place — GitHub has no per-finding reply endpoint for review bodies — so they are **grouped by `review_id` and answered with one aggregated PR-level comment per review**. This matches the user intent of replying "in place where possible" (one response per external review) while keeping the PR conversation readable.
 
 ### Reply templates
 
-Read `${CLAUDE_SKILL_DIR}/assets/reply-templates.md` once, before writing any reply. It holds the per-item bodies (preexisting, false positive, fixed, noted), the placeholder legend, the self-authored variant (used when the item's reviewer is the current user), and the aggregated review-body skeleton.
+Read `${CLAUDE_SKILL_DIR}/assets/reply-templates.md` once, before writing any reply. It holds the per-item bodies (preexisting, false positive, fixed, noted, and the accepted / disputed review-response replies), the placeholder legend, the self-authored variant (used when the item's reviewer is the current user), and the aggregated review-body skeleton.
 
 **Fill every placeholder from the verdict object, never from memory.** A reply may not cite anything the verdict's evidence does not contain — Step 2 verified exactly those fields, and embellishing here would throw that guarantee away.
 
@@ -250,15 +265,27 @@ By this point in Step 6, every reply body is composed. There is no ordering depe
 1. **Write all reply files in one parallel assistant message** — emit every `Write` tool call simultaneously (one assistant turn containing as many `Write` blocks as there are reply files: one per inline-comment reply, plus one per review-body aggregated reply).
 2. **Then post all replies in one parallel assistant message** — emit every `gh api ... /comments/<id>/replies` POST and every `gh api ... /issues/<n>/comments` POST simultaneously. The per-call `--jq .id` check still localizes failures: a missing `id` in any one result identifies the failing call.
 
-Do NOT interleave Write and POST calls in a single message — every Write must complete before the POST that reads its file. Two assistant messages: all Writes, then all POSTs.
+Do NOT interleave Write and POST calls in a single message — every Write must complete before the POST that reads its file. Two assistant messages: all Writes, then all POSTs. When any `accepted` review response was posted, a third message resolves those threads (see below).
 
-### Posting process — inline comments
+### Posting process — inline comments and review responses
 
-For each inline comment:
+For each inline comment and each review response:
 
 1. Write the reply body to a temp file using the Write tool (e.g., `$REVIEW_DIR/reply-COMMENT_ID.md`).
 2. Post using: `gh api repos/OWNER/REPO/pulls/NUMBER/comments/COMMENT_ID/replies -F body=@$REVIEW_DIR/reply-COMMENT_ID.md`
 3. Verify the response includes a valid `id` field confirming the reply was created.
+
+A review response's reply uses the Accepted or Disputed template, whose trailing `<!-- respond-to-review:verify -->` marker is mandatory — Step 1a relies on it to skip the thread until the author replies again.
+
+### Resolving accepted review responses
+
+After the POSTs, resolve the thread of each `accepted` review response whose reply posted (never one whose reply failed — the thread would close with no explanation). Issue these as parallel Bash calls in one message, one per thread, using the item's `thread_id`:
+
+```bash
+gh api graphql -f id=THREAD_ID -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' --jq .data.resolveReviewThread.thread.isResolved
+```
+
+The output must be `true`. A failure (for example, no permission to resolve on this repo) is **non-fatal**: the reply is already posted. Record it for the summary and continue.
 
 ### Posting process — review-body findings
 
@@ -281,17 +308,18 @@ After all replies are posted, display a summary:
 
 - Replied to N inline comments + M review-body findings across K reviews
   (X preexisting, Y false positives, Z fixes applied, W noted for follow-up)
+- Verified V responses to your review: A accepted (R threads resolved), D disputed
 - Files modified: list of files changed
 - PR description: Summary section refreshed | not refreshed (<reason>)
 ```
 
-Include the PR-description line only when Step 5 ran (it is skipped wholesale when there were no edits). State `not refreshed` with the reason when Step 5.8 skipped or failed — a closed/merged PR, or a `gh` error. Add `- Worktree: kept at <path> (<reason>)` only when Worktree teardown refused to remove it.
+Include the verification line only when there were review responses, and name any thread that failed to resolve. Include the PR-description line only when Step 5 ran (it is skipped wholesale when there were no edits). State `not refreshed` with the reason when Step 5.8 skipped or failed — a closed/merged PR, or a `gh` error. Add `- Worktree: kept at <path> (<reason>)` only when Worktree teardown refused to remove it.
 
 ## Step 7: Emit the completion marker (always the last line)
 
 On **every** exit path, your final message must end with exactly one completion-marker line so the agent-view job classifier resolves this run to a definite state instead of leaving it stale at "awaiting input". The classifier reads only your latest message's text and matches a literal lowercase line-prefix — `result:` (run finished) or `failed:` (fatal stop, could not complete).
 
 - It must be the **last line** of your final message, at the start of its own line, plain text — no backticks, bold, tag, or emoji. `Done` / `✅` do **not** count; only the literal token flips the badge.
-- The text after the token is a **self-contained one-line headline** — readable by someone who never saw the request. Good: `result: PR #1551 — replied to 1 inline comment; fix 45a30c0 pushed`. Weak: `result: done`.
+- The text after the token is a **self-contained one-line headline** — readable by someone who never saw the request. Good: `result: PR #1551 — replied to 1 inline comment; fix 45a30c0 pushed`, or `result: PR #73 — verified 2 responses, resolved 2 threads`. Weak: `result: done`.
 - Covers the early exits too: "No unaddressed review items found" (Step 1e) → `result: PR #N — no unaddressed review items`; `Cancel` at triage (Step 3) → `result: PR #N — triage cancelled, nothing posted`; a fork PR (Step 0) / Worktree setup failure / non-fast-forward push / push-verify-mismatch stop (Step 5) → `failed: PR #N — <what blocked it>`, naming the kept worktree path when Worktree teardown left one behind.
 - If a later turn would otherwise replace this message (e.g. an auto-continue prompt), **re-emit the marker** so the finished state isn't downgraded.

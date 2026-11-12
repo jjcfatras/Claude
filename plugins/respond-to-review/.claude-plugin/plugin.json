@@ -1,7 +1,7 @@
 {
   "name": "respond-to-review",
-  "version": "1.8.0",
-  "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones",
+  "version": "1.9.0",
+  "description": "Respond to every flagged issue on a PR — inline comments and review-body findings — dismissing false positives and fixing valid ones; verify responses to your own review threads and resolve the ones that hold",
   "author": { "name": "jjcfatras" },
   "repository": "https://github.com/jjcfatras/Claude",
   "license": "MIT",

@@ -1,7 +1,7 @@
 export const meta = {
   name: "respond-to-review-triage",
   description:
-    "Triage PR review items: one verdict per item, then adversarially verify every dismissal",
+    "Triage PR review items: one verdict per item, then adversarially verify every dismissal and every accepted response",
   phases: [{ title: "Analyze" }, { title: "Verify" }],
 };
 
@@ -18,7 +18,7 @@ const VERDICT = {
     id: { type: "string" },
     verdict: {
       type: "string",
-      enum: ["preexisting", "false-positive", "valid"],
+      enum: ["preexisting", "false-positive", "valid", "accepted", "disputed"],
     },
     reasoning: { type: "string" },
     evidence: {
@@ -33,6 +33,7 @@ const VERDICT = {
         quote: { type: "string" },
         blame_sha: { type: "string" },
         blame_date: { type: "string" },
+        fix_sha: { type: "string" },
       },
       required: ["kind"],
     },
@@ -78,16 +79,20 @@ const verdicts = await pipeline(
   async (v, item) => {
     // Analysis agent was skipped or died: hand the item back so the orchestrator analyzes it inline.
     if (!v) return { id: item.id, verdict: null };
-    // Valid is already the safe default and the user gates it in Step 3; only dismissals get a second reader.
-    if (v.verdict === "valid") return v;
+    // Valid and disputed are already the safe defaults and the user gates them in Step 3; only verdicts that close a concern get a second reader.
+    if (v.verdict === "valid" || v.verdict === "disputed") return v;
+    const accepted = v.verdict === "accepted";
+    const claim = accepted
+      ? `accepted the latest response in this review thread as resolving the original comment (the thread will be resolved), citing the evidence below. Your job is to REFUTE that acceptance. If fix_sha is set, \`git merge-base --is-ancestor <fix_sha> ${args.headSha}\` must exit 0. The cited code must resolve the ORIGINAL comment's concern at the head SHA, not merely match what the response says it changed.`
+      : `dismissed this review item as "${v.verdict}" citing the evidence below. Your job is to REFUTE that dismissal.`;
     const check = await agent(
-      `${PREAMBLE}\n\n${ctx}\n\nA prior agent dismissed this review item as "${v.verdict}" citing the evidence below. Your job is to REFUTE that dismissal. Independently reproduce every cited field, by evidence kind:\n- blame: run \`git blame -L <line>,<line> ${args.headSha} -- <file>\`; the SHA must equal blame_sha, must not be one of the PR commits, and the date must match.\n- code / diff: Read the cited file at the cited lines (or the saved diff); the quote must appear there verbatim AND must actually address the reviewer's concern.\n- library-docs: re-query Context7 for the claim.\n- none: there is nothing to reproduce — set reproduced=false.\nIf any field is absent, different, or does not address the concern, set reproduced=false and say which. Default to reproduced=false when uncertain.\n\nItem:\n${JSON.stringify(item, null, 2)}\n\nClaimed verdict:\n${JSON.stringify(v, null, 2)}`,
+      `${PREAMBLE}\n\n${ctx}\n\nA prior agent ${claim} Independently reproduce every cited field, by evidence kind:\n- blame: run \`git blame -L <line>,<line> ${args.headSha} -- <file>\`; the SHA must equal blame_sha, must not be one of the PR commits, and the date must match.\n- code / diff: Read the cited file at the cited lines (or the saved diff); the quote must appear there verbatim AND must actually address the reviewer's concern.\n- library-docs: re-query Context7 for the claim.\n- none: there is nothing to reproduce — set reproduced=false.\nIf any field is absent, different, or does not address the concern, set reproduced=false and say which. Default to reproduced=false when uncertain.\n\nItem:\n${JSON.stringify(item, null, 2)}\n\nClaimed verdict:\n${JSON.stringify(v, null, 2)}`,
       { label: `verify:${item.id}`, phase: "Verify", schema: CHECK },
     );
     if (check && check.reproduced) return { ...v, verified: true };
     return {
       ...v,
-      verdict: "valid",
+      verdict: accepted ? "disputed" : "valid",
       overturned: v.verdict,
       reasoning: `Verifier could not reproduce the ${v.verdict} evidence: ${check ? check.reason : "verifier unavailable"}. Original reasoning: ${v.reasoning}`,
       evidence: { kind: "none" },
@@ -98,7 +103,7 @@ const verdicts = await pipeline(
 const overturned = verdicts.filter((v) => v && v.overturned).length;
 const unanalyzed = verdicts.filter((v) => !v || v.verdict === null).length;
 log(
-  `${verdicts.length} verdicts — ${overturned} dismissals overturned, ${unanalyzed} need inline analysis`,
+  `${verdicts.length} verdicts — ${overturned} overturned, ${unanalyzed} need inline analysis`,
 );
 
 // verdicts[i] corresponds to args.items[i]. null or verdict:null → the orchestrator analyzes that item inline.

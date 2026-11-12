@@ -23,11 +23,18 @@ Render this in the Step 3 message, split by source within each verdict category 
     - **file.ts:7** (@reviewer): "Their comment..." → verifier could not reproduce the false-positive evidence: cited guard is not at handler.ts:88 → Plan: add the guard
   Review-body findings (@reviewer on review #12345):
     - "Their finding..." → Plan: add error boundary around the X call site
+
+### Responses to Your Review (N)
+  Accepted — will reply and resolve the thread:
+    - **db-query.sh:20**: "Your comment..." ← @responder: "Fixed in commit af32ab1..." → PG* vars unset before parse at head (verified)
+  Disputed — will reply with findings:
+    - **database.md:60**: "Your comment..." ← @responder: "Fixed in commit af32ab1..." → span still closes early at line 60
 ```
 
 ## Shape rules
 
 - Omit a sub-section when it is empty (don't show an "Inline comments:" header with nothing under it). Omit the entire verdict category if its count is zero.
-- Mark each dismissal the workflow's verifier upheld (`verified: true`) with a `(verified)` suffix.
-- A verdict the verifier overturned (`overturned` set) lands under **Valid Issues** with the note `→ verifier could not reproduce the <original verdict> evidence: <reason>`, so the user sees the flip and can use `Override some` to restore the original if they disagree.
+- Mark each dismissal or acceptance the workflow's verifier upheld (`verified: true`) with a `(verified)` suffix.
+- A verdict the verifier overturned (`overturned` set) lands under **Valid Issues** — or under **Disputed** for an overturned `accepted` — with the note `→ verifier could not reproduce the <original verdict> evidence: <reason>`, so the user sees the flip and can use `Override some` to restore the original if they disagree.
+- In **Responses to Your Review**, quote the latest response (`responses[-1]`) after the `←`, with its author.
 - Inline-path dismissals carry no suffix — the orchestrator reproduced them itself, so there was no second reader.

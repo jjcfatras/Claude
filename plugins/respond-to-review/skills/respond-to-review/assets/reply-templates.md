@@ -53,6 +53,32 @@ Noted — this is a valid concern but broader than what I'll resolve inside this
 BRIEF_ACKNOWLEDGEMENT of the core concern so the reviewer knows we heard them.
 ```
 
+## Review response — accepted
+
+Posted in the thread before Step 6 resolves it. The trailing marker is mandatory: Step 1a skips any thread whose last reply carries it.
+
+```text
+Verified — SPECIFIC_EVIDENCE.
+
+BRIEF_EXPLANATION of why this resolves the original concern. Resolving this thread.
+
+<!-- respond-to-review:verify -->
+```
+
+For a fix, `SPECIFIC_EVIDENCE` leads with the fix commit (`evidence.fix_sha`).
+
+## Review response — disputed
+
+The thread stays open. The marker is mandatory here too: the thread is then skipped until someone replies again.
+
+```text
+Not resolved yet — SPECIFIC_EVIDENCE.
+
+BRIEF_EXPLANATION of what still fails and what would resolve it.
+
+<!-- respond-to-review:verify -->
+```
+
 ## Aggregated review-body reply
 
 One per `review_id`, written to `$REVIEW_DIR/reply-review-<REVIEW_ID>.md`. One trailing marker per finding included in the reply.
