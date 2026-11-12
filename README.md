@@ -79,6 +79,8 @@ Each subsection covers how to invoke the plugin, its prerequisites, and what to 
 4. Triages each item as **false positive**, **preexisting code (not introduced by this PR)**, or **valid issue**. With more than three items this runs as a Workflow: one analysis agent per item returns a schema-checked verdict, then an independent verifier tries to refute every dismissal by reproducing its cited evidence; a dismissal that can't be reproduced is promoted back to valid before you see the triage.
 5. Implements fixes for the valid items, then commits and pushes them from the worktree and refreshes the PR description. It removes the worktree afterwards, but keeps it if a stop leaves unpushed work. Finally it replies confirming each change, and replies to the rest explaining each dismissal.
 
+**Note:** `respond-to-review` ships as a skill (`plugins/respond-to-review/skills/respond-to-review/`), so besides `/respond-to-review` Claude can start it when asked in natural language (e.g. "address the review comments on PR 42"). Nothing is pushed or posted before you approve the triage.
+
 ### `/review-pr`
 
 Invocation, requirements, what it runs and sends, and how to build its Go helper are in [`plugins/review-pr/README.md`](plugins/review-pr/README.md).

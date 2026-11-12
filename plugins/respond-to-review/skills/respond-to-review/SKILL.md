@@ -1,5 +1,7 @@
 ---
+name: respond-to-review
 description: Respond to every flagged issue on a PR — inline comments and review-body findings alike, including reviews you posted yourself (e.g. via `/code-review --comment`) — dismissing false positives and preexisting issues, fixing valid ones in a throwaway worktree on the PR head
+when_to_use: Use when the user asks to "respond to the review", "address review comments", "reply to PR feedback", "triage the review on PR #N", or "fix what the reviewer flagged", including after posting a review with `/code-review --comment`.
 argument-hint: <pr-number> [comment-id]
 allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Bash(rg *), Bash(echo *), Bash(npx nx *), Bash(mktemp *), Bash(base64 *), Bash(wc *), Bash(ls *), Read, Edit, Write, AskUserQuestion, Agent, Workflow, EnterWorktree, ExitWorktree, mcp__*
 model: opus
@@ -8,18 +10,18 @@ effort: high
 
 Respond to every flagged issue on a pull request — both **inline review comments** (line-attached) and **review-body findings** (issues listed in a review's summary body that couldn't attach to a specific line). For each flagged issue, determine whether it is (1) a false positive, (2) preexisting code not introduced by this PR, or (3) a valid issue. Dismiss cases 1 and 2 with an explanation reply. For case 3, implement the fix, **commit and push it before posting any reply**, refresh the PR description to match the branch as it now stands, and reply confirming the change — so reviewers never see a "Fixed" reply that points at code still sitting in the local working tree, or a PR description that predates the fixes.
 
-All of it runs in a throwaway worktree at the PR head — created after Step 1, removed after the push — so the checkout you invoke the command from (its branch, uncommitted changes, untracked files) is never touched, and the command works from any checkout of the repo.
+All of it runs in a throwaway worktree at the PR head — created after Step 1, removed after the push — so the checkout you invoke the skill from (its branch, uncommitted changes, untracked files) is never touched, and the skill works from any checkout of the repo.
 
-**Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which replaces the old static-analysis prompts with a classifier. The rules that still matter — allowed-tools gaps, no piping to a shell interpreter, no destructive ops without confirmation — are condensed into the agent preamble in Step 2.
+**Shell Command Safety:** Skills run under [auto permission mode](https://code.claude.com/docs/en/permission-modes), which replaces the old static-analysis prompts with a classifier. The rules that still matter — allowed-tools gaps, no piping to a shell interpreter, no destructive ops without confirmation — are condensed into the agent preamble (`${CLAUDE_SKILL_DIR}/assets/agent-preamble.md`).
 
-**Tool discipline:** Six rules apply across every step. They are not stylistic — they keep the command working under stricter permission modes and cut wall time:
+**Tool discipline:** Six rules apply across every step. They are not stylistic — they keep the skill working under stricter permission modes and cut wall time:
 
 - **Search with `Bash(rg *)`.** The `Grep`/`Glob` tools are removed on native macOS/Linux builds (CC 2.1.117+), where `rg` is that same embedded ripgrep; `Bash(rg *)` is in `allowed-tools` so it runs unprompted. Two gotchas: `rg` exits **1** on no match, so append `|| true` to any probe allowed to find nothing, or it fails the whole Bash call; and always quote patterns and globs (`rg 'foo' -g '*.ts'`) to sidestep the zsh "no matches found" glob bug.
-- **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. `jq` handles all of Step 1's GitHub-API JSON parsing. Pass **absolute** `$REVIEW_DIR/...` paths — never `cd "$REVIEW_DIR" && jq ...`. Prefix filters match the literal command string, so a leading `cd` is what gets matched and the `Bash(jq *)` grant never fires.
+- **Use `jq` for JSON filtering, never `node -e` / `python -c`.** `Bash(jq *)` is in `allowed-tools`; `node` and `python` are not. `jq` handles all of Step 1's GitHub-API JSON parsing. Run each `jq` as its own call — never piped into `head` or followed by `; …` — so a filter error fails the call instead of exiting 0. Pass **absolute** `$REVIEW_DIR/...` paths — never `cd "$REVIEW_DIR" && jq ...`. Prefix filters match the literal command string, so a leading `cd` is what gets matched and the `Bash(jq *)` grant never fires.
 - **Fetch with `Read` anything you intend to `Edit`.** `Edit` refuses a file the harness has no record of reading, so a range pulled with `sed -n`/`cat` does not satisfy it and you pay for the same bytes twice. Use `rg`/`sed` to **locate** (cheap, no precondition), then `Read` the range you will actually edit.
 - **Batch independent tool calls in parallel.** When a step says "for each X do Y" and the Y's have no ordering dependency (different file paths, different comment IDs, different verification targets), emit them as multiple tool calls in a single assistant message. Steps 1, 4, and 5 call this out explicitly where it matters.
 - **`$REVIEW_DIR` is a placeholder, not a shell variable.** Bash state does not persist between tool calls, so write the literal absolute path from Step 0 into every command — never a `REVIEW_DIR=…;` prefix, which turns every call into a compound command (see Worktree setup step 3). Never substitute `$TMPDIR`: macOS already exports it as the system temp dir, so `"$TMPDIR/pr.diff"` silently lands somewhere else.
-- **Background the slow commands, then wait.** Run Worktree setup's install and Step 5's commit with `run_in_background: true`, capturing output as `<cmd> > "$REVIEW_DIR/<name>.log" 2>&1; echo "exit=$?"`. A repo's pre-commit hooks can run for many minutes — past the 120 s default Bash timeout and close to the 600 s ceiling. Keep triaging while the install runs and confirm its notification before Step 4. After launching the commit, end your turn and wait for its notification — never `sleep` or poll the output file — then confirm `exit=0` in the log before pushing.
+- **Background the slow commands, then wait.** Run Worktree setup's install, Step 5's commit and Worktree teardown's removal with `run_in_background: true`, capturing output as `<cmd> > "$REVIEW_DIR/<name>.log" 2>&1` — with **no** trailing `; echo "exit=$?"`. The completion notification carries the command's own exit code (`completed (exit code 0)` / `failed with exit code N`); a trailing `echo` would replace it with the echo's own 0, and its `exit=` line lands in the harness's task output, not in your log. A repo's pre-commit hooks can run for many minutes — past the 120 s default Bash timeout and close to the 600 s ceiling. Keep triaging while the install runs and confirm its notification before Step 4. After launching the commit, end your turn and wait for its notification — never `sleep` or poll the output file. Proceed on exit code 0; on anything else, `rg` the log for the cause.
 
 Follow these steps precisely:
 
@@ -30,8 +32,7 @@ Follow these steps precisely:
 3. Run `gh repo view --json owner,name` to get the repository owner and name.
 4. Run `gh api user` and extract the `login` field — this is the current user. It is used **only** for dedup — spotting threads we already replied to (Step 1a) and findings we already answered (Step 1d) — never to exclude items. Reviews and comments you authored yourself are in scope.
 5. Run `gh pr view $PR_NUMBER --json headRefName,headRefOid,baseRefName,baseRefOid,commits,isCrossRepository` to get branch info and commit SHAs. Record `commits[].oid` as the PR commit list — the triage procedure's Check 1 compares blame SHAs against it, and Step 2 passes it to the workflow. If `isCrossRepository` is `true`, stop: fixes are pushed to `origin/<headRefName>`, which for a fork PR would create a stray branch on the base repo instead of updating the PR.
-6. Save the PR diff with a shell redirect: `gh pr diff $PR_NUMBER > "$REVIEW_DIR/pr.diff"`. Redirect every raw `gh` fetch in Steps 0–1 the same way — the Write tool would make you re-emit every byte as output tokens. Keep Write for content you compose (reply bodies, the PR description).
-7. Parse the diff to build a map of changed files and their hunk ranges (`file path → list of [newStart, newStart+newCount-1]` ranges), and whether each line is added (`+`) or context (` `).
+6. Save the PR diff with a shell redirect: `gh pr diff $PR_NUMBER > "$REVIEW_DIR/pr.diff"`. Redirect every raw `gh` fetch in Steps 0–1 the same way — the Write tool would make you re-emit every byte as output tokens. Keep Write for content you compose (reply bodies, the PR description). Issue this fetch and Step 1's three (1a, 1b, 1d) as four parallel Bash calls in one message, one `gh` per call with nothing chained after it: each call then reports its own exit status, whereas in a `;` chain only the last fetch's status is visible and a failed fetch silently leaves an error body where the comments should be.
 
 ## Step 1: Fetch and filter flagged items
 
@@ -43,13 +44,13 @@ Follow these steps precisely:
 
 1. Fetch all review comments: `gh api --paginate repos/OWNER/REPO/pulls/NUMBER/comments`
 2. Redirect the raw JSON to `$REVIEW_DIR/all-comments.json`.
-3. Filter to **actionable comments** by excluding:
-   - Comments where `in_reply_to_id` is not null (these are replies, not top-level comments)
-   - If a specific comment ID was provided in step 0, filter to only that comment
+3. Filter to **actionable comments** — top-level (`in_reply_to_id` is null), scoped to the Step 0 comment ID if one was given, and with no reply yet from the current user — using exactly this filter. Substitute the login from Step 0, and replace `null` with the comment ID when one was given:
 
-   Do **not** filter on author. Top-level comments you wrote yourself are in scope — a review posted by `/code-review --comment` lands under your own login, and those findings are exactly what this command exists to triage.
+   ```bash
+   jq --arg me "<login>" --argjson only null '. as $all | [.[] | select(.in_reply_to_id == null and ($only == null or .id == $only)) | . as $c | select(any($all[]; .in_reply_to_id == $c.id and .user.login == $me) | not) | {id, source_type: "inline-comment", reviewer: .user.login, path, line, original_line, body, diff_hunk}]' "$REVIEW_DIR/all-comments.json"
+   ```
 
-4. For each remaining comment, check if the current user has already replied by scanning all comments for entries where `in_reply_to_id` matches this comment's `id` AND `user.login` matches the current user. Exclude comments that already have a reply from us. With self-authored comments in scope, this is the **only** guard against answering the same thread twice — never skip it.
+   Its output is already in Step 1e's `pending-items.json` shape. Do **not** filter on author. Top-level comments you wrote yourself are in scope — a review posted by `/code-review --comment` lands under your own login, and those findings are exactly what this skill exists to triage. With them in scope, the reply check is the **only** guard against answering the same thread twice — never skip it, and never substitute reading the raw comments for it.
 
 ### 1b — Reviews
 
@@ -66,7 +67,7 @@ If a specific inline comment ID was provided in step 0, skip 1b–1d entirely �
 Review bodies are free-form markdown. Findings can appear as bullet points, numbered items, `###`-delimited subsections, or a single prose paragraph. Parse each surviving review body into a list of findings:
 
 - For review bodies with fewer than ~4 filtered reviews total, parse inline (read the body yourself and split it into findings).
-- For 4 or more, launch one Sonnet 4.6 agent per review in parallel (`model: "sonnet"`, `mode: "auto"`), each bound by the **agent preamble** from Step 2 (the exact text starting "You are a review-response analysis agent…"), with the per-agent role adjusted to "You are a review-body parsing agent." The agent's only job is to split a single review body into findings and return structured JSON — it must not hit the network beyond what it was given and must not post anything.
+- For 4 or more, launch one Sonnet 4.6 agent per review in parallel (`model: "sonnet"`, `mode: "auto"`). Start each prompt with the text of `${CLAUDE_SKILL_DIR}/assets/agent-preamble.md`, changing its first sentence to "You are a review-body parsing agent." The agent's only job is to split a single review body into findings and return structured JSON — it must not hit the network beyond what it was given and must not post anything.
 
 For each finding, emit:
 
@@ -111,7 +112,7 @@ Display the count of pending items. If zero, report "No unaddressed review items
 
 ## Worktree setup
 
-Triage reads and every fix happen in a worktree at the PR head, never in the checkout the command was invoked from — that one may be on another branch entirely, or carry uncommitted work.
+Triage reads and every fix happen in a worktree at the PR head, never in the checkout the skill was invoked from — that one may be on another branch entirely, or carry uncommitted work.
 
 1. Run `git rev-parse --show-toplevel` and store it as `$REPO_ROOT`. The worktree path is `$WORKTREE` = `$REPO_ROOT/.claude/worktrees/pr-<NUMBER>`.
 2. Fetch the branch and add a **detached** worktree at the exact head SHA from Step 0:
@@ -123,7 +124,7 @@ Triage reads and every fix happen in a worktree at the PR head, never in the che
 
    Detached, not on the local branch: `git worktree add` refuses a branch already checked out elsewhere — often the user's main checkout. Pinned to `headRefOid`, not `origin/<headRefName>`: triage then reads exactly the code Step 0's diff describes. If the path already exists, a previous run kept it holding unpushed work (see Worktree teardown) — stop and report it; never remove it. If either command fails, stop.
 
-3. Call **EnterWorktree** with `path: $WORKTREE`. Bash now runs there. From here until teardown the harness refuses any Bash call it cannot prove keeps git inside the worktree. Run each `git` command as its own plain call — no `;`/`&&`/pipe chain around it (a trailing `> log 2>&1; echo "exit=$?"` capture is fine) — and never hand generated text to `bash`/`sh`/`zsh` inside a compound command: write it to a file and run `bash -n <file>` as its own call. If a call is refused, split it; don't rephrase the chain.
+3. Call **EnterWorktree** with `path: $WORKTREE`. Bash now runs there. From here until teardown the harness refuses any Bash call it cannot prove keeps git inside the worktree. Run each `git` command as its own plain call — no `;`/`&&`/pipe chain around it (a trailing `> log 2>&1` redirect is fine, plus `; echo "exit=$?"` on a foreground call) — and never hand generated text to `bash`/`sh`/`zsh` inside a compound command: write it to a file and run `bash -n <file>` as its own call. If a call is refused, split it; don't rephrase the chain.
 4. Install dependencies from the lockfile, if there is one, in the background (see Tool discipline): `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, `package-lock.json` → `npm ci`, `yarn.lock` → `yarn install --immutable`. A fresh worktree has no `node_modules`, so triage probes, Step 4's checks, and the repo's pre-commit hooks (husky regenerates its hook shims on install) would otherwise fail or silently skip. Other toolchains (Go modules, cargo) fetch on first build — skip them.
 5. Gitignored files (`.env*`, local config) are not copied. If a Step 4 check fails only because one is missing, copy it from `$REPO_ROOT` rather than "fixing" code.
 
@@ -131,14 +132,14 @@ Triage reads and every fix happen in a worktree at the PR head, never in the che
 
 ## Step 2: Analyze each item
 
-Every pending item gets a **verdict object** — `preexisting`, `false-positive`, or `valid` — produced by the procedure in `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md` (Check 1: preexisting? Check 2: false positive? plus the verdict-object fields and the reproduce-before-you-record rule). Read that file once now. It is the single source of truth for both paths below, so the inline and workflow paths return the same shape and Step 3 never re-parses prose.
+Every pending item gets a **verdict object** — `preexisting`, `false-positive`, or `valid` — produced by the procedure in `${CLAUDE_SKILL_DIR}/references/triage-checks.md` (Check 1: preexisting? Check 2: false positive? plus the verdict-object fields and the reproduce-before-you-record rule). Read that file once now. It is the single source of truth for both paths below, so the inline and workflow paths return the same shape and Step 3 never re-parses prose.
 
 **3 or fewer items** — analyze inline: apply the procedure yourself to each item, including its reproduce-before-you-record rule (re-run the blame / re-`Read` the cited lines before recording any dismissal). Record one verdict object per item.
 
-**More than 3 items** — call the **Workflow** tool. The user invoking this command _is_ the explicit opt-in Workflow requires, so don't ask again. Pass the shipped script, never a hand-written one:
+**More than 3 items** — call the **Workflow** tool. The user invoking this skill _is_ the explicit opt-in Workflow requires, so don't ask again. Pass the shipped script, never a hand-written one:
 
-- `script`: the exact contents of `${CLAUDE_PLUGIN_ROOT}/references/triage-workflow.js` — Read it and pass it verbatim, no edits or abridging. Don't use `scriptPath`: Workflow only loads paths under the working directory or an added directory, never the plugin root, even after you've Read the file.
-- `args` (a real JSON object, not a string): `{ pr, headSha, baseSha, prCommits, reviewDir, worktree, checksPath, items }` — `pr` is the PR number; `headSha`, `baseSha`, and `prCommits` come from Step 0; `reviewDir` is `$REVIEW_DIR`; `worktree` is `$WORKTREE`; `checksPath` is `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md`; `items` is the parsed array from `$REVIEW_DIR/pending-items.json` (Read the file and pass its contents as an array — a stringified list makes the script throw on purpose).
+- `script`: the exact contents of `${CLAUDE_SKILL_DIR}/assets/triage-workflow.js` — Read it and pass it verbatim, no edits or abridging. Don't use `scriptPath`: Workflow only loads paths under the working directory or an added directory, never the skill's install folder, even after you've Read the file.
+- `args` (a real JSON object, not a string): `{ pr, headSha, baseSha, prCommits, reviewDir, worktree, checksPath, items }` — `pr` is the PR number; `headSha`, `baseSha`, and `prCommits` come from Step 0; `reviewDir` is `$REVIEW_DIR`; `worktree` is `$WORKTREE`; `checksPath` is `${CLAUDE_SKILL_DIR}/references/triage-checks.md`; `items` is the parsed array from `$REVIEW_DIR/pending-items.json` (Read the file and pass its contents as an array — a stringified list makes the script throw on purpose).
 
 The script pipelines the items through two stages: one analysis agent per item, forced by `schema` to return a verdict object, then — for every `preexisting` or `false-positive` verdict only — an independent verifier agent whose job is to _refute_ the dismissal by reproducing its cited evidence (re-running the blame at the head SHA, `Read`ing the quoted lines, re-querying Context7). A dismissal the verifier cannot reproduce comes back as `valid` with `overturned: "<original verdict>"` and the verifier's reason; one it can reproduce carries `verified: true`. `valid` verdicts are not re-verified — they are already the safe default, and the user gates them in Step 3.
 
@@ -147,13 +148,9 @@ The workflow runs in the background and the tool returns immediately. **Wait for
 - For any entry that is `null` or has `verdict: null` (its analysis agent was skipped or died), analyze that item inline with the same procedure. **Never drop an item** — N items in, N verdicts out is the point of the pipeline.
 - Keep `verified` and `overturned` on the objects; Step 3 displays them.
 
-**Agent preamble.** The script's `PREAMBLE` constant is this exact text; when editing either copy, edit both (the same rule the code-review agents' shared `## Environment` block follows). Step 1c's parsing agents also reuse it with the role line adjusted, which is why it stays in this file:
+**Agent preamble.** The text every analysis, verifier and Step 1c parsing agent starts from is `${CLAUDE_SKILL_DIR}/assets/agent-preamble.md`. The workflow script can't Read files, so `triage-workflow.js` embeds a copy as its `PREAMBLE` constant; when editing either copy, edit both (the same rule the review-pr agents' shared `## Environment` block follows).
 
-> You are a review-response analysis agent. Use the Read/Write tools and `rg` for searching, rather than `sed`/`awk`/`du` — those aren't in this skill's `allowed-tools`, so they prompt outside auto permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.
->
-> **Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.
-
-The checks themselves, the verdict-object fields, and the reproduce-before-you-record rule live in `${CLAUDE_PLUGIN_ROOT}/references/triage-checks.md` — not repeated here so the two paths cannot drift apart.
+The checks themselves, the verdict-object fields, and the reproduce-before-you-record rule live in `${CLAUDE_SKILL_DIR}/references/triage-checks.md` — not repeated here so the two paths cannot drift apart.
 
 ## Step 3: Present triage results to user
 
@@ -165,34 +162,7 @@ The checks themselves, the verdict-object fields, and the reproduce-before-you-r
   tool_use:  AskUserQuestion   ← same message, not the next one
 ```
 
-Display a formatted summary of all items and their verdicts, split by source within each verdict category so the user can see at a glance where each concern came from:
-
-```
-## Review Item Triage — PR #NUMBER
-
-### Preexisting (N)
-  Inline comments:
-    - **file.ts:42** (@reviewer): "Their comment..." → Code predates PR (blame: abc1234, 2025-01-15)
-  Review-body findings (@reviewer on review #12345):
-    - "Their finding..." → Targets existing handler not modified by this PR
-
-### False Positives (N)
-  Inline comments:
-    - **file.ts:88** (@reviewer): "Their comment..." → Already handled by XYZ middleware
-  Review-body findings (@reviewer on review #12345):
-    - "Their finding..." → Current architecture already addresses this via EVIDENCE
-
-### Valid Issues (N)
-  Inline comments:
-    - **file.ts:120** (@reviewer): "Their comment..." → Plan: add null check before accessing .property
-    - **file.ts:7** (@reviewer): "Their comment..." → verifier could not reproduce the false-positive evidence: cited guard is not at handler.ts:88 → Plan: add the guard
-  Review-body findings (@reviewer on review #12345):
-    - "Their finding..." → Plan: add error boundary around the X call site
-```
-
-Omit a sub-section when it is empty (don't show an "Inline comments:" header with nothing under it). Omit the entire verdict category if its count is zero.
-
-Mark each dismissal the workflow's verifier upheld (`verified: true`) with a `(verified)` suffix. A verdict the verifier overturned (`overturned` set) lands under **Valid Issues** with the note `→ verifier could not reproduce the <original verdict> evidence: <reason>`, so the user sees the flip and can use `Override some` to restore the original if they disagree. Inline-path dismissals carry no suffix — you reproduced them yourself, so there was no second reader.
+Display a formatted summary of all items and their verdicts in the shape of `${CLAUDE_SKILL_DIR}/assets/triage-summary.md` — the table template plus its rules for empty sections, the `(verified)` suffix, and overturned verdicts. Read it before composing this message (while the workflow runs, if there is one), so the Read never splits the table from the question.
 
 In that same message, call the **AskUserQuestion** tool (`multiSelect: false`, header `Triage`) to confirm before proceeding, with three options:
 
@@ -210,7 +180,7 @@ For each item triaged as **valid** (and approved by the user):
 2. Understand the reviewer's suggestion and the surrounding code context.
 3. Plan the minimal, targeted fix that addresses the reviewer's concern without unnecessary refactoring.
 4. Apply the fix using the Edit tool.
-5. After editing, re-read the modified section to verify the fix is correct and doesn't break surrounding code.
+5. Verify the fix by exercising it — the checks below, or a targeted probe for a script or config. Don't Read back your own Edit; re-Read only per the same-file rule below.
 6. Record what was changed (the file paths and a one-line description) for use in Step 5 (commit message) and Step 6 (reply body).
 
 If multiple valid issues exist in the same file, apply them carefully to avoid conflicts. `Edit` matches on strings rather than line numbers, so edit order does not shift later matches — but if one fix rewrites text a later fix targets, re-`Read` that range before editing it again.
@@ -241,9 +211,9 @@ Otherwise, every "Fixed — …" reply in Step 6 must point at code that is alre
    Reviewers: @<reviewer1>, @<reviewer2>
    ```
 
-   Do not skip pre-commit hooks (no `--no-verify`). Do not amend a previous commit — make a new commit, per the project's git rules.
+   List only reviewers other than the current user; if none remain (a self-review), omit the `Reviewers:` line. Do not skip pre-commit hooks (no `--no-verify`). Do not amend a previous commit — make a new commit, per the project's git rules.
 
-4. **Commit:** `git commit -m "$(cat <<'EOF' … EOF)"`, in the background with output captured to `$REVIEW_DIR/commit.log` (see Tool discipline). If the commit fails because a pre-commit hook rewrote files (e.g., a formatter), re-`git add` the same paths and create a _new_ commit — never `--amend` to silence the hook.
+4. **Commit:** `git commit -m "$(cat <<'EOF' … EOF)"`, in the background with output captured to `$REVIEW_DIR/commit.log` (see Tool discipline — the notification's exit code is the result). If the notification reports a non-zero exit because a pre-commit hook rewrote files (e.g., a formatter), re-`git add` the same paths and create a _new_ commit — never `--amend` to silence the hook.
 5. **Push:** `git push origin HEAD:refs/heads/<headRefName>`. The worktree is on a detached HEAD, so there is no tracking branch for a bare `git push` — name the remote ref explicitly. If push fails with non-fast-forward, **stop and surface** — do not force-push, do not rebase silently. The user must resolve the divergence before the skill continues.
 6. **Verify the push landed:** local `git rev-parse HEAD` must match `gh api repos/OWNER/REPO/git/refs/heads/<headRefName> --jq .object.sha`. If they differ, stop and surface — do not proceed to Step 6.
 7. **Capture the short SHA** with `git rev-parse --short HEAD`. Step 6's "Fixed" template embeds this SHA so each reply points at a specific commit on the PR.
@@ -259,7 +229,7 @@ Then run Worktree teardown.
 Runs after Step 5 (or in its place when Step 5 is skipped) and on the Step 3 `Cancel` exit.
 
 1. Call **ExitWorktree** with `action: "keep"`. It never removes a worktree entered by `path`; this only returns the session to `$REPO_ROOT`.
-2. Run `git worktree remove "$WORKTREE"` with `run_in_background: true` and go straight on to Step 6 — deleting the worktree's fresh `node_modules` takes ~20 s and nothing in Step 6 needs it gone. Read the removal's notification before writing Step 6's summary (on the `Cancel` exit, before stopping). If it refused because the tree is dirty, do not `--force`: show `git -C "$WORKTREE" status --short`, keep the worktree, and note its path in the summary. This is non-fatal — the fixes are already pushed.
+2. Run `git worktree remove "$WORKTREE" > "$REVIEW_DIR/wt-remove.log" 2>&1` with `run_in_background: true` (see Tool discipline) and go straight on to Step 6 — deleting the worktree's fresh `node_modules` takes ~20 s and nothing in Step 6 needs it gone. Read the removal's notification before writing Step 6's summary (on the `Cancel` exit, before stopping). If it reports a non-zero exit — a dirty tree refuses removal — do not `--force`: show `git -C "$WORKTREE" status --short`, keep the worktree, and note its path in the summary. This is non-fatal — the fixes are already pushed.
 
 **On any stop after Step 4's first Edit** (a check or hook failure you can't fix, a non-fast-forward push, a push-verify mismatch), the worktree holds unpublished work: do sub-step 1 only, never remove it, and report `$WORKTREE` plus `git -C "$WORKTREE" rev-parse --short HEAD` so the user can finish by hand. Removing a detached worktree discards its unpushed commits along with its reflog.
 
@@ -267,47 +237,11 @@ Runs after Step 5 (or in its place when Step 5 is skipped) and on the Step 3 `Ca
 
 Inline comments get their own per-comment reply via the standard inline-reply endpoint. Review-body findings cannot be "replied to" in place — GitHub has no per-finding reply endpoint for review bodies — so they are **grouped by `review_id` and answered with one aggregated PR-level comment per review**. This matches the user intent of replying "in place where possible" (one response per external review) while keeping the PR conversation readable.
 
-### Reply templates (per-item body)
+### Reply templates
 
-Each of these templates produces the body for a single item. Inline replies post this directly. Aggregated review-body replies embed one of these under a per-finding heading (see "Review-body findings" below).
+Read `${CLAUDE_SKILL_DIR}/assets/reply-templates.md` once, before writing any reply. It holds the per-item bodies (preexisting, false positive, fixed, noted), the placeholder legend, the self-authored variant (used when the item's reviewer is the current user), and the aggregated review-body skeleton.
 
-**Fill every placeholder from the verdict object, never from memory.** `COMMIT_SHA` and `DATE` are `evidence.blame_sha` and `evidence.blame_date`; `SPECIFIC_EVIDENCE` is `evidence.file:line` plus `evidence.quote`; `DESCRIPTION_OF_CHANGE` is the Step 4 record. A reply may not cite anything the verdict's evidence does not contain — Step 2 verified exactly those fields, and embellishing here would throw that guarantee away.
-
-**When the item's reviewer is the current user** (a self-authored review), keep the same structure but drop the second-person flourishes: write `Fixed in commit …` instead of `Good catch! Fixed in commit …`, and open the aggregated body with `Re: my earlier review summary — addressing the findings below.` rather than @-mentioning yourself. Everything else, including the mandatory HTML-comment markers, is unchanged.
-
-**For preexisting items:**
-
-```
-This code predates this PR — it was introduced in commit `COMMIT_SHA` (DATE). The change in this PR doesn't modify this line.
-
-If you'd like this addressed, I can create a follow-up issue to track it separately.
-```
-
-**For false positives:**
-
-```
-This is actually already handled — SPECIFIC_EVIDENCE.
-
-BRIEF_EXPLANATION of why the current code is correct.
-```
-
-**For valid issues (fixed):**
-
-```
-Good catch! Fixed in commit `<SHORT_SHA>` — DESCRIPTION_OF_CHANGE.
-
-BRIEF_EXPLANATION of what was changed and why it addresses the concern.
-```
-
-`<SHORT_SHA>` is the value captured at the end of Step 5 (`git rev-parse --short HEAD` after the push). If Step 5 was skipped (no edits), this template is not used.
-
-**For valid issues (noted, not fixed — vague finding from Step 4):**
-
-```
-Noted — this is a valid concern but broader than what I'll resolve inside this PR. I'll address it in a follow-up.
-
-BRIEF_ACKNOWLEDGEMENT of the core concern so the reviewer knows we heard them.
-```
+**Fill every placeholder from the verdict object, never from memory.** A reply may not cite anything the verdict's evidence does not contain — Step 2 verified exactly those fields, and embellishing here would throw that guarantee away.
 
 ### Batching the Write and POST phases
 
@@ -330,28 +264,7 @@ For each inline comment:
 
 Group all non-dropped review-body findings by `review_id`. For each group with at least one finding:
 
-1. Compose one aggregated reply body in a temp file `$REVIEW_DIR/reply-review-<REVIEW_ID>.md` using the Write tool. Structure:
-
-   ```
-   @REVIEWER re: your review summary — addressing your findings below.
-
-   ### 1. <short handle for finding, e.g., first ~60 chars of the finding text>
-
-   > Quoted snippet of the original finding (blockquote the reviewer's words)
-
-   <per-item template body from the list above, matching this finding's verdict>
-
-   ### 2. <short handle for next finding>
-
-   > Quoted snippet
-
-   <per-item template body>
-
-   ...
-
-   <!-- respond-to-review:review-<REVIEW_ID>:finding-0 -->
-   <!-- respond-to-review:review-<REVIEW_ID>:finding-1 -->
-   ```
+1. Compose one aggregated reply body in a temp file `$REVIEW_DIR/reply-review-<REVIEW_ID>.md` using the Write tool, following the aggregated review-body skeleton in the reply-templates asset.
 
    The trailing HTML-comment markers — one per finding included in this reply — are mandatory. Step 1d relies on these exact strings to skip the finding on future runs. The marker format must match `respond-to-review:review-<REVIEW_ID>:finding-<N>` where N is the zero-based index assigned in Step 1c. Do not abbreviate, rename, or omit them.
 

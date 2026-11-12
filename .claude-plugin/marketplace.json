@@ -16,7 +16,7 @@
       "name": "respond-to-review",
       "source": "./plugins/respond-to-review",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "category": "code-review"
     },
     {

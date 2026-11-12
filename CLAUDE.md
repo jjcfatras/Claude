@@ -39,7 +39,7 @@ All four match on `Edit|Write` only — a scripted multi-file edit (`python3` he
 
 This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.json`) shipping nine plugins under `plugins/`:
 
-- `respond-to-review`, `debate` — single slash command each; `transcript` ships a single skill (`skills/transcript/SKILL.md`, model-invocable)
+- `debate` — single slash command; `transcript` and `respond-to-review` ship a single model-invocable skill each (`skills/<name>/SKILL.md`). `respond-to-review` keeps its triage procedure in the skill's `references/` and its Workflow script, agent preamble and output templates in `assets/`
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`), both model-invocable
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`), all model-invocable
@@ -60,7 +60,7 @@ Per-plugin layout:
 plugins/<name>/
   .claude-plugin/plugin.json                      # plugin manifest
   commands/<command>.md                           # single slash command, named `<plugin-name>.md`
-  skills/<name>/SKILL.md                          # skill(s); `transcript` ships one, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships eight, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `review-pr` ships one (`review-pr`) instead of commands
+  skills/<name>/SKILL.md                          # skill(s); `transcript` and `respond-to-review` ship one each, `docs` ships two (`audit-docs`, `enrich-claude-md`), `git` ships eight, `simplify` ships two (`simplify-code`, `simplify-prose`), `jira` ships three (`create-ticket`, `implement-ticket`, `create-tests`), and `review-pr` ships one (`review-pr`) instead of commands
   agents/, references/, bin/, tools/, hooks/, scripts/  # only where needed
 ```
 

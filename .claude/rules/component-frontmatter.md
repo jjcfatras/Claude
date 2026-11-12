@@ -96,10 +96,15 @@ description: This skill should be used when the user asks to "specific phrase 1"
   3.0.0 both the plugin and the skill were named `code-review`. They were renamed because a
   bare `/<name>` reaches a plugin skill only when no other command uses that name, and
   Claude Code's bundled `/code-review` already does.
+- `plugins/respond-to-review/skills/respond-to-review/SKILL.md` migrated from
+  `commands/respond-to-review.md` keeping the command-style subset — `description`,
+  `argument-hint`, `allowed-tools`, `model: opus`, `effort: high` — plus an explicit
+  `name: respond-to-review` and a `when_to_use`. It stays model-invocable; invocation is
+  unchanged, so the migration was a MINOR bump (1.7.0 → 1.8.0).
 - Every plain `commands/*.md` slash command in this repo uses only the common subset —
   `description`, `argument-hint`, `disable-model-invocation`, `model`, `effort`, `allowed-tools` —
-  and none of the `(skills only)` fields; among skills, only the git `commit`/`push`/`pr`
-  `when_to_use` breaks that pattern.
+  and none of the `(skills only)` fields; among skills, only the git `commit`/`push`/`pr` and
+  `respond-to-review` `when_to_use` breaks that pattern.
 
 ### `model` tier semantics
 
@@ -131,7 +136,7 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
 opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7, and
-`plugins/respond-to-review/commands/respond-to-review.md` Step 2, which Reads a shipped script and passes
+`plugins/respond-to-review/skills/respond-to-review/SKILL.md` Step 2, which Reads a shipped script and passes
 its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
 script as `scriptPath`: Workflow only accepts paths under the working directory or an added
 directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every user not
