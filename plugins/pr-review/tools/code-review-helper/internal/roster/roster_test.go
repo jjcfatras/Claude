@@ -2,9 +2,11 @@ package roster
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -101,7 +103,7 @@ func TestClaudeMdFiles_WalkAndDedupe(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "src", "CLAUDE.md"), "src")
 	mustWrite(t, filepath.Join(dir, "src", "lib", "CLAUDE.md"), "lib")
 
-	got, err := ClaudeMdFiles([]string{"src/lib/a.ts", "src/lib/b.ts", "src/other.ts"}, dir)
+	got, err := ClaudeMdFiles([]string{"src/lib/a.ts", "src/lib/b.ts", "src/other.ts"}, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,7 @@ func TestClaudeMdFiles_WalkAndDedupe(t *testing.T) {
 func TestClaudeMdFiles_RootOnly(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "root")
-	got, err := ClaudeMdFiles([]string{"deep/path/file.go"}, dir)
+	got, err := ClaudeMdFiles([]string{"deep/path/file.go"}, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +127,7 @@ func TestClaudeMdFiles_RootOnly(t *testing.T) {
 
 func TestClaudeMdFiles_None(t *testing.T) {
 	dir := t.TempDir()
-	got, err := ClaudeMdFiles([]string{"x/y/z.ts"}, dir)
+	got, err := ClaudeMdFiles([]string{"x/y/z.ts"}, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,13 +146,61 @@ func TestClaudeMdFiles_PathScopedRules(t *testing.T) {
 	mustWrite(t, filepath.Join(rules, "nested", "ui.md"), "---\ndescription: x\npaths: [\"src/**/*.{tsx,jsx}\", 'other/**']\n---\n")
 	mustWrite(t, filepath.Join(rules, "notes.txt"), "---\npaths: src/**\n---\n")
 
-	got, err := ClaudeMdFiles([]string{"./src/api/handler.ts", "src/web/App.tsx"}, dir)
+	got, err := ClaudeMdFiles([]string{"./src/api/handler.ts", "src/web/App.tsx"}, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{".claude/rules/api.md", ".claude/rules/nested/ui.md", "CLAUDE.md"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+// The PR head decides, not the checkout (transcript 70331439): a CLAUDE.md and
+// a rule that exist only at the commit are found, a working-tree-only CLAUDE.md
+// is not, and an unknown SHA falls back to the working tree.
+func TestClaudeMdFiles_AtHeadSHA(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		pre := []string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"}
+		out, err := exec.Command("git", append(pre, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "root")
+	mustWrite(t, filepath.Join(dir, "src", "dfp", "CLAUDE.md"), "dfp")
+	mustWrite(t, filepath.Join(dir, ".claude", "rules", "api.md"), "---\npaths: src/**\n---\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "rules", "docs.md"), "---\npaths: docs/**\n---\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "head")
+	sha := git("rev-parse", "HEAD")
+	// Make the working tree disagree with the commit, as a checkout of main does.
+	for _, p := range []string{"src/dfp/CLAUDE.md", ".claude/rules/api.md"} {
+		if err := os.Remove(filepath.Join(dir, p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, filepath.Join(dir, "src", "CLAUDE.md"), "working tree only")
+
+	changed := []string{"src/dfp/a.ts"}
+	got, err := ClaudeMdFiles(changed, dir, sha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{".claude/rules/api.md", "CLAUDE.md", "src/dfp/CLAUDE.md"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("at HEAD_SHA: got %v want %v", got, want)
+	}
+
+	got, err = ClaudeMdFiles(changed, dir, strings.Repeat("0", 40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"CLAUDE.md", "src/CLAUDE.md"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("unknown SHA fallback: got %v want %v", got, want)
 	}
 }
 

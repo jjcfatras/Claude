@@ -342,47 +342,83 @@ func TestBuildSpawnEntries_UsesBundlePlan(t *testing.T) {
 	}
 }
 
+// mkDiff returns n lines of width bytes each, newline included.
+func mkDiff(n, width int) string {
+	return strings.Repeat(strings.Repeat("x", width-1)+"\n", n)
+}
+
 func TestDiffGuidance(t *testing.T) {
 	tests := []struct {
 		name           string
-		bytes, lines   int
+		diff           string
 		wantContains   string
 		wantNotContain string
 	}{
 		{
 			// The PR #1817 shape: all five specialists correctly ignored the
 			// old absolute "never bare-Read the diff" rule at this size.
-			name: "small diff says read it whole", bytes: 13456, lines: 224,
-			wantContains: "13456 bytes / 224 lines, so Read it in ONE call",
+			name: "small diff says read it whole", diff: mkDiff(224, 60),
+			wantContains: "13440 bytes / 224 lines, so Read it in ONE call",
 			// The map is the wrong advice here and must not be mentioned.
 			wantNotContain: "Diff map",
 		},
 		{
-			name: "byte-oversize diff says use the map", bytes: 420_000, lines: 900,
+			// The transcript 70331439 shape: 72 KB fit the old 150 KB one-call
+			// threshold but not Read's 25k-token cap.
+			name: "mid-size diff gets a parallel byte-planned read", diff: mkDiff(1025, 70),
+			wantContains:   "3 calls, all in one parallel batch, and work from them together: offset:1 limit:457; offset:458 limit:457; offset:915 limit:111.",
+			wantNotContain: "ONE call",
+		},
+		{
+			name: "byte-oversize diff says use the map", diff: mkDiff(900, 467),
 			wantContains: "too big for one Read, so use the `## Diff map`",
 		},
 		{
-			name: "line-oversize diff says use the map", bytes: 100_000, lines: 9_000,
+			name: "line-oversize diff says use the map", diff: mkDiff(9_000, 11),
 			wantContains: "too big for one Read, so use the `## Diff map`",
 		},
 		{
-			// Unmeasured (0) must fall back to the conservative branch rather
-			// than claiming a 0-byte diff is safe to read whole.
-			name: "unmeasured falls back to the map", bytes: 0, lines: 0,
+			// Unmeasured (empty) must fall back to the conservative branch
+			// rather than claiming an empty diff is safe to read whole.
+			name: "unmeasured falls back to the map", diff: "",
 			wantContains:   "use the `## Diff map`",
 			wantNotContain: "ONE call",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := diffGuidance(tt.bytes, tt.lines)
+			got := diffGuidance(tt.diff)
 			if !strings.Contains(got, tt.wantContains) {
-				t.Errorf("diffGuidance(%d, %d) = %q, want it to contain %q", tt.bytes, tt.lines, got, tt.wantContains)
+				t.Errorf("diffGuidance = %q, want it to contain %q", got, tt.wantContains)
 			}
 			if tt.wantNotContain != "" && strings.Contains(got, tt.wantNotContain) {
-				t.Errorf("diffGuidance(%d, %d) = %q, should not contain %q", tt.bytes, tt.lines, got, tt.wantNotContain)
+				t.Errorf("diffGuidance = %q, should not contain %q", got, tt.wantNotContain)
 			}
 		})
+	}
+}
+
+// Uneven line widths are why the plan is byte-sized, not an even line split:
+// every run must stay under maxReadBytes and the runs must tile the input.
+func TestPlanReads_TilesUnderByteCap(t *testing.T) {
+	lines := strings.SplitAfter(mkDiff(300, 10)+mkDiff(300, 200), "\n")
+	lines = lines[:len(lines)-1]
+	next := 0
+	for _, r := range planReads(lines) {
+		if r[0] != next {
+			t.Fatalf("run starts at %d, want %d (gap or overlap)", r[0], next)
+		}
+		size := 0
+		for _, l := range lines[r[0] : r[0]+r[1]] {
+			size += len(l)
+		}
+		if size > maxReadBytes {
+			t.Errorf("run %v is %d bytes, over maxReadBytes %d", r, size, maxReadBytes)
+		}
+		next = r[0] + r[1]
+	}
+	if next != len(lines) {
+		t.Errorf("runs cover %d of %d lines", next, len(lines))
 	}
 }
 
@@ -391,7 +427,7 @@ func TestBuildSpawnEntries_SubstitutesDiffGuidance(t *testing.T) {
 	entries, err := buildSpawnEntries([]string{"security"}, spawnSubs{
 		reviewTmpDir: "/tmp/r", headSHA: "deadbeef", prNumber: 7,
 		owner: "o", repo: "r", repoRoot: "/repo",
-		diffBytes: 13456, diffLines: 224,
+		diff: mkDiff(224, 60),
 	})
 	if err != nil {
 		t.Fatalf("buildSpawnEntries: %v", err)

@@ -15,7 +15,7 @@ After the bundle and rubric, Read the diff. Per the bundle's Source index, prefe
 
 Never Read absolute paths from cwd — cwd may be a worktree not at HEAD.
 
-If a Read returns `exceeds maximum allowed tokens (25000)`, retry at the **same** `offset` with half the `limit`, and keep halving until it fits — `offset: 0` would just re-read your first page.
+If a Read returns `exceeds maximum allowed tokens (25000)`, retry at the **same** `offset` with half the `limit`, and keep halving until it fits — `offset: 0` would just re-read your first page. If it instead returns a `PARTIAL view` (`showing lines A-B of N`), continue at `offset: B+1`.
 
 ## Environment
 

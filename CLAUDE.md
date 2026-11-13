@@ -40,7 +40,7 @@ This repo is a Claude Code **plugin marketplace** (`.claude-plugin/marketplace.j
 - `simplify` — two skills: `simplify-code` (behavior-preserving code simplifications) and `simplify-prose` (lossless prose distillation), both model-invocable
 - `docs` — documentation skills (`audit-docs`, `enrich-claude-md`, `revise`); the first two are model-invocable, `revise` is user-only
 - `git` — git workflow skills (`commit`, `commit-push`, `commit-push-pr`, `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`, `rebase`), all model-invocable
-- `jira` — JIRA workflow skills (`create-ticket`, `implement-ticket`, `create-tests`), all user-only (`disable-model-invocation: true`)
+- `jira` — JIRA workflow skills (`create-ticket`, `implement-ticket`, `create-tests`), all user-only (`disable-model-invocation: true`). Shared references sit at the plugin root in `references/`; `implement-ticket` keeps its two Workflow scripts in the skill's `assets/`
 - `caffeine` — hooks only, no commands or skills. It keeps macOS awake while a session works, via the built-in `caffeinate -i`, and replaces `cc-caffeine@samber`, whose synchronous `npx` hooks cost ~3 s per tool call.
   - The `on` hooks are async, and per-session state lives in `${CLAUDE_PLUGIN_DATA}`.
   - `caffeinate -i <cmd>` keeps `<cmd>` in the original pid and asserts from a forked child. So `$!` and the pid file name the heartbeat loop, not caffeinate; killing the loop releases the assertion.

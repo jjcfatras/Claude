@@ -28,6 +28,17 @@ The skill is user-invoked only (`disable-model-invocation: true`), so Claude nev
 
 No Go toolchain is needed. The plugin ships prebuilt helper binaries.
 
+### Auto mode
+
+Each specialist writes its findings to `$TMPDIR/pr-review-*/findings/<role>.json`. That is outside your working directory, so in auto mode every such write goes to the classifier. Now and then it gives no verdict and refuses the write, and the review reports that role as "finished, not saved". An allow rule resolves before the classifier, so adding this to `permissions.allow` in `~/.claude/settings.json` stops it:
+
+```json
+"Edit(//**/pr-review-*/findings/*.json)"
+```
+
+- It is an `Edit` rule because Claude Code checks the Write tool against `Edit` rules; a `Write(...)` rule never matches.
+- The leading `**` matters on macOS: `$TMPDIR` is under `/var/folders`, which resolves to `/private/var/folders`, and an allow rule applies only when both the requested and the resolved path match.
+
 ## What happens
 
 1. Fetches PR metadata, the full diff, and prior review threads (for dedup) via `gh`.
@@ -37,7 +48,7 @@ No Go toolchain is needed. The plugin ships prebuilt helper binaries.
      - `typescript` for `.ts/.tsx/.cts/.mts`, plus tsconfig and framework configs;
      - `react` for `.tsx/.jsx`, plus framework and bundler configs;
      - `infra` for `.sql`, `.tf`, `.hcl`, `Dockerfile`, `docker-compose`, `k8s/`, `terraform/`, …;
-     - `claude-md` for any changed file with a `CLAUDE.md` ancestor.
+     - `claude-md` for any changed file with a `CLAUDE.md` ancestor at the PR head.
 3. The helper writes the `## Summary` section straight from changed-file metadata, so no pre-pass subagent runs.
 4. Spawns all roster specialists in parallel against a shared `spawn-context.md` bundle and a separate `rubric.md`.
 5. The helper finalizes the findings: dedup, severity/confidence gating, line-snapping, payload rendering. You see the summary and are asked whether to post (`--auto` skips the question, `--dry-run` never posts).

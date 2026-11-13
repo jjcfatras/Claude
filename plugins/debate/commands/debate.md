@@ -1,5 +1,5 @@
 ---
-description: Adversarial debate on a claim or question. Spawns parallel pro and con subagents for opening arguments, then runs up to 5 rebuttal rounds until convergence. Renders an inline markdown report of surviving, negated, and disputed arguments.
+description: Adversarial debate on a claim or question. Spawns parallel pro and con subagents for opening arguments, then runs up to 3 rebuttal rounds until convergence. Renders an inline markdown report of surviving, negated, and disputed arguments.
 argument-hint: <claim or question>
 model: opus
 effort: high

@@ -13,6 +13,7 @@ func runRoster(argv []string) error {
 	fs := flag.NewFlagSet("roster", flag.ContinueOnError)
 	in := fs.String("changed-files", "", "path to changed-files JSON array (from `diff`)")
 	repoRoot := fs.String("repo-root", "", "absolute path to the repo root")
+	headSHA := fs.String("head-sha", "", "optional PR head SHA; CLAUDE.md files and rules are then read at it, falling back to the working tree if git can't")
 	outClaudeMd := fs.String("out-claude-md-files", "", "path to write claude-md-files JSON array")
 	outRoster := fs.String("out-roster", "", "path to write roster JSON array of role strings")
 	if err := fs.Parse(argv); err != nil {
@@ -31,7 +32,7 @@ func runRoster(argv []string) error {
 		return fmt.Errorf("parse --changed-files: %w", err)
 	}
 
-	cmFiles, err := roster.ClaudeMdFiles(changed, *repoRoot)
+	cmFiles, err := roster.ClaudeMdFiles(changed, *repoRoot, *headSHA)
 	if err != nil {
 		return err
 	}

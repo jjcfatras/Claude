@@ -141,8 +141,8 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
 opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7, and
-`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, which Reads a shipped script and passes
-its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
+`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, both of which Read a shipped script from
+the skill's `assets/` and pass its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
 script as `scriptPath`: Workflow only accepts paths under the working directory or an added
 directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every user not
 developing in this repo.

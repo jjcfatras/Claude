@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -42,34 +44,29 @@ var (
 // (transcript f6147551: 7 of 14 rules matched the PR, none were checked).
 // Unscoped rules load at startup like the root CLAUDE.md, so they are omitted.
 //
-// repoRoot must be an absolute or process-relative directory; existence is
-// checked via os.Stat on path.Join(repoRoot, candidate).
-func ClaudeMdFiles(changedFiles []string, repoRoot string) ([]string, error) {
-	seen := map[string]bool{}
+// Both lookups read the tree at headSHA when it is set, because the PR — not
+// the reviewer's checkout — decides which guidance applies: transcript 70331439
+// reviewed a PR that added src/projects/dfp/CLAUDE.md from a checkout of main,
+// so claude-md never got the one file governing five of the changed files. An
+// empty headSHA, or any git failure (SHA not fetched, not a repo), falls back
+// to os.Stat / WalkDir under repoRoot.
+func ClaudeMdFiles(changedFiles []string, repoRoot, headSHA string) ([]string, error) {
+	if headSHA != "" {
+		if out, err := claudeMdAtCommit(changedFiles, repoRoot, headSHA); err == nil {
+			return out, nil
+		}
+	}
 	var out []string
-	for _, f := range changedFiles {
-		// strip leading "./" so candidates stay repo-relative
-		f = strings.TrimPrefix(f, "./")
-		parts := strings.Split(f, "/")
-		// Drop the filename — only walk directory prefixes plus the root.
-		parts = parts[:len(parts)-1]
-		for i := 0; i <= len(parts); i++ {
-			cand := filepath.Join(strings.Join(parts[:i], "/"), "CLAUDE.md")
-			if seen[cand] {
+	for _, cand := range ancestorCandidates(changedFiles) {
+		full := filepath.Join(repoRoot, cand)
+		info, err := os.Stat(full)
+		if err != nil {
+			if os.IsNotExist(err) {
 				continue
 			}
-			seen[cand] = true
-			full := filepath.Join(repoRoot, cand)
-			info, err := os.Stat(full)
-			if err != nil {
-				if os.IsNotExist(err) {
-					continue
-				}
-				return nil, fmt.Errorf("stat %s: %w", full, err)
-			}
-			if info.IsDir() {
-				continue
-			}
+			return nil, fmt.Errorf("stat %s: %w", full, err)
+		}
+		if !info.IsDir() {
 			out = append(out, cand)
 		}
 	}
@@ -80,6 +77,74 @@ func ClaudeMdFiles(changedFiles []string, repoRoot string) ([]string, error) {
 	out = append(out, rules...)
 	slices.Sort(out)
 	return out, nil
+}
+
+// claudeMdAtCommit is ClaudeMdFiles read from the tree at sha: one ls-tree
+// for existence, one git show per rule file.
+func claudeMdAtCommit(changedFiles []string, repoRoot, sha string) ([]string, error) {
+	ls, err := exec.Command("git", "-C", repoRoot, "ls-tree", "-r", "-z", "--name-only", sha).Output()
+	if err != nil {
+		return nil, err
+	}
+	files := map[string]bool{}
+	for f := range strings.SplitSeq(string(ls), "\x00") {
+		files[f] = true
+	}
+	var out []string
+	for _, cand := range ancestorCandidates(changedFiles) {
+		if files[cand] {
+			out = append(out, cand)
+		}
+	}
+	for f := range files {
+		if !strings.HasPrefix(f, ".claude/rules/") || !strings.HasSuffix(f, ".md") {
+			continue
+		}
+		doc, err := exec.Command("git", "-C", repoRoot, "show", sha+":"+f).Output()
+		if err != nil {
+			return nil, err
+		}
+		if ruleMatches(string(doc), changedFiles) {
+			out = append(out, f)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// ancestorCandidates lists every CLAUDE.md path at or above a changed file,
+// deduplicated, whether or not it exists.
+func ancestorCandidates(changedFiles []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range changedFiles {
+		// strip leading "./" so candidates stay repo-relative
+		parts := strings.Split(strings.TrimPrefix(f, "./"), "/")
+		// Drop the filename — only walk directory prefixes plus the root.
+		parts = parts[:len(parts)-1]
+		for i := 0; i <= len(parts); i++ {
+			cand := path.Join(strings.Join(parts[:i], "/"), "CLAUDE.md")
+			if !seen[cand] {
+				seen[cand] = true
+				out = append(out, cand)
+			}
+		}
+	}
+	return out
+}
+
+// ruleMatches reports whether a rule file's `paths:` globs match a changed file.
+func ruleMatches(doc string, changedFiles []string) bool {
+	for _, g := range rulePaths(doc) {
+		re, err := globRegexp(g)
+		if err != nil {
+			continue // malformed glob: Claude Code can't load it either
+		}
+		if slices.ContainsFunc(changedFiles, func(f string) bool { return re.MatchString(strings.TrimPrefix(f, "./")) }) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchingRules walks <repoRoot>/.claude/rules for path-scoped rule files that
@@ -103,16 +168,9 @@ func matchingRules(changedFiles []string, repoRoot string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		for _, g := range rulePaths(string(raw)) {
-			re, err := globRegexp(g)
-			if err != nil {
-				continue // malformed glob: Claude Code can't load it either
-			}
-			if slices.ContainsFunc(changedFiles, func(f string) bool { return re.MatchString(strings.TrimPrefix(f, "./")) }) {
-				rel, _ := filepath.Rel(repoRoot, p)
-				out = append(out, filepath.ToSlash(rel))
-				break
-			}
+		if ruleMatches(string(raw), changedFiles) {
+			rel, _ := filepath.Rel(repoRoot, p)
+			out = append(out, filepath.ToSlash(rel))
 		}
 		return nil
 	})

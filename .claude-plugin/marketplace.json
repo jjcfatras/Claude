@@ -31,7 +31,7 @@
       "name": "pr-review",
       "source": "./plugins/pr-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "4.0.2",
+      "version": "4.0.3",
       "category": "code-review"
     },
     {
@@ -44,8 +44,8 @@
     {
       "name": "debate",
       "source": "./plugins/debate",
-      "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 5 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
-      "version": "0.2.1",
+      "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 3 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
+      "version": "0.2.2",
       "category": "reasoning"
     },
     {
@@ -73,7 +73,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
-      "version": "1.5.1",
+      "version": "1.6.0",
       "category": "project-management"
     }
   ]

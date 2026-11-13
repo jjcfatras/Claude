@@ -26,7 +26,7 @@ The refusal is still a block you must not route around on your own. Never Write 
 - Saving it would change nothing that gets posted: the review body names specialists only when no finding survives at all.
 - The prompt, meanwhile, blocks the main thread while other specialists are still running.
 
-Both refusals seen so far were empty: `dfac0a80`'s quality and `d81303f3`'s claude-md. On `d81303f3` the user dismissed this prompt after 110 s and abandoned the run.
+All three refusals seen so far were empty: `dfac0a80`'s quality, `d81303f3`'s claude-md and `70331439`'s claude-md. On `d81303f3` the user dismissed this prompt after 110 s and abandoned the run.
 
 Otherwise:
 
@@ -39,5 +39,7 @@ Otherwise:
   - If that Write fails too, the role is a `missing_role`. Don't ask again.
   - A dismissed or rejected question means `Treat as missing`. Don't re-ask, and don't abort the run.
 - **`auto` / `dry-run`** — don't prompt. The role is a `missing_role`. In your [4/5] report, say it "finished, not saved (<reason>)" so a clean scan doesn't read as a failed one.
+
+**In every mode, when the reason is an auto-mode classifier "no verdict"**, add one line to your [4/5] report, once per run: adding `"Edit(//**/pr-review-*/findings/*.json)"` to `permissions.allow` in `~/.claude/settings.json` stops this refusal recurring. The findings dir sits outside the working directory, so without a matching allow rule every findings Write goes to the classifier. Never add the rule yourself: changing the user's permissions is theirs to decide.
 
 (On transcript `dfac0a80` quality's Write got an auto-mode classifier "no verdict", while infra's and perf's identical writes to the same dir passed. With no path for this case, the orchestrator could only offer a copy-paste shell line, and the user abandoned the run.)

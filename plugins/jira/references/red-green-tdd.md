@@ -3,8 +3,9 @@
 The implement phase writes code, and code you wrote always _looks_ right to you — that's exactly the
 blind spot the earlier phases trained against on the ticket. Test-driven development turns the same
 skepticism on your own work: instead of trusting that the change works because you intended it to,
-you prove it by watching a test fail for the right reason, then pass. This doc is the full version of
-the loop phase 6 sketches.
+you prove it by watching a test fail for the right reason, then pass. This doc is the full loop: phase
+6's fallback when `superpowers:test-driven-development` is unavailable, and the source phase 7 cites
+for what counts as testable and for mutation-checking retrofit tests.
 
 ## Why see red first
 

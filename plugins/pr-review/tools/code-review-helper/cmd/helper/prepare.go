@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -177,7 +176,7 @@ func runPrepare(argv []string) error {
 	}
 
 	// 2. CLAUDE.md ancestor walk + specialist roster.
-	cmFiles, err := roster.ClaudeMdFiles(parsed.ChangedFiles, opts.repoRoot)
+	cmFiles, err := roster.ClaudeMdFiles(parsed.ChangedFiles, opts.repoRoot, meta.HeadRefOid)
 	if err != nil {
 		return err
 	}
@@ -253,7 +252,7 @@ func runPrepare(argv []string) error {
 	}
 
 	// 5. One fully-rendered Agent payload per roster role.
-	diffBytes, diffLines := measureFile(opts.diffPath)
+	diff, _ := os.ReadFile(opts.diffPath) // unreadable → empty → diff-map guidance
 	entries, err := buildSpawnEntries(roles, spawnSubs{
 		reviewTmpDir: opts.reviewTmpDir,
 		headSHA:      meta.HeadRefOid,
@@ -261,8 +260,7 @@ func runPrepare(argv []string) error {
 		owner:        owner,
 		repo:         repo,
 		repoRoot:     opts.repoRoot,
-		diffBytes:    diffBytes,
-		diffLines:    diffLines,
+		diff:         string(diff),
 		bundle:       bundleStr,
 	})
 	if err != nil {
@@ -419,15 +417,4 @@ func validLineRanges(in map[string][]diffpkg.Run) map[string][][2]int {
 		out[path] = pairs
 	}
 	return out
-}
-
-// measureFile reports a file's size in bytes and lines, or (0, 0) if it cannot
-// be read. Used to decide whether the spawn prompt should tell specialists to
-// Read the diff whole or navigate it by the diff map.
-func measureFile(path string) (int, int) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return 0, 0
-	}
-	return len(b), bytes.Count(b, []byte("\n"))
 }

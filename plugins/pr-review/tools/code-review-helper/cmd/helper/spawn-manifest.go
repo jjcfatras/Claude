@@ -143,8 +143,7 @@ type spawnSubs struct {
 	owner        string
 	repo         string
 	repoRoot     string
-	diffBytes    int // raw diff size; 0 means unmeasured, which falls back to the diff-map guidance
-	diffLines    int
+	diff         string // raw diff text; empty means unmeasured, which falls back to the diff-map guidance
 	bundle       string // rendered spawn-context.md; empty falls back to the open-ended first-page directive
 }
 
@@ -184,20 +183,31 @@ func orientationReads(bundle string) string {
 		}
 	}
 	var reads []string
-	for start := 0; start < end; {
-		n, size := 0, 0
-		for start+n < end && n < maxReadLines && (n == 0 || size+len(lines[start+n]) <= maxReadBytes) {
-			size += len(lines[start+n])
-			n++
-		}
-		reads = append(reads, fmt.Sprintf("offset:%d limit:%d", start, n))
-		start += n
+	for _, c := range planReads(lines[:end]) {
+		reads = append(reads, fmt.Sprintf("offset:%d limit:%d", c[0], c[1]))
 	}
 	plan := strings.Join(reads, "; then ")
 	if len(reads) > 1 {
 		plan = fmt.Sprintf("%d Reads, each sized under the 25k-token cap — issue them exactly as given, never merged: %s", len(reads), plan)
 	}
 	return plan
+}
+
+// planReads splits lines into consecutive {0-based start, count} runs of at
+// most maxReadBytes and maxReadLines each (a single over-size line still gets
+// its own run).
+func planReads(lines []string) [][2]int {
+	var runs [][2]int
+	for start := 0; start < len(lines); {
+		n, size := 0, 0
+		for start+n < len(lines) && n < maxReadLines && (n == 0 || size+len(lines[start+n]) <= maxReadBytes) {
+			size += len(lines[start+n])
+			n++
+		}
+		runs = append(runs, [2]int{start, n})
+		start += n
+	}
+	return runs
 }
 
 // buildSpawnEntries renders one Agent payload per roster role. Shared by the
@@ -219,7 +229,7 @@ func buildSpawnEntries(roles []string, s spawnSubs) ([]spawnEntry, error) {
 		"{{REPO_ROOT}}", s.repoRoot,
 		"{{OWNER}}", s.owner,
 		"{{REPO}}", s.repo,
-		"{{DIFF_GUIDANCE}}", diffGuidance(s.diffBytes, s.diffLines),
+		"{{DIFF_GUIDANCE}}", diffGuidance(s.diff),
 	)
 	ordered := append([]string(nil), roles...)
 	// Longest-running roles first; unknown roles keep roster order behind the
@@ -244,9 +254,13 @@ func buildSpawnEntries(roles []string, s spawnSubs) ([]spawnEntry, error) {
 	return entries, nil
 }
 
-// Thresholds for reading the diff in one call. Read caps out at 256 KB and
-// 25,000 tokens, and its default line budget is 2,000 — so a diff comfortably
-// inside all three is cheaper to take whole than to visit file by file.
+// Thresholds for reading the diff whole rather than file by file through the
+// diff map. Up to these, the diff is read in maxReadBytes-sized parallel calls:
+// one call when it fits, otherwise a byte-planned set. A byte limit alone
+// doesn't keep one Read under the 25,000-token cap — transcript 70331439's
+// 72,001-byte diff was 29,358 tokens, so all six specialists' "ONE call" came
+// back as a 742-of-1,026-line partial view and each spent a sequential turn
+// fetching the rest.
 const (
 	oneShotDiffBytes = 150_000
 	oneShotDiffLines = 1_500
@@ -264,14 +278,27 @@ const (
 // this prompt. They were right. An always-false directive does not just waste
 // its own line, it teaches the reader to discount the ones around it — and
 // prepare already knows the number that settles the question.
-func diffGuidance(diffBytes, diffLines int) string {
-	if diffBytes <= 0 {
+func diffGuidance(diff string) string {
+	if diff == "" {
 		return "use the `## Diff map` on the bundle's first page to jump to each file's line offset instead of paging from 0."
 	}
-	if diffBytes <= oneShotDiffBytes && diffLines <= oneShotDiffLines {
+	diffBytes, diffLines := len(diff), strings.Count(diff, "\n")
+	if diffBytes > oneShotDiffBytes || diffLines > oneShotDiffLines {
+		return fmt.Sprintf("it is %d bytes / %d lines — too big for one Read, so use the `## Diff map` on the bundle's first page to jump to each file's offset instead of paging from 0.", diffBytes, diffLines)
+	}
+	lines := strings.SplitAfter(diff, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	runs := planReads(lines)
+	if len(runs) == 1 {
 		return fmt.Sprintf("it is %d bytes / %d lines, so Read it in ONE call and work from that.", diffBytes, diffLines)
 	}
-	return fmt.Sprintf("it is %d bytes / %d lines — too big for one Read, so use the `## Diff map` on the bundle's first page to jump to each file's offset instead of paging from 0.", diffBytes, diffLines)
+	reads := make([]string, len(runs))
+	for i, r := range runs {
+		reads[i] = fmt.Sprintf("offset:%d limit:%d", r[0]+1, r[1]) // Read's offset is a 1-based line number
+	}
+	return fmt.Sprintf("it is %d bytes / %d lines, over one Read's 25k-token cap, so Read it in these %d calls, all in one parallel batch, and work from them together: %s.", diffBytes, diffLines, len(runs), strings.Join(reads, "; "))
 }
 
 // rankOf returns role's spawn rank, sorting unranked roles last.
