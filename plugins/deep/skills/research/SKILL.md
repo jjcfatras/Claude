@@ -29,7 +29,7 @@ Set `paths` to the absolute directories the question is about when it @-mentions
 
 Call the **Workflow** tool. Invoking this skill is the explicit opt-in that Workflow requires, so don't ask for confirmation again.
 
-- `script`: the exact contents of `${CLAUDE_SKILL_DIR}/assets/research-workflow.js`. Read the file and pass it verbatim, with no edits and nothing left out. Don't use `scriptPath`: Workflow only loads paths under the working directory or an added directory, and never the skill's install folder.
+- `name`: `"deep:research-pipeline"`, the workflow this plugin ships. If the tool doesn't know that name (an older Claude Code build), pass `script` instead: the exact contents of `${CLAUDE_PLUGIN_ROOT}/workflows/research-pipeline.js`, Read and passed verbatim. Never `scriptPath`: Workflow only loads paths under the working directory or an added directory.
 - `args`: `{"question": "<refined question>", "codebase": <true|false>, "paths": [<absolute dirs>]}`, as a JSON object, not a string.
 
 Then post one line, for example `Researching: <refined question> (codebase: on). Running in the background; watch or stop it in /workflows.`, and end the turn. This lets the user stop a refinement that has drifted before the agents fan out.

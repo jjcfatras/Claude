@@ -2,6 +2,8 @@ export const meta = {
   name: "implement-ticket-verify-claims",
   description:
     "Verify a JIRA ticket's codebase claims: one agent per claim cluster, each returning a structured verdict with file:line evidence",
+  whenToUse:
+    "Invoked by /jira:implement-ticket phase 3 when a ticket has many claims. Requires args {ticketKey, guidePath, clusters: [{name, claims}]}.",
   phases: [{ title: "Verify" }],
 };
 
@@ -28,7 +30,7 @@ const VERDICTS = {
   required: ["verdicts"],
 };
 
-if (!Array.isArray(args.clusters)) {
+if (!Array.isArray(args?.clusters)) {
   throw new Error(
     "args.clusters must be a JSON array of { name, claims } — pass an array, not a string",
   );

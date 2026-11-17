@@ -17,6 +17,7 @@ Every plugin follows Anthropic's [standard layout](https://code.claude.com/docs/
 | `commands/*.md`              | Legacy single-file commands. Write new ones as skills                                                                               | `debate`                      |
 | `agents/*.md`                | Subagents. A subfolder becomes part of the name: `agents/review/x.md` loads as `<plugin>:review:x`                                  | `pr-review`, `debate`, `deep` |
 | `hooks/hooks.json`           | Hooks, wrapped in a top-level `"hooks"` key                                                                                         | `caffeine`                    |
+| `workflows/*.js`             | Workflow scripts. Each loads as `/<plugin>:<meta.name>`, a command users can also type. See [Workflows](#workflows)                 | `deep`, `jira`, `pr-respond`  |
 | `scripts/`                   | Files that hooks or skills run by path. A convention, not a folder Claude Code scans                                                | `caffeine`                    |
 | `bin/`                       | Executables. Put on the Bash tool's `PATH` while the plugin is enabled, and makes claude.ai and Cowork refuse to install the plugin | —                             |
 | `references/`, `tools/`      | Repo conventions, not scanned: docs shared by a plugin's skills and agents; source for a helper built into a `scripts/` folder      | `pr-review`, `jira`, …        |
@@ -38,6 +39,17 @@ Add only the folders a plugin uses. Don't put a `CLAUDE.md` at a plugin root: Cl
 - `${CLAUDE_PLUGIN_ROOT}` changes on every update, so don't write state there. Use `${CLAUDE_PLUGIN_DATA}`, which survives updates, as `caffeine` does.
 - In a shell-form hook command, quote the variable so a path with spaces stays one word: `"\"${CLAUDE_PLUGIN_ROOT}\"/scripts/caffeine.sh on"`.
 - Claude Code substitutes these variables in skill, command and agent bodies and exports them to hook, MCP and LSP processes. They are not set in the Bash tool's environment, so write `${CLAUDE_PLUGIN_ROOT}` in the Markdown body, not as `$CLAUDE_PLUGIN_ROOT` in a command Claude composes.
+
+## Workflows
+
+A plugin ships each Workflow script as `workflows/<meta.name>.js` ([docs](https://code.claude.com/docs/en/workflows#distribute-a-workflow-in-a-plugin)). Claude Code registers it as `/<plugin>:<meta.name>`, as Anthropic's `claude-security` and `code-modernization` plugins do.
+
+- A skill runs it by name: `Workflow({ name: "<plugin>:<meta.name>", args })`, with `args` as a real JSON value. The script never passes through the skill's context, and the approval prompt can offer "don't ask again" for it.
+- If the tool doesn't know the name (an older Claude Code build), the skill Reads `${CLAUDE_PLUGIN_ROOT}/workflows/<file>.js` and passes it verbatim as `script`. Never as `scriptPath`: Workflow only loads paths under the working directory or an added directory, and the plugin's install folder is neither.
+- `meta.name` must not match a skill or command in the same plugin, since both would be `/<plugin>:<name>` (hence `deep:research-pipeline` next to the `deep:research` skill).
+- Users can type the bare command with no `args`. Guard every read with `args?.` and fail with a message that names the expected args.
+- Set `meta.whenToUse` to which skill invokes the workflow and the args it requires.
+- The script can't read files. A file it needs stays in the skill and reaches it as a `${CLAUDE_SKILL_DIR}` path in `args` (pr-respond's `checksPath`), or is embedded in the script (pr-respond's `PREAMBLE`).
 
 ## Validate
 

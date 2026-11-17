@@ -1,9 +1,9 @@
 export const meta = {
-  name: "deep-research-plugin",
+  name: "research-pipeline",
   description:
     "Deep research: split a question into web, library-docs and codebase angles, extract falsifiable claims, refute-test each with 2 voters plus a tie-break, synthesize a cited report",
   whenToUse:
-    "Launched by the /deep:research skill, which passes {question, codebase, paths} as args.",
+    "Invoked by the /deep:research skill, which renders the report. Requires args {question, codebase, paths}.",
   phases: [
     {
       title: "Scope",

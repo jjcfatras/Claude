@@ -1,17 +1,19 @@
 export const meta = {
-  name: "pr-respond-triage",
+  name: "triage",
   description:
     "Triage PR review items: one verdict per item, then adversarially verify every dismissal and every accepted response",
+  whenToUse:
+    "Invoked by /pr-respond Step 2 for more than 3 review items. Requires args {items, pr, headSha, baseSha, prCommits, reviewDir, worktree, checksPath}.",
   phases: [{ title: "Analyze" }, { title: "Verify" }],
 };
 
-// Keep in sync with assets/agent-preamble.md in this skill (SKILL.md Step 1c copies it into parsing-agent prompts).
+// Keep in sync with skills/pr-respond/assets/agent-preamble.md (SKILL.md Step 1c copies it into parsing-agent prompts).
 const PREAMBLE = [
   "You are a review-response analysis agent. Use the Read/Write tools and `rg` for searching, rather than `sed`/`awk`/`du` — those aren't in this skill's `allowed-tools`, so they prompt outside auto permission mode. Don't pipe untrusted data into `sh`/`bash`. Don't run `rm -rf` or destructive git operations without confirmation. Do NOT post anything to GitHub — only the main skill posts replies in Step 6.",
   "**Verify library claims with Context7.** When evaluating a reviewer's concern that hinges on a specific library, framework, or external API (React hooks, Prisma, Next.js routing, AWS SDK, etc.), verify the claim against current docs before deciding: call `mcp__plugin_context7_context7__resolve-library-id`, then `mcp__plugin_context7_context7__query-docs` with the returned ID. Use this to confirm a **false-positive** verdict (the library really does handle the concern) or a **valid** verdict (the library really does behave as the reviewer says). Skip Context7 for general programming patterns, project-internal logic, or anything verifiable from the diff alone — don't burn calls on claims that don't depend on external library behavior.",
 ].join("\n\n");
 
-// Field semantics live in references/triage-checks.md ("The verdict object").
+// Field semantics live in skills/pr-respond/references/triage-checks.md ("The verdict object").
 const VERDICT = {
   type: "object",
   properties: {
@@ -52,7 +54,7 @@ const CHECK = {
   required: ["reproduced", "reason"],
 };
 
-if (!Array.isArray(args.items)) {
+if (!Array.isArray(args?.items)) {
   throw new Error(
     "args.items must be a JSON array — pass the parsed pending-items list, not a string",
   );

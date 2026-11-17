@@ -2,10 +2,12 @@ export const meta = {
   name: "implement-ticket-audit-coverage",
   description:
     "Audit a finished changeset for test coverage: one agent per changed file, one verdict per changed behavior",
+  whenToUse:
+    "Invoked by /jira:implement-ticket phase 7 when the diff spans many files. Requires args {diffBase, files: [repo-relative paths]}.",
   phases: [{ title: "Audit" }],
 };
 
-// Verdict definitions mirror SKILL.md phase [7/7] — when editing either, edit both.
+// Verdict definitions mirror skills/implement-ticket/SKILL.md phase [7/7] — when editing either, edit both.
 const AUDIT = {
   type: "object",
   properties: {
@@ -29,7 +31,7 @@ const AUDIT = {
   required: ["behaviors"],
 };
 
-if (!Array.isArray(args.files)) {
+if (!Array.isArray(args?.files)) {
   throw new Error(
     "args.files must be a JSON array of repo-relative paths — pass an array, not a string",
   );

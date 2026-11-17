@@ -1,6 +1,6 @@
 # Triage procedure — one verdict per review item
 
-Shared by both analysis paths in `/pr-respond` Step 2: the orchestrator applies it inline for three or fewer items, and each `analyze:*` agent in `triage-workflow.js` applies it to its single item. Whichever path runs, the output is the verdict object described at the end, so downstream steps never re-parse prose.
+Shared by both analysis paths in `/pr-respond` Step 2: the orchestrator applies it inline for three or fewer items, and each `analyze:*` agent in the plugin's `workflows/triage.js` applies it to its single item. Whichever path runs, the output is the verdict object described at the end, so downstream steps never re-parse prose.
 
 Work from these item fields, by `source_type`:
 

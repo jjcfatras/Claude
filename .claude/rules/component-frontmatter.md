@@ -146,11 +146,12 @@ workflows, instruct it to call the `Workflow` tool in its **body**: "the user in
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
 opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7,
 `plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, and `plugins/deep/skills/research/SKILL.md`
-Step 3, all of which Read a shipped script from
-the skill's `assets/` and pass its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
-script as `scriptPath`: Workflow only accepts paths under the working directory or an added
-directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every user not
-developing in this repo.
+Step 3, all of which run a script shipped in the plugin's `workflows/` by name, so the schema is
+never hand-written; see [plugin-structure.md](plugin-structure.md) › Workflows). Don't pass a
+plugin-shipped script as `scriptPath`: Workflow only accepts paths under the working directory or
+an added directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every
+user not developing in this repo. That is why the by-name fallback Reads the file and passes it as
+`script`.
 
 ### Slash-command specifics
 
