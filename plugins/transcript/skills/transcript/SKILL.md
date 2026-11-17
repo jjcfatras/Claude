@@ -2,7 +2,6 @@
 name: transcript
 description: Print the filepath of the current Claude Code session's .jsonl transcript. Use when the user asks where this session's transcript / session log / .jsonl file is, asks for "the transcript path", or when you need the current session's transcript file to pass to another tool such as the plugin-session-auditor. Only for locating the current session's file — not for reading or analyzing transcript contents.
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/transcript-path.sh *)
-model: haiku
 effort: low
 ---
 

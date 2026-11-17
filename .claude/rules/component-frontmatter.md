@@ -73,9 +73,13 @@ description: This skill should be used when the user asks to "specific phrase 1"
   are plugin-shipped skills using the fuller command-style subset — `description`,
   `argument-hint`, `model: opus`, `effort: high`, `allowed-tools` — and are model-invocable (no
   `disable-model-invocation`).
-- `plugins/docs/skills/revise/SKILL.md` is user-only (`disable-model-invocation: true`) and the
-  only plugin skill that leaves `model` and `effort` unset. It reflects on the live conversation,
-  and a mid-turn model switch would re-read the whole session without the prompt cache.
+- `plugins/docs/skills/revise/SKILL.md` is user-only (`disable-model-invocation: true`) and
+  leaves `model` and `effort` unset. It reflects on the live conversation, and a mid-turn model
+  switch would re-read the whole session without the prompt cache.
+- `plugins/deep/skills/research/SKILL.md` is user-only (`disable-model-invocation: true`, with
+  `description`, `argument-hint`, `allowed-tools`) and the other plugin skill that leaves `model`
+  and `effort` unset. Its Workflow pins a model per `agent()` call, and the report is rendered
+  after the background run finishes, in a later turn that a skill-level `model` would not reach.
 - The nine `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
   `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`, `rebase`) use the command-style subset —
   `description`, `argument-hint` (commit/cherry-pick/merge/rebase only), `allowed-tools` (all but
@@ -140,8 +144,9 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 `SKILL.md` is not a valid level and falls back to the nearest supported one. To have a skill use
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
-opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7, and
-`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, both of which Read a shipped script from
+opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7,
+`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, and `plugins/deep/skills/research/SKILL.md`
+Step 3, all of which Read a shipped script from
 the skill's `assets/` and pass its contents verbatim as `script` so the schema is never hand-written). Don't pass a plugin-shipped
 script as `scriptPath`: Workflow only accepts paths under the working directory or an added
 directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every user not
@@ -216,9 +221,12 @@ the hooks and MCP servers at plugin level (`hooks/hooks.json`, `.mcp.json`).
 
 **In practice (this repo):**
 
-- Repo agents use only `name`/`description`/`tools`/`model`/`effort`/`color` — none of the other 13
-  fields. `effort` is used by the eight pr-review specialists only; the `debate` agents and the
-  `plugin-session-auditor` analyzers still pin `model` alone.
+- Repo agents use only `name`/`description`/`tools`/`model`/`effort`/`color`/`omitClaudeMd` — none
+  of the other 12 fields. `effort` is used by the eight pr-review specialists only; the `debate`
+  agents and the `plugin-session-auditor` analyzers still pin `model` alone. `omitClaudeMd: true`
+  is used only by `deep`'s two Workflow agents (`researcher`, `code-reader`). Their prompt carries
+  everything they need, and dropping the CLAUDE.md block (about 18K tokens here) matters at about
+  80 agents per run.
 - `color: magenta` (`plugins/debate/agents/rebuttal.md`) is the one value outside the documented
   set; `purple`, `orange`, and `pink` (also used here) are now officially documented.
 - `model` is pinned explicitly, never left to the `inherit` default — `sonnet`/`opus` throughout.

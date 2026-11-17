@@ -1,6 +1,6 @@
 {
   "name": "jjcfatras-tools",
-  "description": "Claude Code plugins for code review, PR review responses, git and JIRA workflows, docs auditing, adversarial debate, code and prose simplification, transcript lookup, and keeping macOS awake",
+  "description": "Claude Code plugins for code review, PR review responses, git and JIRA workflows, docs auditing, adversarial debate, deep fact-checked research, code and prose simplification, transcript lookup, and keeping macOS awake",
   "owner": {
     "name": "jjcfatras"
   },
@@ -47,6 +47,13 @@
       "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 3 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
       "version": "0.2.2",
       "category": "reasoning"
+    },
+    {
+      "name": "deep",
+      "source": "./plugins/deep",
+      "description": "Deep, fact-checked research (/deep:research): web searches, library docs via Context7 and an optional codebase search, adversarial verification of every claim (two voters plus a tie-break), and a cited inline report",
+      "version": "0.1.0",
+      "category": "research"
     },
     {
       "name": "simplify",

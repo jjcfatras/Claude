@@ -1,0 +1,25 @@
+{
+  "name": "deep",
+  "version": "0.1.0",
+  "description": "Deep, fact-checked research (/deep:research): fans out web searches, library docs via Context7 and an optional codebase search, adversarially verifies every claim with two skeptic voters plus a tie-break, and synthesizes a cited report. Runs as a background Workflow with per-phase model pins and two lean internal agents.",
+  "author": {
+    "name": "jjcfatras"
+  },
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": [
+    "research",
+    "deep-research",
+    "web-search",
+    "fact-check",
+    "citations",
+    "context7",
+    "workflow"
+  ],
+  "dependencies": [
+    {
+      "name": "context7",
+      "marketplace": "claude-plugins-official"
+    }
+  ]
+}
