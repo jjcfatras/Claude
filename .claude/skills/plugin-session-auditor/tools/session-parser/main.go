@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -54,6 +55,14 @@ type rawEntry struct {
 type messageEnvelope struct {
 	Role    string          `json:"role"`
 	Content json.RawMessage `json:"content"`
+	ID      string          `json:"id"`
+	Model   string          `json:"model"`
+	Usage   *struct {
+		InputTokens              int64 `json:"input_tokens"`
+		CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+		OutputTokens             int64 `json:"output_tokens"`
+	} `json:"usage"`
 }
 
 type contentItem struct {
@@ -134,12 +143,29 @@ type AgentSpawn struct {
 // specialist's work the same way they analyze the main session. Events are
 // optional; the parser drops them in --summary-only mode to keep payloads small.
 type Sidechain struct {
-	AgentType      string  `json:"agent_type,omitempty"`
-	Description    string  `json:"description,omitempty"`
-	FirstTimestamp string  `json:"first_timestamp,omitempty"`
-	LastTimestamp  string  `json:"last_timestamp,omitempty"`
-	Stats          Stats   `json:"stats"`
-	Events         *Events `json:"events,omitempty"`
+	AgentType      string `json:"agent_type,omitempty"`
+	Description    string `json:"description,omitempty"`
+	Phase          string `json:"phase,omitempty"` // Workflow agents only: the meta's workflowPhase
+	FirstTimestamp string `json:"first_timestamp,omitempty"`
+	LastTimestamp  string `json:"last_timestamp,omitempty"`
+	// Models comes from each response's message.model. Never use the meta's
+	// pickedEffortModel: it named Opus for Sonnet-pinned agents (255adf1a).
+	Models []string `json:"models,omitempty"`
+	// API responses, deduped by message.id: one response is split across
+	// several jsonl lines that each repeat its usage block.
+	APIResponses int     `json:"api_responses,omitempty"`
+	InputTokens  int64   `json:"input_tokens,omitempty"` // summed over responses, cache reads included
+	OutputTokens int64   `json:"output_tokens,omitempty"`
+	Stats        Stats   `json:"stats"`
+	Events       *Events `json:"events,omitempty"`
+}
+
+// WorkflowRun holds the agents of one Workflow tool run, read from
+// <session>/subagents/workflows/<runId>/agent-*.jsonl. No Agent tool_use
+// spawns them, so they never attach to Events.AgentSpawns.
+type WorkflowRun struct {
+	RunID  string       `json:"run_id"`
+	Agents []*Sidechain `json:"agents"`
 }
 
 type SlashCmd struct {
@@ -216,6 +242,7 @@ type Session struct {
 	PluginScopeKnown map[string]PluginScope `json:"plugin_scope_known,omitempty"`
 	Stats            Stats                  `json:"stats"`
 	Events           *Events                `json:"events,omitempty"`
+	WorkflowRuns     []*WorkflowRun         `json:"workflow_runs,omitempty"`
 }
 
 // permissionRejectMarkers is the FALLBACK denial classifier, for transcripts
@@ -469,6 +496,10 @@ type parsedFile struct {
 	Version         string
 	FirstTimestamp  string
 	LastTimestamp   string
+	Models          []string
+	APIResponses    int
+	InputTokens     int64
+	OutputTokens    int64
 }
 
 func parseFile(path string) (*parsedFile, error) {
@@ -487,6 +518,7 @@ func parseFile(path string) (*parsedFile, error) {
 	}
 	events := pf.Events
 	toolResultsByID := pf.ToolResultsByID
+	seenResponse := map[string]bool{}
 
 	for {
 		var raw map[string]json.RawMessage
@@ -582,6 +614,17 @@ func parseFile(path string) (*parsedFile, error) {
 		var env messageEnvelope
 		if err := json.Unmarshal(entry.Message, &env); err != nil {
 			continue
+		}
+		if entry.Type == "assistant" && env.ID != "" && !seenResponse[env.ID] {
+			seenResponse[env.ID] = true
+			pf.APIResponses++
+			if env.Model != "" && !slices.Contains(pf.Models, env.Model) {
+				pf.Models = append(pf.Models, env.Model)
+			}
+			if u := env.Usage; u != nil {
+				pf.InputTokens += u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+				pf.OutputTokens += u.OutputTokens
+			}
 		}
 
 		// Some user messages carry plain string content with embedded slash command markers.
@@ -947,18 +990,19 @@ func usageFromToolResult(text string) (totalTokens int64, toolUses int, duration
 }
 
 // loadSidechainMeta reads the sibling .meta.json next to a sidechain jsonl, if present.
-func loadSidechainMeta(jsonlPath string) (agentType, description string) {
+func loadSidechainMeta(jsonlPath string) (agentType, description, phase string) {
 	metaPath := strings.TrimSuffix(jsonlPath, ".jsonl") + ".meta.json"
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return
 	}
 	var meta struct {
-		AgentType   string `json:"agentType"`
-		Description string `json:"description"`
+		AgentType     string `json:"agentType"`
+		Description   string `json:"description"`
+		WorkflowPhase string `json:"workflowPhase"`
 	}
 	if err := json.Unmarshal(data, &meta); err == nil {
-		return meta.AgentType, meta.Description
+		return meta.AgentType, meta.Description, meta.WorkflowPhase
 	}
 	return
 }
@@ -977,7 +1021,7 @@ func parseSidechain(jsonlPath string, sidechainDir string, byAgentType map[strin
 		return nil, err
 	}
 	events, stats := correlateAndStat(pf)
-	agentType, description := loadSidechainMeta(jsonlPath)
+	agentType, description, phase := loadSidechainMeta(jsonlPath)
 
 	// Two passes — same as parseSession — so temporal partitioning has the
 	// next-same-type timestamp available.
@@ -1020,8 +1064,13 @@ func parseSidechain(jsonlPath string, sidechainDir string, byAgentType map[strin
 	sc := &Sidechain{
 		AgentType:      agentType,
 		Description:    description,
+		Phase:          phase,
 		FirstTimestamp: pf.FirstTimestamp,
 		LastTimestamp:  pf.LastTimestamp,
+		Models:         pf.Models,
+		APIResponses:   pf.APIResponses,
+		InputTokens:    pf.InputTokens,
+		OutputTokens:   pf.OutputTokens,
 		Stats:          stats,
 	}
 	if includeEvents {
@@ -1079,6 +1128,9 @@ func rollUpSidechainStats(sess *Session) {
 	}
 	for i := range sess.Events.AgentSpawns {
 		walk(sess.Events.AgentSpawns[i].Sidechains)
+	}
+	for _, run := range sess.WorkflowRuns {
+		walk(run.Agents)
 	}
 
 	if base := s.MainThreadToolCalls + s.SidechainToolCalls; base > 0 {
@@ -1154,6 +1206,7 @@ func parseSession(path string) (*Session, error) {
 				spawn.Sidechains = append(spawn.Sidechains, sc)
 			}
 		}
+		sess.WorkflowRuns = parseWorkflowRuns(sidechainDir)
 	}
 
 	rollUpSidechainStats(sess)
@@ -1162,6 +1215,34 @@ func parseSession(path string) (*Session, error) {
 	sess.PluginsUsed = detectPluginsInSession(events, scope)
 	sess.PluginScopeKnown = scope
 	return sess, nil
+}
+
+// parseWorkflowRuns reads every <sidechainDir>/workflows/<runId>/agent-*.jsonl,
+// one WorkflowRun per run dir, agents in start order.
+func parseWorkflowRuns(sidechainDir string) []*WorkflowRun {
+	runDirs, _ := filepath.Glob(filepath.Join(sidechainDir, "workflows", "*"))
+	sort.Strings(runDirs)
+	var runs []*WorkflowRun
+	for _, dir := range runDirs {
+		paths, _ := filepath.Glob(filepath.Join(dir, "agent-*.jsonl"))
+		run := &WorkflowRun{RunID: filepath.Base(dir)}
+		visited := map[string]bool{}
+		for _, path := range paths {
+			sc, err := parseSidechain(path, dir, nil, visited, true)
+			if err != nil || sc == nil {
+				continue
+			}
+			run.Agents = append(run.Agents, sc)
+		}
+		if len(run.Agents) == 0 {
+			continue
+		}
+		sort.SliceStable(run.Agents, func(i, j int) bool {
+			return run.Agents[i].FirstTimestamp < run.Agents[j].FirstTimestamp
+		})
+		runs = append(runs, run)
+	}
+	return runs
 }
 
 func expandInputs(args []string) ([]string, error) {
@@ -1218,6 +1299,11 @@ func main() {
 		if *summaryOnly {
 			session.Events = nil
 			session.PluginScopeKnown = nil
+			for _, run := range session.WorkflowRuns {
+				for _, agent := range run.Agents {
+					agent.Events = nil
+				}
+			}
 		}
 		sessions = append(sessions, session)
 	}

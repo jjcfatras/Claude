@@ -52,7 +52,7 @@ silently execute in the wrong directory and produce no output:
 (cd "${CLAUDE_PROJECT_DIR}/.claude/skills/plugin-session-auditor/tools/session-parser" && go run . --out "$RUN_DIR/parsed.json" "<jsonl-path-or-dir>")
 ```
 
-`parsed.json` contains: `session_id`, `cwd`, `git_branch`, `plugins_used`, `plugin_scope_known`, full `events` (tool_calls, tool_failures, permission_denials, agent_spawns, slash_commands, hook_events, api_errors), and aggregate `stats`.
+`parsed.json` contains: `session_id`, `cwd`, `git_branch`, `plugins_used`, `plugin_scope_known`, full `events` (tool_calls, tool_failures, permission_denials, agent_spawns, slash_commands, hook_events, api_errors), aggregate `stats`, and `workflow_runs` (one entry per Workflow tool run: each agent's phase, models, timestamps, API responses, input/output tokens, stats and events). Workflow agents never show up in `agent_spawns`, so for `pr-review-v2`, `deep`, `jira` and `pr-respond` sessions, look in `workflow_runs`.
 
 If `plugins_used` is empty, the session never invoked one of this repo's plugins. Tell the user — they may have given the wrong file. Don't audit further unless they confirm.
 

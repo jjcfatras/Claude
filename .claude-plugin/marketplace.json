@@ -35,6 +35,13 @@
       "category": "code-review"
     },
     {
+      "name": "pr-review-v2",
+      "source": "./plugins/pr-review-v2",
+      "description": "Multi-specialist code review of a PR run as a native Workflow, with a skeptic verifying every finding (no compiled helper)",
+      "version": "0.1.0",
+      "category": "code-review"
+    },
+    {
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",

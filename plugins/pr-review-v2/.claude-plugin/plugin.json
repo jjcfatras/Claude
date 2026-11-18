@@ -1,0 +1,24 @@
+{
+  "name": "pr-review-v2",
+  "version": "0.1.0",
+  "description": "Multi-specialist PR code review run as a native Claude Code Workflow. Specialists (security, quality, errors, perf, typescript, react, infra, claude-md) scan in parallel, a skeptic agent tries to refute each finding, a consolidator merges duplicates, and the review posts as inline comments via gh. No compiled helper.",
+  "author": {
+    "name": "jjcfatras"
+  },
+  "homepage": "https://github.com/jjcfatras/Claude/tree/main/plugins/pr-review-v2",
+  "repository": "https://github.com/jjcfatras/Claude",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "pull-request",
+    "code-review",
+    "multi-agent",
+    "workflow"
+  ],
+  "dependencies": [
+    {
+      "name": "context7",
+      "marketplace": "claude-plugins-official"
+    }
+  ]
+}

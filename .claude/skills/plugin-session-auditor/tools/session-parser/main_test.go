@@ -56,6 +56,54 @@ func TestCorrelateAndStat_ClassifiesDenials(t *testing.T) {
 	}
 }
 
+// Workflow agents live in <session>/subagents/workflows/<runId>/ with no Agent
+// spawn pointing at them; the parser used to report 0 agents for a 7-agent run
+// (transcript 255adf1a). One API response split across two jsonl lines must
+// count once: each line repeats the response's usage block.
+func TestParseSession_WorkflowRuns(t *testing.T) {
+	root := t.TempDir()
+	session := filepath.Join(root, "s.jsonl")
+	runDir := filepath.Join(root, "s", "subagents", "workflows", "wf_1")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		session: `{"type":"assistant","uuid":"m1","timestamp":"2026-11-17T20:00:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"w1","name":"Workflow","input":{"name":"x"}}]}}
+`,
+		filepath.Join(runDir, "agent-a1.meta.json"): `{"agentType":"p:errors","description":"errors","workflowPhase":"Review","pickedEffortModel":"claude-opus-5-5"}`,
+		filepath.Join(runDir, "agent-a1.jsonl"): `{"type":"assistant","uuid":"u1","isSidechain":true,"timestamp":"2026-11-17T20:00:01.000Z","message":{"id":"msg_1","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"thinking","thinking":"t"}],"usage":{"input_tokens":2,"cache_read_input_tokens":100,"cache_creation_input_tokens":10,"output_tokens":5}}}
+{"type":"assistant","uuid":"u2","isSidechain":true,"timestamp":"2026-11-17T20:00:01.500Z","message":{"id":"msg_1","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git grep x -A8 sha"}}],"usage":{"input_tokens":2,"cache_read_input_tokens":100,"cache_creation_input_tokens":10,"output_tokens":5}}}
+{"type":"user","uuid":"u3","isSidechain":true,"timestamp":"2026-11-17T20:00:02.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"fatal: unable to resolve revision: -A8"}]}}
+`,
+	}
+	for path, body := range files {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sess, err := parseSession(session)
+	if err != nil {
+		t.Fatalf("parseSession: %v", err)
+	}
+	if len(sess.WorkflowRuns) != 1 || len(sess.WorkflowRuns[0].Agents) != 1 {
+		t.Fatalf("WorkflowRuns = %+v, want 1 run with 1 agent", sess.WorkflowRuns)
+	}
+	run, agent := sess.WorkflowRuns[0], sess.WorkflowRuns[0].Agents[0]
+	if run.RunID != "wf_1" || agent.AgentType != "p:errors" || agent.Phase != "Review" {
+		t.Errorf("run/agent identity = %q %q %q", run.RunID, agent.AgentType, agent.Phase)
+	}
+	if len(agent.Models) != 1 || agent.Models[0] != "claude-sonnet-5-5" {
+		t.Errorf("Models = %v, want [claude-sonnet-5-5] from message.model, not the meta", agent.Models)
+	}
+	if agent.APIResponses != 1 || agent.InputTokens != 112 || agent.OutputTokens != 5 {
+		t.Errorf("responses/in/out = %d/%d/%d, want 1/112/5", agent.APIResponses, agent.InputTokens, agent.OutputTokens)
+	}
+	if sess.Stats.SidechainToolCalls != 1 || sess.Stats.ToolFailureCount != 1 {
+		t.Errorf("rolled-up sidechain calls/failures = %d/%d, want 1/1", sess.Stats.SidechainToolCalls, sess.Stats.ToolFailureCount)
+	}
+}
+
 // api-request-blob entries replay earlier tool_use/tool_result blocks with no
 // timestamp; counting them doubled every call and failure (transcript f6147551).
 func TestParseFile_IgnoresAPIRequestBlobs(t *testing.T) {

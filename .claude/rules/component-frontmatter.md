@@ -80,6 +80,10 @@ description: This skill should be used when the user asks to "specific phrase 1"
   `description`, `argument-hint`, `allowed-tools`) and the other plugin skill that leaves `model`
   and `effort` unset. Its Workflow pins a model per `agent()` call, and the report is rendered
   after the background run finishes, in a later turn that a skill-level `model` would not reach.
+- `plugins/pr-review-v2/skills/pr-review-v2/SKILL.md` is user-only on the same grounds:
+  `description`, `argument-hint`, `allowed-tools`, `disable-model-invocation: true`, and no `model`
+  or `effort`. Its agents carry their own pins, and steps [3/5] to [5/5] run in the turn the
+  workflow's completion notification starts.
 - The nine `plugins/git/skills/*/SKILL.md` skills (`commit`, `commit-push`, `commit-push-pr`,
   `push`, `pr`, `clean_gone`, `cherry-pick`, `merge`, `rebase`) use the command-style subset —
   `description`, `argument-hint` (commit/cherry-pick/merge/rebase only), `allowed-tools` (all but
@@ -145,8 +149,8 @@ Agent SDK control request — **never from component frontmatter**. `effort: ult
 workflows, instruct it to call the `Workflow` tool in its **body**: "the user invoked a skill or
 slash command whose instructions tell you to call Workflow" is one of that tool's documented
 opt-in paths (see `plugins/jira/skills/implement-ticket/SKILL.md` phases 3 and 7,
-`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, and `plugins/deep/skills/research/SKILL.md`
-Step 3, all of which run a script shipped in the plugin's `workflows/` by name, so the schema is
+`plugins/pr-respond/skills/pr-respond/SKILL.md` Step 2, `plugins/deep/skills/research/SKILL.md`
+Step 3, and `plugins/pr-review-v2/skills/pr-review-v2/SKILL.md` step [2/5], all of which run a script shipped in the plugin's `workflows/` by name, so the schema is
 never hand-written; see [plugin-structure.md](plugin-structure.md) › Workflows). Don't pass a
 plugin-shipped script as `scriptPath`: Workflow only accepts paths under the working directory or
 an added directory (or ones it returned), and `${CLAUDE_PLUGIN_ROOT}` is outside both for every
@@ -223,11 +227,16 @@ the hooks and MCP servers at plugin level (`hooks/hooks.json`, `.mcp.json`).
 **In practice (this repo):**
 
 - Repo agents use only `name`/`description`/`tools`/`model`/`effort`/`color`/`omitClaudeMd` — none
-  of the other 12 fields. `effort` is used by the eight pr-review specialists only; the `debate`
-  agents and the `plugin-session-auditor` analyzers still pin `model` alone. `omitClaudeMd: true`
-  is used only by `deep`'s two Workflow agents (`researcher`, `code-reader`). Their prompt carries
-  everything they need, and dropping the CLAUDE.md block (about 18K tokens here) matters at about
-  80 agents per run.
+  of the other 12 fields. `effort` is used by the pr-review and pr-review-v2 agents only; the
+  `debate` agents and the `plugin-session-auditor` analyzers still pin `model` alone.
+  `omitClaudeMd: true` is used only by Workflow-run agents: `deep`'s `researcher` and
+  `code-reader`, pr-review-v2's `verifier` and `consolidator`, and six of its eight specialists
+  (`security`, `errors`, `perf`, `typescript`, `infra`, `react`). The internal agents' prompt carries
+  everything they need, and dropping the CLAUDE.md block (about 18K tokens here) adds up at one
+  agent per claim or per finding. The specialists carry it on every turn instead (about 1.5M input
+  tokens on a 136-file PR), so the workflow sends them the HEAD_SHA guidance paths to open only when
+  a finding hinges on a project rule. `quality` and `claude-md` keep it, as all of pr-review's do:
+  they judge conventions.
 - `color: magenta` (`plugins/debate/agents/rebuttal.md`) is the one value outside the documented
   set; `purple`, `orange`, and `pink` (also used here) are now officially documented.
 - `model` is pinned explicitly, never left to the `inherit` default — `sonnet`/`opus` throughout.
@@ -236,7 +245,9 @@ the hooks and MCP servers at plugin level (`hooks/hooks.json`, `.mcp.json`).
 - `effort` is pinned across all eight pr-review specialists so review depth doesn't drift with
   the invoking session's effort — `medium` for the mechanical `claude-md` compliance check, `high`
   for six, `xhigh` for `security`. `security`'s `xhigh` pairs with `model: opus` exactly as §1
-  recommends — `xhigh` is Opus-only and falls back to `high` elsewhere.
+  recommends — `xhigh` is Opus-only and falls back to `high` elsewhere. pr-review-v2's eight
+  specialists copy these pins; its `verifier` runs `sonnet`/`medium`, once per finding, and its
+  single `consolidator` call runs `opus`/`medium`.
 - `tools` as a comma-separated string mixing built-ins with MCP tool names matches the documented
   file format (the `["array"]` form belongs to the `--agents` CLI JSON, not agent files).
 
