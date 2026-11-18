@@ -1,3 +1,10 @@
+---
+paths:
+  - "**/SKILL.md"
+  - "**/commands/**/*.md"
+  - "**/agents/**/*.md"
+---
+
 # Component frontmatter reference
 
 Every YAML frontmatter field available on the three component types this repo authors:
