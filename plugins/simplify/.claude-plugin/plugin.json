@@ -1,6 +1,6 @@
 {
   "name": "simplify",
-  "version": "2.1.2",
+  "version": "3.0.0",
   "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose) — diffs shown first, applied on approval",
   "author": {
     "name": "jjcfatras"

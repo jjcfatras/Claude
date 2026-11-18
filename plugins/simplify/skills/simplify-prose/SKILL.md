@@ -1,6 +1,6 @@
 ---
 name: simplify-prose
-description: Propose lossless distillation of verbose prose — inline text, recently modified prose files, or the whole project when no scope is given — and apply on approval. Use when the user asks to "distill this text", "make this more concise", "tighten this prose/writing", or wants verbose prose compressed losslessly with diffs shown for approval.
+description: Propose lossless distillation of verbose prose — inline text or recently modified prose files — and apply on approval. Use when the user asks to "distill this text", "make this more concise", "tighten this prose/writing", or wants verbose prose compressed losslessly with diffs shown for approval.
 argument-hint: "[text|path|--staged|--diff|--since=<ref>]"
 allowed-tools: Bash(git *), Read, Edit, Grep, Glob, AskUserQuestion
 model: opus
@@ -17,12 +17,11 @@ Classify `$ARGUMENTS` first:
 
 1. **`$ARGUMENTS` is inline prose** (multi-word text that is not a flag and does not resolve to an existing path or glob): skip the file workflow. Load the rubric (Step 1), distill the text, print the distilled version followed by the stats block from Step 5. Done.
 2. **`$ARGUMENTS` is `--staged`**: run `git diff --name-only --cached` and use that file set.
-3. **`$ARGUMENTS` is `--diff`**: use the union of `git diff --name-only HEAD` (tracked files with staged or unstaged changes against `HEAD`) and `git ls-files --others --exclude-standard` (untracked, non-ignored files) — everything `git status` would report as changed.
+3. **`$ARGUMENTS` is `--diff` or empty**: use the union of `git diff --name-only HEAD` (tracked files with staged or unstaged changes against `HEAD`) and `git ls-files --others --exclude-standard` (untracked, non-ignored files) — everything `git status` would report as changed.
 4. **`$ARGUMENTS` starts with `--since=`**: extract the ref `R`, then use the union of `git diff --name-only R...HEAD` and `git diff --name-only` (working tree). This catches both committed-since-R and uncommitted changes.
-5. **`$ARGUMENTS` is any other path or glob**: if it is a directory, walk it with the same union as case 6 scoped to that path — `git ls-files <dir>` plus `git ls-files --others --exclude-standard <dir>`. If it is a glob, expand it.
-6. **`$ARGUMENTS` is empty**: audit the whole project. Use the union of `git ls-files` and `git ls-files --others --exclude-standard` (tracked plus untracked-but-not-ignored files); the prose-file filter below narrows the set.
+5. **`$ARGUMENTS` is any other path or glob**: if it is a directory, walk it with the union of `git ls-files <dir>` and `git ls-files --others --exclude-standard <dir>`. If it is a glob, expand it.
 
-For file scopes (cases 2–6), keep only prose files: `.md`, `.mdx`, `.markdown`, `.txt`, `.rst`. Drop generated files (`dist/`, `bin/`, `node_modules/`, lockfiles), binary files, and files whose only changes are whitespace or formatter churn.
+For file scopes (cases 2–5), keep only prose files: `.md`, `.mdx`, `.markdown`, `.txt`, `.rst`. Drop generated files (`dist/`, `bin/`, `node_modules/`, lockfiles), binary files, and files whose only changes are whitespace or formatter churn.
 
 If no candidates remain, stop and tell the user "no candidate files in scope" — do not invent work.
 

@@ -66,7 +66,7 @@
       "name": "simplify",
       "source": "./plugins/simplify",
       "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose)",
-      "version": "2.1.2",
+      "version": "3.0.0",
       "category": "code-quality"
     },
     {
