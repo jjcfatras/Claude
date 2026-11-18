@@ -66,7 +66,7 @@ plugins/<name>/
   agents/, references/, bin/, tools/, hooks/, scripts/, workflows/  # only where needed
 ```
 
-Plugin layout against Anthropic's standard layout (what each folder means, manifest rules, `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PLUGIN_DATA}`, accepted deviations): see `.claude/rules/plugin-structure.md`. Skill folder layout (skill-level vs plugin-level files, `references/`/`assets/`/`scripts/`, `${CLAUDE_SKILL_DIR}` vs `${CLAUDE_PLUGIN_ROOT}`): see `.claude/rules/skill-structure.md`.
+Plugin layout against Anthropic's standard layout (what each folder means, manifest rules, `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PLUGIN_DATA}`, accepted deviations): see `.claude/rules/plugin-structure.md`. Skill folder layout (skill-level vs plugin-level files, `references/`/`assets/`/`scripts/`, `${CLAUDE_SKILL_DIR}` vs `${CLAUDE_PLUGIN_ROOT}`): see `.claude/rules/skill-structure.md`. CLAUDE.md and `.claude/rules/` authoring (what belongs, size, imports, path-scoped rules): see `.claude/rules/claude-md-structure.md`.
 
 Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`, `jira-ticket-workspace/`, `debate-workspace/`, `plugin-session-auditor-workspace/`) are gitignored scratch space for the skill-creator / audit / command workflows — safe to ignore. Each is listed individually in `.gitignore` (no `*-workspace/` glob — add new workspace dirs there explicitly).
 
