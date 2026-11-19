@@ -1,6 +1,6 @@
 {
   "name": "pr-review-v2",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-specialist PR code review run as a native Claude Code Workflow. Specialists (security, quality, errors, perf, typescript, react, infra, claude-md) scan in parallel, a skeptic agent tries to refute each finding, a consolidator merges duplicates, and the review posts as inline comments via gh. No compiled helper.",
   "author": {
     "name": "jjcfatras"

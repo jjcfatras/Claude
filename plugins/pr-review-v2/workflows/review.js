@@ -938,9 +938,11 @@ const specialistPrompt = (role) =>
     `Changed files (${paths.length}): ${paths.join(", ")}`,
     role === "claude-md"
       ? `Guidance files at HEAD_SHA: ${guidance.join(", ")}${matchedRules.length ? `\n\nRead all ${matchedRules.length} listed .claude/rules files in your first turn, as parallel Read calls, and list each in files_reviewed: the summary flags any you skip.` : ""}`
-      : guidance.length
-        ? `Project guidance at HEAD_SHA, not in your context: ${guidance.join(", ")}. Open one (git show <HEAD_SHA>:<path>) only when a finding hinges on a documented project rule.`
-        : "",
+      : !guidance.length
+        ? ""
+        : role === "quality" // quality.md alone keeps the CLAUDE.md auto-load (no omitClaudeMd)
+          ? `Project guidance at HEAD_SHA: ${guidance.join(", ")}. CLAUDE.md and unscoped rules are already in your context, but loaded from the working tree, which may differ from HEAD_SHA: before a finding hinges on a documented project rule, confirm it with git show <HEAD_SHA>:<path>.`
+          : `Project guidance at HEAD_SHA, not in your context: ${guidance.join(", ")}. Open one (git show <HEAD_SHA>:<path>) only when a finding hinges on a documented project rule.`,
     "Review the diff for issues in your domain and return them as the structured output.",
   ]
     .filter(Boolean)

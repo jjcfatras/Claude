@@ -4,7 +4,7 @@ export const meta = {
     "Audit a finished changeset for test coverage: one agent per changed file, one verdict per changed behavior",
   whenToUse:
     "Invoked by /jira:implement-ticket phase 7 when the diff spans many files. Requires args {diffBase, files: [repo-relative paths]}.",
-  phases: [{ title: "Audit" }],
+  phases: [{ title: "Audit", model: "sonnet" }],
 };
 
 // Verdict definitions mirror skills/implement-ticket/SKILL.md phase [7/7] — when editing either, edit both.
@@ -47,7 +47,7 @@ const results = await pipeline(args.files, (file) =>
       "- covered — name the test (file and test name) that asserts the new behavior, such that reverting the hunk would turn that test red. A test that merely executes the changed line does not count.\n- uncovered — the behavior changed and no test would notice if it broke.\n- not-testable — config, docs, copy, dependency bumps, pure formatting.",
       "Audit only: do not edit files, write tests, run the test suite, or run mutation checks — the orchestrator does all of that after this audit.",
     ].join("\n\n"),
-    { label: `audit:${file}`, phase: "Audit", schema: AUDIT },
+    { label: `audit:${file}`, phase: "Audit", model: "sonnet", schema: AUDIT },
   ),
 );
 

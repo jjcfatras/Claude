@@ -2,7 +2,7 @@
 name: quality
 description: Code quality specialist for /pr-review. Reviews PR diffs for DRY violations (duplicated code and duplicated knowledge), SOLID violations (SRP, OCP, LSP, ISP, DIP), deviations from established patterns, ignored existing helpers, and structural improvements. Always-on specialist; spawned by the /pr-review orchestrator.
 tools: Read, Grep, Glob, Bash, Write
-model: opus
+model: sonnet
 effort: high
 color: green
 ---

@@ -4,7 +4,10 @@ export const meta = {
     "Triage PR review items: one verdict per item, then adversarially verify every dismissal and every accepted response",
   whenToUse:
     "Invoked by /pr-respond Step 2 for more than 3 review items. Requires args {items, pr, headSha, baseSha, prCommits, reviewDir, worktree, checksPath}.",
-  phases: [{ title: "Analyze" }, { title: "Verify" }],
+  phases: [
+    { title: "Analyze", model: "sonnet" },
+    { title: "Verify", model: "sonnet" },
+  ],
 };
 
 // Keep in sync with skills/pr-respond/assets/agent-preamble.md (SKILL.md Step 1c copies it into parsing-agent prompts).
@@ -76,7 +79,13 @@ const verdicts = await pipeline(
   (item) =>
     agent(
       `${PREAMBLE}\n\n${ctx}\n\nAnalyze exactly this one review item and return a verdict object.\n\n${JSON.stringify(item, null, 2)}`,
-      { label: `analyze:${item.id}`, phase: "Analyze", schema: VERDICT },
+      {
+        label: `analyze:${item.id}`,
+        phase: "Analyze",
+        model: "sonnet",
+        effort: "high",
+        schema: VERDICT,
+      },
     ),
   async (v, item) => {
     // Analysis agent was skipped or died: hand the item back so the orchestrator analyzes it inline.
@@ -89,7 +98,13 @@ const verdicts = await pipeline(
       : `dismissed this review item as "${v.verdict}" citing the evidence below. Your job is to REFUTE that dismissal.`;
     const check = await agent(
       `${PREAMBLE}\n\n${ctx}\n\nA prior agent ${claim} Independently reproduce every cited field, by evidence kind:\n- blame: run \`git blame -L <line>,<line> ${args.headSha} -- <file>\`; the SHA must equal blame_sha, must not be one of the PR commits, and the date must match.\n- code / diff: Read the cited file at the cited lines (or the saved diff); the quote must appear there verbatim AND must actually address the reviewer's concern.\n- library-docs: re-query Context7 for the claim.\n- none: there is nothing to reproduce — set reproduced=false.\nIf any field is absent, different, or does not address the concern, set reproduced=false and say which. Default to reproduced=false when uncertain.\n\nItem:\n${JSON.stringify(item, null, 2)}\n\nClaimed verdict:\n${JSON.stringify(v, null, 2)}`,
-      { label: `verify:${item.id}`, phase: "Verify", schema: CHECK },
+      {
+        label: `verify:${item.id}`,
+        phase: "Verify",
+        model: "sonnet",
+        effort: "medium",
+        schema: CHECK,
+      },
     );
     if (check && check.reproduced) return { ...v, verified: true };
     return {

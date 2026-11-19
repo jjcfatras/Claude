@@ -3,7 +3,7 @@ name: security
 description: Security specialist for /pr-review-v2. Reviews PR diffs for authentication, authorization, input validation, injection vectors (SQL, NoSQL, command, prompt), request forgery (SSRF/CSRF), path traversal, cryptography misuse, secret handling, and API contract integrity. Always-on specialist; run by the /pr-review-v2 workflow.
 tools: Read, Grep, Glob, Bash, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: opus
-effort: xhigh
+effort: high
 omitClaudeMd: true
 color: red
 ---

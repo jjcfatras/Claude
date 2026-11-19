@@ -24,28 +24,28 @@
       "name": "pr-respond",
       "source": "./plugins/pr-respond",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones; verify responses to your own review threads and resolve the ones that hold",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "category": "code-review"
     },
     {
       "name": "pr-review",
       "source": "./plugins/pr-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "4.0.4",
+      "version": "4.0.5",
       "category": "code-review"
     },
     {
       "name": "pr-review-v2",
       "source": "./plugins/pr-review-v2",
       "description": "Multi-specialist code review of a PR run as a native Workflow, with a skeptic verifying every finding (no compiled helper)",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "code-review"
     },
     {
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.6.1",
+      "version": "1.7.0",
       "category": "documentation"
     },
     {
@@ -87,7 +87,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
-      "version": "1.7.0",
+      "version": "1.7.1",
       "category": "project-management"
     }
   ]

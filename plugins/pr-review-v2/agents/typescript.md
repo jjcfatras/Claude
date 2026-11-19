@@ -2,7 +2,7 @@
 name: typescript
 description: TypeScript type-safety specialist for /pr-review-v2. Reviews PR diffs for type narrowing, any/unknown usage, generic constraints, null/undefined safety, discriminated unions, and as-assertion safety. Conditional specialist; run by the /pr-review-v2 workflow when the diff touches .ts/.tsx/.cts/.mts files.
 tools: Read, Grep, Glob, Bash, Write, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
-model: opus
+model: sonnet
 effort: high
 omitClaudeMd: true
 color: blue

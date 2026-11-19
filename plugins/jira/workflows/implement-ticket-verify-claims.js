@@ -4,7 +4,7 @@ export const meta = {
     "Verify a JIRA ticket's codebase claims: one agent per claim cluster, each returning a structured verdict with file:line evidence",
   whenToUse:
     "Invoked by /jira:implement-ticket phase 3 when a ticket has many claims. Requires args {ticketKey, guidePath, clusters: [{name, claims}]}.",
-  phases: [{ title: "Verify" }],
+  phases: [{ title: "Verify", model: "sonnet" }],
 };
 
 // Verdict semantics and evidence rules live in references/claim-verification.md ("Verifying"), passed as args.guidePath.
@@ -48,7 +48,12 @@ const results = await pipeline(args.clusters, (c) =>
       "Read-only: do not edit, create, or delete any file.",
       `Claims:\n${c.claims.map((claim, i) => `${i + 1}. ${claim}`).join("\n")}`,
     ].join("\n\n"),
-    { label: `verify:${c.name}`, phase: "Verify", schema: VERDICTS },
+    {
+      label: `verify:${c.name}`,
+      phase: "Verify",
+      model: "sonnet",
+      schema: VERDICTS,
+    },
   ),
 );
 

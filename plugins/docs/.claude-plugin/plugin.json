@@ -1,7 +1,7 @@
 {
   "name": "docs",
-  "version": "1.6.1",
-  "description": "Maintain project documentation: /docs:audit-docs verifies CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, and architecture docs for stale claims about the codebase; /docs:enrich-claude-md investigates the codebase for useful, non-obvious facts missing from CLAUDE.md or .claude/rules and proposes additions, including suggesting a new nested CLAUDE.md for subtree-specific facts; /docs:revise captures learnings from the current session into CLAUDE.md, CLAUDE.local.md, or .claude/rules. All three propose changes and apply only the ones you approve",
+  "version": "1.7.0",
+  "description": "Maintain project documentation: /docs:init sets up a minimal CLAUDE.md (plus optional CLAUDE.local.md, skills and hooks) through a guided survey-interview-propose flow, independent of the bundled /init; /docs:audit-docs verifies CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, and architecture docs for stale claims about the codebase; /docs:enrich-claude-md investigates the codebase for useful, non-obvious facts missing from CLAUDE.md or .claude/rules and proposes additions, including suggesting a new nested CLAUDE.md for subtree-specific facts; /docs:revise captures learnings from the current session into CLAUDE.md, CLAUDE.local.md, or .claude/rules. The other three propose changes and apply only the ones you approve",
   "author": {
     "name": "jjcfatras"
   },
@@ -15,7 +15,8 @@
     "readme",
     "consistency",
     "enrich",
-    "context7"
+    "context7",
+    "init"
   ],
   "dependencies": [
     {

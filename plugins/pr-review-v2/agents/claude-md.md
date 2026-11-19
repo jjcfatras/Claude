@@ -3,7 +3,7 @@ name: claude-md
 description: CLAUDE.md compliance specialist for /pr-review-v2. Verifies the diff follows project-specific guidance documented in CLAUDE.md files (root and nested) and the repo's `.claude/rules/` files (unscoped and path-scoped). Conditional specialist; run by the /pr-review-v2 workflow when any changed file has a CLAUDE.md ancestor or matches a path-scoped rule.
 tools: Read, Grep, Glob, Bash
 model: sonnet
-effort: medium
+effort: high
 color: pink
 ---
 

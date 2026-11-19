@@ -66,7 +66,7 @@ Classify each claim, and require concrete `file:line` evidence for the verdict:
 Scale how you verify to how many claims there are — don't reach for machinery a three-claim ticket doesn't need:
 
 - **A few claims** — verify inline.
-- **Several** — spawn parallel investigator subagents (one `Agent` message, several calls) so verification doesn't serialize; give each a cluster of claims and a findings file to write to, then merge their verdicts.
+- **Several** — spawn parallel investigator subagents (one `Agent` message, several calls, each with `model: "sonnet"`) so verification doesn't serialize; give each a cluster of claims and a findings file to write to, then merge their verdicts.
 - **Many independent claims** (roughly 8+, or enough that verifying them inline would flood your context) — call the **Workflow** tool. The user invoking this skill _is_ the explicit opt-in Workflow requires, so you don't need to ask for it again. Pass the shipped script, never a hand-written one:
   - `name`: `"jira:implement-ticket-verify-claims"`, the workflow this plugin ships. If the tool doesn't know that name (an older Claude Code build), pass `script` instead: the exact contents of `${CLAUDE_PLUGIN_ROOT}/workflows/implement-ticket-verify-claims.js`, Read and passed verbatim. Never `scriptPath`: Workflow only loads paths under the working directory or an added directory.
   - `args` (a real JSON object, not a string): `{ ticketKey, guidePath, clusters }` — `guidePath` is `${CLAUDE_PLUGIN_ROOT}/references/claim-verification.md`; `clusters` is `[{ name, claims: ["<atomic claim>", …] }]`, grouping related claims so the fan-out stays coarse (one agent per cluster, under ~15 clusters).
