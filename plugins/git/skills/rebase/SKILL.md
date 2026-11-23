@@ -71,9 +71,7 @@ Check the exit code:
 
 ## Step 4: Resolve conflicts
 
-When a commit fails to replay:
-
-Resolve every conflicting file directly in this context using the `Read` and `Edit` tools. Do not spawn a subagent (the `Agent` tool is intentionally not in this skill's `allowed-tools`) — delegating conflict resolution breaks the per-context Read-before-Edit guard and causes cascading `File has not been read yet` errors when the main thread later edits files the subagent touched.
+When a commit fails to replay, Read `${CLAUDE_PLUGIN_ROOT}/references/conflict-resolution.md` (once per run) and follow it. The steps below give the rebase specifics it defers to.
 
 **Ours and theirs are inverted in a rebase.** Git replays each commit on top of the base, so:
 
@@ -91,32 +89,11 @@ Run `git log -1 --format=%B REBASE_HEAD` to read the full message of the commit 
 
 ### 4c: Resolve each conflicting file
 
-Resolve all conflict hunks in a given file in a single Read + Edit pass: read the full file once (not marker-by-marker) so you see every hunk before editing, rather than resolving one hunk and re-searching for the next.
+Use the reference's per-file procedure, with these sides and precedence:
 
-For each conflicting file:
-
-1. **Read the file** using the Read tool to see full contents including conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
-
-2. **Understand both sides:**
-   - Between `<<<<<<< HEAD` and `=======` is the base side (the base branch plus the commits already replayed).
-   - Between `=======` and `>>>>>>> <sha> (<subject>)` is what the branch's commit being replayed introduces.
-   - Run `git show REBASE_HEAD -- <filepath>` to see exactly what that commit changed in this file.
-
-3. **Resolve the conflict intelligently:**
-   - Resolve to what **this** commit intends at this point in history. Don't fold in edits from later commits on the branch — they replay next, and pre-applying them makes those commits conflict again or drop as empty.
-   - If changes are in different logical sections (different functions, different import groups), keep both.
-   - If changes modify the same code, understand the intent of each side:
-     - The base side is the code the branch is being moved onto — treat its structure as the starting point.
-     - The replayed side is the branch's own change.
-     - Apply the replayed commit's intent on top of the base's code structure.
-   - If one side adds new code and the other modifies existing code, integrate both.
-   - If both sides modify the same line differently, combine if logically compatible, or prefer the replayed change while preserving base-side changes not in conflict.
-   - For import statements or dependency lists: include all from both sides, removing exact duplicates.
-   - **Never leave conflict markers in the file.**
-
-4. **Edit the file** using the Edit tool to write the resolved version, removing all conflict markers.
-
-5. **Stage the resolved file:** Run `git add <filepath>`.
+- **Sides:** between `<<<<<<< HEAD` and `=======` is the base side (the base branch plus the commits already replayed); between `=======` and `>>>>>>> <sha> (<subject>)` is what the branch's commit being replayed introduces. Run `git show REBASE_HEAD -- <filepath>` to see exactly what that commit changed in this file.
+- **Scope:** resolve to what **this** commit intends at this point in history. Don't fold in edits from later commits on the branch — they replay next, and pre-applying them makes those commits conflict again or drop as empty.
+- **Precedence:** the base side is the code the branch is being moved onto — treat its structure as the starting point; the replayed side is the branch's own change. Apply the replayed commit's intent on top of the base's code structure. If both sides change the same line differently, combine if logically compatible, or prefer the replayed change while preserving base-side changes not in conflict.
 
 ### 4d: Handle special conflict types
 
@@ -127,7 +104,7 @@ For each conflicting file:
 
 After all conflicts in the current commit are resolved and staged:
 
-1. Run `git diff --cached --check` to confirm no conflict markers remain. It compares the index with HEAD, so it sees markers in files already `git add`ed — plain `git diff --check` does not. Only `leftover conflict marker` lines matter; whitespace warnings from the commit itself don't block. Then run `git diff --name-only --diff-filter=U` to list any files git still considers unmerged.
+1. Run the reference's marker check.
 2. Run `git -c core.editor=true rebase --continue`. The `-c` keeps the commit's original message without opening an editor (an exported `GIT_EDITOR` takes precedence; Claude Code's shell sets it to `true`). Exit 0 with `Successfully rebased` means the rebase is done — go to Step 5.
 3. If a later commit conflicts, repeat Step 4 for it. Keep a running list of every file resolved and how.
 4. If git reports the resolved commit is now empty (its change is already in the base), run `git rebase --skip` and tell the user which commit was dropped.

@@ -17,6 +17,14 @@ The parser at `tools/session-parser/main.go` produces a single JSON document per
   "plugin_scope_known": {                // map of plugin -> known commands/agents in repo
     "<plugin>": { "commands": ["..."], "agents": ["..."] }
   },
+  // Usage — the lead's own transcript only; subagents are NOT rolled in.
+  // Same six fields on every Sidechain. See the "Usage fields" gotcha below.
+  "models": ["claude-opus-5-5"],
+  "api_responses": 52,
+  "input_tokens": 10415675,              // uncached + cache reads + cache writes
+  "cache_read_tokens": 9710723,
+  "cache_creation_tokens": 704844,
+  "output_tokens": 62862,
   "stats": { ... },
   "events": { ... }
 }
@@ -122,8 +130,12 @@ contain its own `agent_spawns` with their own attached `sidechain` fields.
 {
   "agent_type": "<from meta.json — e.g., security-reviewer>",
   "description": "<from meta.json>",
+  "phase": "<Workflow agents only: the meta's workflowPhase>",
   "first_timestamp": "...",
   "last_timestamp": "...",
+  "models": ["..."],                     // plus api_responses, input_tokens,
+  "input_tokens": 0,                     // cache_read_tokens, cache_creation_tokens,
+  "output_tokens": 0,                    // output_tokens — same as the top level
   "stats": Stats,
   "events": Events     // omitted in --summary-only mode
 }
@@ -191,7 +203,8 @@ contain its own `agent_spawns` with their own attached `sidechain` fields.
 ## Field semantics — gotchas
 
 - **Sidechains are followed automatically.** When the main jsonl lives at `<dir>/<sessionId>.jsonl`, the parser looks for `<dir>/<sessionId>/subagents/agent-*.jsonl` and attaches each spawn's transcript to its `AgentSpawn.sidechain` (and the full set to `sidechains`). The orchestration analyzer can therefore compare what each specialist actually did — `tool_calls_by_name`, `tool_failure_count`, etc. — instead of guessing from the lead's view. `is_sidechain` on a tool call is still the lead-vs-subagent flag for the lead's transcript itself.
-- **Workflow agents are a separate tree.** A `Workflow` tool run writes its agents to `<dir>/<sessionId>/subagents/workflows/<runId>/agent-*.jsonl`, and no `Agent` tool_use spawns them. The parser emits them as top-level `workflow_runs[]` (`run_id`, `agents[]`, which are `Sidechain` objects in start order). Each agent carries `phase` (from the meta's `workflowPhase`), `models`, `api_responses`, `input_tokens` (cache reads and writes included) and `output_tokens`. Every sidechain gets these token fields, not just workflow agents. Their counters roll up into the top-level stats like spawned sidechains do (next bullet). Two traps the parser handles for you. First, one API response is split across several jsonl lines that each repeat its `usage` block, so tokens are summed once per `message.id`; counting per line roughly doubles them. Second, the meta's `pickedEffortModel` is unreliable (it said Opus for Sonnet-pinned agents in 255adf1a), so `models` comes from each response's `message.model`.
+- **Workflow agents are a separate tree.** A `Workflow` tool run writes its agents to `<dir>/<sessionId>/subagents/workflows/<runId>/agent-*.jsonl`, and no `Agent` tool_use spawns them. The parser emits them as top-level `workflow_runs[]` (`run_id`, `agents[]`, which are `Sidechain` objects in start order). Each agent carries `phase` (from the meta's `workflowPhase`) and the usage fields (next-but-one bullet). Their counters roll up into the top-level stats like spawned sidechains do (next bullet). Two traps the parser handles for you. First, one API response is split across several jsonl lines that each repeat its `usage` block, so tokens are summed once per `message.id`; counting per line roughly doubles them. Second, the meta's `pickedEffortModel` is unreliable (it said Opus for Sonnet-pinned agents in 255adf1a), so `models` comes from each response's `message.model`.
+- **Usage fields.** `models`, `api_responses`, `input_tokens`, `cache_read_tokens`, `cache_creation_tokens` and `output_tokens` appear at the top level and on every Sidechain (spawned or workflow). `input_tokens` includes cache reads and writes; uncached input = `input_tokens − cache_read_tokens − cache_creation_tokens`. The top-level copy is the lead's transcript alone, never rolled up: session total = top level + every sidechain (recursively) + every `workflow_runs[].agents[]`.
 - **`tool_failures` vs `permission_denials`** — the parser splits these on `toolDenialKind` (see `FailureRec`). If you want both, union them. A guardrail deny lands in `permission_denials` with `denial_kind: "permission-rule"`, so a zero `permission_denial_count` genuinely means no blocked calls — including inside sidechains, which is where hook denials usually happen.
 - **Which top-level counters include sidechains.** `rollUpSidechainStats` folds every attached sidechain (recursively, for subagents that spawn their own) into four counters plus one: `tool_failure_count`, `permission_denial_count`, `permission_denials_by_tool`, `hook_error_count`, `api_error_count`, and `sidechain_tool_calls`. `tool_failure_rate` is recomputed over `main_thread_tool_calls + sidechain_tool_calls`. **Everything else stays main-thread-only** — `total_tool_calls`, `main_thread_tool_calls`, `tool_calls_by_name`, `agent_spawn_count`, the slash-command counts, and every `turn_*` field describe the lead's transcript alone. So `total_tool_calls` (20) will read lower than `sidechain_tool_calls` (79) on a fan-out session; that is correct, not a bug. Until Aug 2026 none of the counters rolled up, and this file claimed otherwise — a session whose only hook denial happened inside a subagent reported a clean `0`.
   - **`events.tool_calls` is not rolled up either.** Per-subagent calls live at `agent_spawns[].sidechain.events.tool_calls`; iterate those when you need the actual call sequence.

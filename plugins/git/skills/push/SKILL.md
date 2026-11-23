@@ -2,7 +2,7 @@
 name: push
 description: Push already-committed work to the current branch's origin; refresh an open PR's description if one exists. Does not commit — use commit-push for that.
 when_to_use: Use when the user asks to "push", "just push", "push without committing", or wants the remote updated with existing commits.
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*)
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh *), Bash(git push:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*)
 model: sonnet
 effort: low
 ---
@@ -11,13 +11,14 @@ effort: low
 
 - Current git status: !`git status`
 - Current branch: !`git branch --show-current`
+- Default branch: !`${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh`
 - Recent commits: !`git log --oneline -10`
 
 ## Your task
 
 Push the current branch's existing commits to `origin`. Do **not** create a commit — if there are uncommitted changes, leave them alone and mention them in the final report.
 
-1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails (no `origin/HEAD`), treat `main`, then `master`, as the default.
+1. **Default branch.** Use the **Default branch** from Context above as `<default>`.
 
 2. **Push.** Run `git push -u origin HEAD` — this pushes the current branch to `origin` under the same name and sets the upstream, whether or not one was already configured. If the push is rejected (non-fast-forward), **stop and report** — do not force-push.
 

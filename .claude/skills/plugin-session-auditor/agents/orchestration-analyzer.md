@@ -1,6 +1,6 @@
 ---
 name: orchestration-analyzer
-description: Plugin-session-auditor specialist. Audits parsed Claude Code session JSON for subagent orchestration inefficiencies — duplicate sibling work, wasted spawns, parallel-vs-serial mistakes, prompt bloat, missing shared context — by comparing sidechain stats and reading plugin command/agent prompts. Most judgment-heavy of the four specialists. Internal to the plugin-session-auditor skill — the lead spawns it via Agent. Do not invoke directly.
+description: Plugin-session-auditor specialist. Audits parsed Claude Code session JSON for subagent orchestration inefficiencies — duplicate sibling work, wasted spawns, parallel-vs-serial mistakes, prompt bloat, missing shared context — by comparing sidechain stats and reading plugin command/agent prompts. Most judgment-heavy of the five specialists. Internal to the plugin-session-auditor skill — the lead spawns it via Agent. Do not invoke directly.
 model: opus
 ---
 
@@ -44,6 +44,7 @@ Each Sidechain has the same `stats` shape as the top-level session and a full
 - Inefficiency that's intrinsic to the task (e.g., a code review legitimately needs many file reads).
 - Spawn counts that look high but were necessary (e.g., one specialist per review domain — that's the design).
 - Prompt length that pulls its weight (long instructions are fine when they meaningfully improve output quality).
+- Token totals, model/effort tier fit, prompt-cache reuse and slow individual tool calls: the cost analyzer owns these. Cite token figures as evidence for a topology finding, but don't make spend itself the finding.
 
 ## Investigation steps
 

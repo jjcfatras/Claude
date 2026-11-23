@@ -1,6 +1,6 @@
 ---
 name: plugin-session-auditor
-description: Audit a Claude Code session transcript (.jsonl) for issues with the plugins in this repository — repetitive permission prompts, errors, failed tool calls, and orchestration inefficiencies. Spawns one specialist subagent per issue category, consolidates findings into a proposals doc with pros/cons per option, and asks before implementing fixes. Use whenever the user provides a `.jsonl` session log path and asks to audit, review, analyze, find issues in, or improve a plugin based on a session — even if they don't say "audit" explicitly. Also triggers on phrases like "look at this transcript", "what went wrong in this session", "the plugins were misbehaving in this run".
+description: Audit a Claude Code session transcript (.jsonl) for issues with the plugins in this repository — repetitive permission prompts, errors, failed tool calls, orchestration inefficiencies, and expensive processes (token spend, model fit, slow tool calls). Spawns one specialist subagent per issue category, consolidates findings into a proposals doc with pros/cons per option, and asks before implementing fixes. Use whenever the user provides a `.jsonl` session log path and asks to audit, review, analyze, find issues in, or improve a plugin based on a session — even if they don't say "audit" explicitly. Also triggers on phrases like "look at this transcript", "what went wrong in this session", "the plugins were misbehaving in this run".
 argument-hint: <jsonl-path-or-dir-or-glob>
 ---
 
@@ -20,11 +20,12 @@ The user may pass a single jsonl, a directory of them, or a glob — the parser 
 
 1. **Parse** the jsonl(s) into structured event JSON via the bundled Go tool.
 2. **Scope-detect** which plugins in `plugins/` were exercised by the session.
-3. **Spawn four specialists in parallel**, one per issue category:
+3. **Spawn five specialists in parallel**, one per issue category:
    - `permissions` — repetitive permission prompts, missing allowlist entries
    - `errors` — hook errors, api errors, unhandled tool result errors
    - `tool-failures` — non-permission tool errors, retry-loops, malformed tool inputs
    - `orchestration` — agent spawn waste, repeated work between subagents, sequencing errors, prompt bloat, context inefficiency
+   - `cost` — token concentration, model/effort tier fit, prompt-cache reuse, context growth, slow tool calls
 4. **Consolidate** findings into `proposals.md` — for each issue, document the problem, evidence (with timestamps + tool_use_ids), 2+ fix options with pros/cons, and a recommendation.
 5. **Ask** the user which proposals to implement before touching plugin source.
 6. **Implement** approved fixes against the relevant `plugins/<name>/` files. Bump `plugin.json` `version` per the repo's SemVer rules.
@@ -63,17 +64,17 @@ See `references/jsonl-schema.md` for the schema and field semantics.
 Before spawning specialists, you (the lead) skim `parsed.json` to:
 
 - Note `plugins_used` — the specialists should focus their fix proposals on these plugins.
-- Note unusual signals — high `tool_failure_rate`, long `permission_denial_runs`, many repeated `slash_commands`, big `turn_duration_ms_p95`.
+- Note unusual signals — high `tool_failure_rate`, long `permission_denial_runs`, many repeated `slash_commands`, big `turn_duration_ms_p95`, one agent or phase dominating token usage.
 - Read the manifests + commands of the plugins-in-scope so you can brief the specialists with concrete file paths to investigate (e.g., "this session ran `/pr-review` — point the orchestration specialist at `plugins/pr-review/skills/pr-review/SKILL.md` and the specialist agents under `plugins/pr-review/agents/*.md`").
 
-### Step 4 — Run the four specialists
+### Step 4 — Run the five specialists
 
-Preferred: single message with four parallel `Agent` tool calls (one per
+Preferred: single message with five parallel `Agent` tool calls (one per
 category). If the `Agent` tool is unavailable in the current harness — for
 example, when evaluated inside a subagent that doesn't expose Agent — fall
 back to running each specialist inline in sequence: read its instruction
 file, analyze as that specialist, and write the findings file. Either path
-is acceptable; the four findings files must always exist.
+is acceptable; the five findings files must always exist.
 
 Each specialist gets:
 
@@ -89,6 +90,7 @@ The specialists' instructions are in:
 - `agents/errors-analyzer.md`
 - `agents/tool-failures-analyzer.md`
 - `agents/orchestration-analyzer.md`
+- `agents/cost-analyzer.md`
 
 Each specialist writes its findings file directly. They do not implement fixes — that is the lead's job after user approval.
 
@@ -106,11 +108,11 @@ Inputs:
 Output: write your findings to $RUN_DIR/findings/<category>.md.
 ```
 
-When spawning each specialist via the `Agent` tool, read the YAML frontmatter at the top of its instruction file once and pass the `model:` value through to the `Agent` tool call's `model` parameter (current settings: `permissions-analyzer`, `errors-analyzer`, `tool-failures-analyzer` → `sonnet`; `orchestration-analyzer` → `opus`). If a file lacks a `model:` field, omit the parameter so the spawn inherits from the lead. The inline-fallback path (when `Agent` is unavailable) ignores frontmatter — the lead runs the specialist's instructions in its own model.
+When spawning each specialist via the `Agent` tool, read the YAML frontmatter at the top of its instruction file once and pass the `model:` value through to the `Agent` tool call's `model` parameter (current settings: `permissions-analyzer`, `errors-analyzer`, `tool-failures-analyzer`, `cost-analyzer` → `sonnet`; `orchestration-analyzer` → `opus`). If a file lacks a `model:` field, omit the parameter so the spawn inherits from the lead. The inline-fallback path (when `Agent` is unavailable) ignores frontmatter — the lead runs the specialist's instructions in its own model.
 
 ### Step 5 — Consolidate into proposals
 
-Once all four specialists return, read the four findings files and write `$RUN_DIR/proposals.md` with this structure:
+Once all five specialists return, read the five findings files and write `$RUN_DIR/proposals.md` with this structure:
 
 ```markdown
 # Audit proposals — <session_id>
@@ -120,7 +122,7 @@ Plugins in scope: <list>
 
 ## Proposal 1: <short title>
 
-**Category:** permissions | errors | tool-failures | orchestration
+**Category:** permissions | errors | tool-failures | orchestration | cost
 **Problem:** <1–3 sentences>
 **Evidence:** <bullets — timestamps, tool_use_ids, file paths>
 
@@ -191,12 +193,12 @@ Do **not** auto-commit. Stop after the edits are in the worktree and tell the us
 
 ## Output paths reference
 
-| Artifact            | Path                                                                 |
-| ------------------- | -------------------------------------------------------------------- |
-| Run workspace       | `plugin-session-auditor-workspace/<timestamp>/`                      |
-| Parsed events       | `<run>/parsed.json`                                                  |
-| Specialist findings | `<run>/findings/{permissions,errors,tool-failures,orchestration}.md` |
-| Proposals           | `<run>/proposals.md`                                                 |
+| Artifact            | Path                                                                      |
+| ------------------- | ------------------------------------------------------------------------- |
+| Run workspace       | `plugin-session-auditor-workspace/<timestamp>/`                           |
+| Parsed events       | `<run>/parsed.json`                                                       |
+| Specialist findings | `<run>/findings/{permissions,errors,tool-failures,orchestration,cost}.md` |
+| Proposals           | `<run>/proposals.md`                                                      |
 
 ## Files in this skill
 

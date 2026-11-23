@@ -2,7 +2,8 @@
 name: pr
 description: Open a pull request for the current branch's already-pushed commits. Does not commit or push — use commit-push-pr for that.
 when_to_use: Use when the user asks to "open a PR", "create a pull request", or "PR this" for work that is already committed and pushed.
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(gh pr view:*), Bash(gh pr create:*), mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources
+argument-hint: "[--base <branch>]"
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh *), Bash(gh pr view:*), Bash(gh pr create:*), mcp__claude_ai_Atlassian_Rovo__getAccessibleAtlassianResources
 model: sonnet
 effort: low
 ---
@@ -11,15 +12,16 @@ effort: low
 
 - Current git status: !`git status`
 - Current branch: !`git branch --show-current`
+- Default branch: !`${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh`
 - Recent commits: !`git log --oneline -10`
 
 ## Your task
 
 Open a pull request for the current branch. Requires the GitHub CLI (`gh`) installed and authenticated, and an `origin` remote. Do **not** commit and do **not** push — if there are uncommitted changes, leave them alone and mention them in the final report.
 
-1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails, treat `main`, then `master`, as the default.
+1. **Default and base branch.** Use the **Default branch** from Context above as `<default>`. The PR's target `<base>` is `<default>` unless `$ARGUMENTS` contains `--base <branch>`, in which case `<base>` is that branch. Confirm a given base exists with `git rev-parse --verify origin/<base>`; if it doesn't, **stop and report** — never fall back to `<default>` silently, since that would open the PR against the wrong branch.
 
-2. **Guard: not on the default branch.** If the current branch _is_ the default branch, stop and report — there is no branch to open a PR from.
+2. **Guard: not on the default branch.** If the current branch _is_ the default branch (`<default>`, not `<base>`), stop and report — there is no branch to open a PR from.
 
 3. **Guard: branch is pushed and up to date.** The branch must have an upstream and no unpushed commits. Check the upstream with `git rev-parse --abbrev-ref --symbolic-full-name @{u}`; the status above reports any commits ahead of it. If there is no upstream, or the branch is ahead of its upstream, **stop and report** — tell the user to run `/git:push` first. Do not push.
 
@@ -30,7 +32,7 @@ Open a pull request for the current branch. Requires the GitHub CLI (`gh`) insta
    - **Match** → call `getAccessibleAtlassianResources` to get the Atlassian site `url`. If exactly one site comes back, use it. If more than one does, use the first and name the site you picked in the final report so a wrong guess is visible and easy to correct. If the call fails or returns nothing, omit the ticket section and say so in the final report — **never block the PR on this step.**
    - Build one link per key as `<site-url>/browse/<KEY>`.
 
-6. **Open the PR.** Inspect **all** commits on this branch relative to the default branch (`git log <default>..HEAD --oneline`), not just the latest, so the description covers the whole branch. Create the PR with `gh pr create`, writing a body of the form:
+6. **Open the PR.** Inspect **all** commits on this branch relative to the base branch (`git log <base>..HEAD --oneline`), not just the latest, so the description covers the whole branch. Create the PR with `gh pr create --base <base>`, writing a body of the form:
 
    ```
    ## Ticket(s)
@@ -48,4 +50,4 @@ Open a pull request for the current branch. Requires the GitHub CLI (`gh`) insta
 
    Omit the `## Ticket(s)` section entirely — heading included — when step 5 produced no links.
 
-7. Report the PR URL returned by `gh pr create`, which ticket keys were linked (or that the branch name contained none), and whether uncommitted changes were left behind.
+7. Report the PR URL returned by `gh pr create`, the base branch it targets, which ticket keys were linked (or that the branch name contained none), and whether uncommitted changes were left behind.

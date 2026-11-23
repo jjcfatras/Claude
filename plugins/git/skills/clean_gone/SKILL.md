@@ -31,23 +31,13 @@ Clean up stale local branches that have been deleted from the remote repository,
    git worktree list
    ```
 
-3. **Remove worktrees and delete [gone] branches** (handles both regular and worktree branches)
+3. **Remove worktrees and delete [gone] branches** (handles both regular and worktree branches). Run the script with Bash, exactly as written:
 
    ```bash
-   # Process all [gone] branches, removing '+' prefix if present
-   git branch -v | grep '\[gone\]' | sed 's/^[+* ]//' | awk '{print $1}' | while read branch; do
-     echo "Processing branch: $branch"
-     # Find and remove worktree if it exists
-     worktree=$(git worktree list | grep "\\[$branch\\]" | awk '{print $1}')
-     if [ ! -z "$worktree" ] && [ "$worktree" != "$(git rev-parse --show-toplevel)" ]; then
-       echo "  Removing worktree: $worktree"
-       git worktree remove --force "$worktree"
-     fi
-     # Delete the branch
-     echo "  Deleting branch: $branch"
-     git branch -D "$branch"
-   done
+   ${CLAUDE_SKILL_DIR}/scripts/clean-gone.sh
    ```
+
+   It selects branches whose upstream tracking status is `[gone]`, removes each one's worktree (never the main worktree), then deletes the branch with `git branch -D`. It never forces a worktree removal: when a worktree has uncommitted or untracked changes, or is locked, git refuses, and the script prints `Skipped` and keeps that branch. It prints one `Processing` / `Removing worktree` / `Deleting branch` / `Skipped` line per action, or `nothing to clean` when no branch is gone. Report every skipped branch and its worktree path so the user can commit, stash, or remove it themselves. Never retry a skipped worktree with `--force`, even though git's error message suggests it.
 
 ## Expected Behavior
 

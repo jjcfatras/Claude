@@ -1,7 +1,7 @@
 ---
 name: commit-push-pr
 description: Commit, push, and open a pull request. Use when the user asks to "open a PR", "commit and create a pull request", or wants changes committed, pushed, and a new PR opened.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), AskUserQuestion
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh *), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), AskUserQuestion
 model: sonnet
 effort: low
 ---
@@ -11,13 +11,14 @@ effort: low
 - Current git status: !`git status`
 - Current git diff (staged and unstaged changes): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
+- Default branch: !`${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh`
 - Recent commits: !`git log --oneline -10`
 
 ## Your task
 
 Commit the changes above, push them, and open a pull request. Requires the GitHub CLI (`gh`) to be installed and authenticated, and an `origin` remote.
 
-1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails, treat `main`, then `master`, as the default.
+1. **Default branch.** Use the **Default branch** from Context above as `<default>`.
 
 2. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings: `dev`, `stage`, `qa`, `prod`, `main`, `release`. If protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
    - `Create new branch` (Recommended) — "Derive a short kebab-case branch name from the changes and run `git switch -c <name>` before committing."

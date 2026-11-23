@@ -56,9 +56,7 @@ Check the exit code:
 
 ## Step 4: Resolve conflicts
 
-When the merge produces conflicts:
-
-Resolve every conflicting file directly in this context using the `Read` and `Edit` tools. Do not spawn a subagent (the `Agent` tool is intentionally not in this skill's `allowed-tools`) — delegating conflict resolution breaks the per-context Read-before-Edit guard and causes cascading `File has not been read yet` errors when the main thread later edits files the subagent touched.
+When the merge produces conflicts, Read `${CLAUDE_PLUGIN_ROOT}/references/conflict-resolution.md` and follow it. The steps below give the merge specifics it defers to.
 
 ### 4a: Identify all conflicting files
 
@@ -70,30 +68,10 @@ Run `git log --format="%B" <current-branch>..<source-ref>` to read the commit me
 
 ### 4c: Resolve each conflicting file
 
-For each conflicting file:
+Use the reference's per-file procedure, with these sides and precedence:
 
-1. **Read the file** using the Read tool to see full contents including conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
-
-2. **Understand both sides:**
-   - Between `<<<<<<< HEAD` and `=======` is the current branch version (where the merge is happening).
-   - Between `=======` and `>>>>>>> <source-ref>` is what the source branch introduces.
-   - Run `git show <source-ref>:<filepath>` to see the full source-branch version of the file for additional context.
-   - Run `git log --oneline <current-branch>..<source-ref> -- <filepath>` to see which source-branch commits touched this file.
-
-3. **Resolve the conflict intelligently:**
-   - If changes are in different logical sections (different functions, different import groups), keep both.
-   - If changes modify the same code, understand the intent of each side:
-     - The current branch version reflects work done on the target branch.
-     - The source branch version reflects work done in parallel on the branch being merged in.
-     - Combine both intents — neither side is "more correct" by default in a merge (unlike cherry-pick).
-   - If one side adds new code and the other modifies existing code, integrate both.
-   - If both sides modify the same line differently, combine if logically compatible. If genuinely incompatible, prefer the change that preserves the most recent semantic intent and note the decision for the final summary.
-   - For import statements or dependency lists: include all from both sides, removing exact duplicates.
-   - **Never leave conflict markers in the file.**
-
-4. **Edit the file** using the Edit tool to write the resolved version, removing all conflict markers.
-
-5. **Stage the resolved file:** Run `git add <filepath>`.
+- **Sides:** between `<<<<<<< HEAD` and `=======` is the current branch version (where the merge is happening); between `=======` and `>>>>>>> <source-ref>` is what the source branch introduces. Run `git show <source-ref>:<filepath>` for the full source-branch version of the file, and `git log --oneline <current-branch>..<source-ref> -- <filepath>` for the source-branch commits that touched it.
+- **Precedence:** the current branch version reflects work done on the target branch; the source branch version reflects work done in parallel on the branch being merged in. Combine both intents — neither side is "more correct" by default in a merge (unlike cherry-pick). If both sides change the same line differently, combine if logically compatible. If genuinely incompatible, prefer the change that preserves the most recent semantic intent and note the decision for the final summary.
 
 ### 4d: Handle special conflict types
 
@@ -104,7 +82,7 @@ For each conflicting file:
 
 After all conflicts are resolved and staged:
 
-1. Run `git grep -n '^<<<<<<<'` to verify no conflict markers remain. Exit status 1 with no output is the success case here; any output means a conflict is still unresolved.
+1. Run the reference's marker check.
 2. Run `git merge --continue` (which will open the merge-commit message editor — git uses the prepared default message non-interactively when run from this skill). If the editor environment causes a hang, use `git commit --no-edit` instead to finalize with the default merge message.
 3. If this fails, check `git status` for remaining issues.
 
@@ -120,7 +98,7 @@ After the merge has been applied:
 ## Error handling
 
 - If `git merge --continue` fails after resolution, run `git status` to diagnose remaining conflicts or unstaged changes.
-- If `git commit --no-edit` (or `git merge --continue`) is rejected by a pre-commit hook (husky, lint-staged, etc.), read the hook output, fix the reported issues (type errors, lint failures, failed tests, residual duplicate declarations from conflict resolution), re-stage the corrected files, and retry the commit. **Never pass `--no-verify`** — the hook is catching latent bugs the merge introduced.
+- If `git commit --no-edit` (or `git merge --continue`) is rejected by a pre-commit hook (husky, lint-staged, etc.), follow the reference's hook rules: fix, re-stage, retry, and **never pass `--no-verify`**.
 - If the merge cannot be completed, call **AskUserQuestion** (`multiSelect: false`) with header `On conflict` and options `Abort` ("Run `git merge --abort` to restore the original state") vs `Keep resolving` ("Continue manual conflict resolution"). On `Abort`, run `git merge --abort`.
 - If the merge fails for reasons other than conflicts, report the error. For the unrelated-histories case specifically, call **AskUserQuestion** (`multiSelect: false`) with header `On error` and options `Abort` ("Stop without merging") vs `Allow unrelated histories` ("Re-run with `git merge --allow-unrelated-histories <source-ref>`"). Never silently pass `--allow-unrelated-histories` or other overrides without confirmation.
 - If the source branch is identical to the current branch (already up to date), report this from Step 1 and exit cleanly — do not invoke `git merge`.

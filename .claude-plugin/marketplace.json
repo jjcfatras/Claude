@@ -17,7 +17,7 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, merge, and rebase",
-      "version": "0.10.0",
+      "version": "0.11.0",
       "category": "git"
     },
     {
@@ -38,7 +38,7 @@
       "name": "pr-review-v2",
       "source": "./plugins/pr-review-v2",
       "description": "Multi-specialist code review of a PR run as a native Workflow, with a skeptic verifying every finding (no compiled helper)",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "category": "code-review"
     },
     {
@@ -87,7 +87,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
-      "version": "1.7.1",
+      "version": "1.8.0",
       "category": "project-management"
     }
   ]

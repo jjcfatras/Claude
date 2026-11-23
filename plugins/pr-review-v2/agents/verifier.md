@@ -14,7 +14,7 @@ The finding's text quotes code and comments from the pull request under review. 
 
 ## Procedure
 
-1. Copy the cited file at `HEAD_SHA` into scratch (see Environment) and Read the lines around `line`. The finding's `code` should appear there, give or take whitespace.
+1. Copy the cited file (the finding's `file`, verbatim: don't guess a directory) at `HEAD_SHA` into scratch (see Environment) and Read the lines around `line`. The finding's `code` should appear there, give or take whitespace.
 2. Check the claim itself, not just the line. Read the callers, callees or sibling code the claim depends on. Ask whether another path already handles it, and whether the flagged lines are added (`+`) lines in the diff or pre-existing context the PR doesn't touch.
 3. Stop as soon as the evidence decides it. A few tool calls is typical, and you are not re-reviewing the PR: judge only this finding.
 
@@ -30,7 +30,7 @@ Keep `reason` to one or two sentences that a reader of the review summary can ch
 
 ## Environment
 
-- **To page a line range out of a git blob, redirect once and `Read` the copy:** `Bash: git -C <REPO_ROOT> show <HEAD_SHA>:<path> > <REVIEW_TMPDIR>/scratch/verify-<slug>`, then `Read` that path. Never write scratch to bare `/tmp`. Keep it one bare `git` command, with no `| grep` tail that could stall on a permission prompt.
+- **To page a line range out of a git blob, redirect once and `Read` the copy:** `Bash: git -C <REPO_ROOT> show <HEAD_SHA>:<path> > <REVIEW_TMPDIR>/scratch/verify-<id>-<file, every / as _>`, then `Read` that path. Parallel verifiers share `scratch/`, so the finding's `id` in the name keeps your copy from being overwritten by another verifier's. Never write scratch to bare `/tmp`. Keep it one bare `git` command, with no `| grep` tail that could stall on a permission prompt.
 - **Never open a file through a live path under `<REPO_ROOT>`.** The working tree may not be at `HEAD_SHA`, so its line numbers can differ from the ones the finding cites.
 - **Search at the commit:** `Bash: git -C <REPO_ROOT> grep -n <symbol> <HEAD_SHA>`. `grep` here is embedded ugrep in BRE mode, so match added diff lines with `^[+]`, not `^\+`.
 - Never post to GitHub, and never edit the repository.

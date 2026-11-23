@@ -138,6 +138,22 @@ type AgentSpawn struct {
 	Sidechains       []*Sidechain `json:"sidechains,omitempty"`
 }
 
+// Usage is one transcript's own API spend. Embedded in Session (main thread
+// only, never rolled up) and Sidechain, so its fields sit at the JSON top level.
+type Usage struct {
+	// Models comes from each response's message.model. Never use the meta's
+	// pickedEffortModel: it named Opus for Sonnet-pinned agents (255adf1a).
+	Models []string `json:"models,omitempty"`
+	// API responses, deduped by message.id: one response is split across
+	// several jsonl lines that each repeat its usage block.
+	APIResponses int   `json:"api_responses,omitempty"`
+	InputTokens  int64 `json:"input_tokens,omitempty"` // summed over responses, cache reads and writes included
+	// The cached share of InputTokens; uncached = input - read - creation.
+	CacheReadTokens     int64 `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens int64 `json:"cache_creation_tokens,omitempty"`
+	OutputTokens        int64 `json:"output_tokens,omitempty"`
+}
+
 // Sidechain holds the parsed contents of a single subagent transcript. Stats
 // match the top-level Stats struct so downstream consumers can analyze a
 // specialist's work the same way they analyze the main session. Events are
@@ -148,16 +164,9 @@ type Sidechain struct {
 	Phase          string `json:"phase,omitempty"` // Workflow agents only: the meta's workflowPhase
 	FirstTimestamp string `json:"first_timestamp,omitempty"`
 	LastTimestamp  string `json:"last_timestamp,omitempty"`
-	// Models comes from each response's message.model. Never use the meta's
-	// pickedEffortModel: it named Opus for Sonnet-pinned agents (255adf1a).
-	Models []string `json:"models,omitempty"`
-	// API responses, deduped by message.id: one response is split across
-	// several jsonl lines that each repeat its usage block.
-	APIResponses int     `json:"api_responses,omitempty"`
-	InputTokens  int64   `json:"input_tokens,omitempty"` // summed over responses, cache reads included
-	OutputTokens int64   `json:"output_tokens,omitempty"`
-	Stats        Stats   `json:"stats"`
-	Events       *Events `json:"events,omitempty"`
+	Usage
+	Stats  Stats   `json:"stats"`
+	Events *Events `json:"events,omitempty"`
 }
 
 // WorkflowRun holds the agents of one Workflow tool run, read from
@@ -240,9 +249,10 @@ type Session struct {
 	LastTimestamp    string                 `json:"last_timestamp"`
 	PluginsUsed      []string               `json:"plugins_used"`
 	PluginScopeKnown map[string]PluginScope `json:"plugin_scope_known,omitempty"`
-	Stats            Stats                  `json:"stats"`
-	Events           *Events                `json:"events,omitempty"`
-	WorkflowRuns     []*WorkflowRun         `json:"workflow_runs,omitempty"`
+	Usage
+	Stats        Stats          `json:"stats"`
+	Events       *Events        `json:"events,omitempty"`
+	WorkflowRuns []*WorkflowRun `json:"workflow_runs,omitempty"`
 }
 
 // permissionRejectMarkers is the FALLBACK denial classifier, for transcripts
@@ -496,10 +506,7 @@ type parsedFile struct {
 	Version         string
 	FirstTimestamp  string
 	LastTimestamp   string
-	Models          []string
-	APIResponses    int
-	InputTokens     int64
-	OutputTokens    int64
+	Usage
 }
 
 func parseFile(path string) (*parsedFile, error) {
@@ -623,6 +630,8 @@ func parseFile(path string) (*parsedFile, error) {
 			}
 			if u := env.Usage; u != nil {
 				pf.InputTokens += u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+				pf.CacheReadTokens += u.CacheReadInputTokens
+				pf.CacheCreationTokens += u.CacheCreationInputTokens
 				pf.OutputTokens += u.OutputTokens
 			}
 		}
@@ -1067,10 +1076,7 @@ func parseSidechain(jsonlPath string, sidechainDir string, byAgentType map[strin
 		Phase:          phase,
 		FirstTimestamp: pf.FirstTimestamp,
 		LastTimestamp:  pf.LastTimestamp,
-		Models:         pf.Models,
-		APIResponses:   pf.APIResponses,
-		InputTokens:    pf.InputTokens,
-		OutputTokens:   pf.OutputTokens,
+		Usage:          pf.Usage,
 		Stats:          stats,
 	}
 	if includeEvents {
@@ -1153,6 +1159,7 @@ func parseSession(path string) (*Session, error) {
 		Version:        pf.Version,
 		FirstTimestamp: pf.FirstTimestamp,
 		LastTimestamp:  pf.LastTimestamp,
+		Usage:          pf.Usage, // main thread only, like the turn_* stats
 		Stats:          stats,
 		Events:         events,
 	}

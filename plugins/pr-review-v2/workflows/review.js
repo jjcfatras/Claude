@@ -758,7 +758,8 @@ const FAMILY = { typescript: PAT_TS, react: PAT_REACT, infra: PAT_INFRA };
 // shortcut: a flat 25% floor for every domain role; tune per role if real runs flag clean scans.
 const THIN_SHARE = 0.25;
 // claude-md must read every path-scoped rule it was handed; other roles the non-test files of their family.
-const coverage = (role, reviewed, paths, rules) => {
+// Each file weighs its added lines (at least 1), so skipping a dozen one-line barrel edits isn't "thin".
+const coverage = (role, reviewed, paths, rules, addedRuns = new Map()) => {
   const expected =
     role === "claude-md"
       ? rules
@@ -767,10 +768,22 @@ const coverage = (role, reviewed, paths, rules) => {
         );
   const seen = new Set(reviewed.map((p) => String(p).replace(/^\.\//, "")));
   const read = expected.filter((p) => seen.has(p)).length;
+  const weight = (ps) =>
+    ps.reduce(
+      (n, p) =>
+        n +
+        Math.max(
+          1,
+          (addedRuns.get(p) ?? []).reduce((s, [a, b]) => s + b - a + 1, 0),
+        ),
+      0,
+    );
   const thin =
     role === "claude-md"
       ? read < expected.length
-      : expected.length > 0 && read / expected.length < THIN_SHARE;
+      : expected.length > 0 &&
+        weight(expected.filter((p) => seen.has(p))) / weight(expected) <
+          THIN_SHARE;
   return { read, expected: expected.length, thin };
 };
 check(
@@ -783,6 +796,14 @@ check(
     ),
   ) === '{"read":1,"expected":5,"thin":true}' &&
     !coverage("infra", ["main.tf"], ["main.tf", "src/a.ts"], []).thin &&
+    // 1 of 5 files, but the one holding 40 of 44 added lines: not thin.
+    !coverage(
+      "perf",
+      ["big.ts"],
+      ["big.ts", "a.ts", "b.ts", "c.ts", "d.ts"],
+      [],
+      new Map([["big.ts", [[1, 40]]]]),
+    ).thin &&
     coverage("claude-md", ["r/a.md"], [], ["r/a.md", "r/b.md"]).thin,
   "coverage",
 );
@@ -1000,7 +1021,13 @@ const perRole = await pipeline(
   async (out, role) => {
     if (!out) return { role, missing: true };
     const r = triage(role, out, priorIssues, addedRuns);
-    r.coverage = coverage(role, out.files_reviewed ?? [], paths, matchedRules);
+    r.coverage = coverage(
+      role,
+      out.files_reviewed ?? [],
+      paths,
+      matchedRules,
+      addedRuns,
+    );
     const verdicts = await parallel(
       r.candidates.map(
         (f) => () =>

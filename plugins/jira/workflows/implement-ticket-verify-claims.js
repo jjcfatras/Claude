@@ -3,7 +3,7 @@ export const meta = {
   description:
     "Verify a JIRA ticket's codebase claims: one agent per claim cluster, each returning a structured verdict with file:line evidence",
   whenToUse:
-    "Invoked by /jira:implement-ticket phase 3 when a ticket has many claims. Requires args {ticketKey, guidePath, clusters: [{name, claims}]}.",
+    "Invoked by /jira:implement-ticket phase 3 when a ticket has many claims. Requires args {ticketKey, worktree, guidePath, clusters: [{name, claims}]}.",
   phases: [{ title: "Verify", model: "sonnet" }],
 };
 
@@ -35,6 +35,11 @@ if (!Array.isArray(args?.clusters)) {
     "args.clusters must be a JSON array of { name, claims } — pass an array, not a string",
   );
 }
+if (typeof args.worktree !== "string" || !args.worktree) {
+  throw new Error(
+    "args.worktree must be the absolute path of the ticket's worktree",
+  );
+}
 
 log(`${args.clusters.length} claim clusters to verify for ${args.ticketKey}`);
 
@@ -42,7 +47,8 @@ const results = await pipeline(args.clusters, (c) =>
   agent(
     [
       `You are verifying codebase claims from JIRA ticket ${args.ticketKey}. Procedure: Read ${args.guidePath} and apply its "Verifying" section exactly.`,
-      "Check each claim below against the current code in the working tree — `rg`, Read, and LSP where available. Return exactly one verdict per claim, in the order given, with the claim text quoted verbatim.",
+      `Check each claim below against the current code in the worktree at ${args.worktree} — resolve every repo-relative path against it — using \`rg\`, Read, and LSP where available.`,
+      "Return exactly one verdict per claim, in the order given, with the claim text quoted verbatim.",
       "Every verdict except unverifiable cites `file:line` evidence; for unverifiable, say what you would need to check it (a log, a prod config, a running instance).",
       "Only when a claim hinges on an external library's behavior, check current docs with Context7 (MCP tools load on demand here — call ToolSearch for them first) and cite the version.",
       "Read-only: do not edit, create, or delete any file.",

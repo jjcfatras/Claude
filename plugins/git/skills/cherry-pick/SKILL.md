@@ -69,14 +69,11 @@ For each commit (in chronological order, oldest first):
 
 > **Pre-commit hooks:** a clean `git cherry-pick` commits internally and does **not** run the target repo's pre-commit hook. `git cherry-pick --continue` (Step 4e) does, as does any explicit `git commit`.
 >
-> - Keep this pick → resolve → `--continue` flow. Using `git cherry-pick -n` followed by `git commit` pays for a hook run even on picks that would have applied cleanly.
-> - If the hook is slow or noisy (e.g. a monorepo linting/testing many projects), run `git cherry-pick --continue` **bare**, with no pipe, redirect, or `echo "exit=..."` suffix, using `run_in_background: true`. The completion notice then reports git's real exit code, and the full output lands in the task's output file. Wrapping the command loses the exit code: the Bash tool's shell may be zsh, where `${PIPESTATUS[0]}` expands to nothing.
-> - Search that output file with `rg` for the hook's summary or failure lines instead of `tail`-ing it, because a hook's last lines are often a later step, not the summary.
-> - Never `Read` the output file whole: a verbose hook can exceed the Read size cap.
+> Keep this pick → resolve → `--continue` flow. Using `git cherry-pick -n` followed by `git commit` pays for a hook run even on picks that would have applied cleanly. How to run a slow or noisy hook is in the conflict-resolution reference (Step 4).
 
 ## Step 4: Resolve conflicts
 
-When a cherry-pick produces conflicts:
+When a cherry-pick produces conflicts, Read `${CLAUDE_PLUGIN_ROOT}/references/conflict-resolution.md` (once per run) and follow it. The steps below give the cherry-pick specifics it defers to.
 
 ### 4a: Identify all conflicting files
 
@@ -88,31 +85,10 @@ Run `git log --format="%B" -1 <sha-being-cherry-picked>` to read the full commit
 
 ### 4c: Resolve each conflicting file
 
-Resolve all conflict hunks in a given file in a single Read + Edit pass: read the full file once (not marker-by-marker) so you see every hunk before editing, rather than resolving one hunk and re-searching for the next.
+Use the reference's per-file procedure, with these sides and precedence:
 
-For each conflicting file:
-
-1. **Read the file** using the Read tool to see full contents including conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
-
-2. **Understand both sides:**
-   - Between `<<<<<<< HEAD` and `=======` is the current branch version.
-   - Between `=======` and `>>>>>>> <sha>` is what the cherry-picked commit introduces.
-   - Run `git show <sha> -- <filepath>` to see the full file after the cherry-picked commit for additional context.
-
-3. **Resolve the conflict intelligently:**
-   - If changes are in different logical sections (different functions, different import groups), keep both.
-   - If changes modify the same code, understand the intent of each side:
-     - The current branch version reflects the evolution of code on this branch.
-     - The cherry-picked version reflects a specific fix or feature being ported.
-     - Apply the cherry-picked change's intent on top of the current branch's code structure.
-   - If one side adds new code and the other modifies existing code, integrate both.
-   - If both sides modify the same line differently, combine if logically compatible, or prefer the cherry-picked change while preserving current-branch changes not in conflict.
-   - For import statements or dependency lists: include all from both sides, removing exact duplicates.
-   - **Never leave conflict markers in the file.**
-
-4. **Edit the file** using the Edit tool to write the resolved version, removing all conflict markers.
-
-5. **Stage the resolved file:** Run `git add <filepath>`.
+- **Sides:** between `<<<<<<< HEAD` and `=======` is the current branch version; between `=======` and `>>>>>>> <sha>` is what the cherry-picked commit introduces. Run `git show <sha> -- <filepath>` to see what that commit changed in this file.
+- **Precedence:** the current branch version reflects the evolution of code on this branch; the cherry-picked version is a specific fix or feature being ported. Apply the cherry-picked change's intent on top of the current branch's code structure. If both sides change the same line differently, combine if logically compatible, or prefer the cherry-picked change while preserving current-branch changes not in conflict.
 
 ### 4d: Handle special conflict types
 
@@ -123,8 +99,8 @@ For each conflicting file:
 
 After all conflicts in the current commit are resolved and staged:
 
-1. Run `git diff --check` to confirm no conflict markers remain — it prints `path:line: leftover conflict marker` for any it finds and exits non-zero. Run `git diff --name-only --diff-filter=U` to list any files git still considers unmerged.
-2. Run `git cherry-pick --continue` to finalize the commit. This runs the target repo's pre-commit hook; if that hook is slow or verbose, run the command bare in the background and `rg` its output file (see the note in Step 3).
+1. Run the reference's marker check.
+2. Run `git cherry-pick --continue` to finalize the commit. This runs the target repo's pre-commit hook; follow the reference's hook rules.
 3. If this fails, check `git status` for remaining issues.
 
 ## Step 5: Verify the result

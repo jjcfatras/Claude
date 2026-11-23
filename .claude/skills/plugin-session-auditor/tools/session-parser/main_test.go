@@ -68,7 +68,7 @@ func TestParseSession_WorkflowRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		session: `{"type":"assistant","uuid":"m1","timestamp":"2026-11-17T20:00:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"w1","name":"Workflow","input":{"name":"x"}}]}}
+		session: `{"type":"assistant","uuid":"m1","timestamp":"2026-11-17T20:00:00.000Z","message":{"id":"msg_0","model":"claude-opus-5-5","role":"assistant","content":[{"type":"tool_use","id":"w1","name":"Workflow","input":{"name":"x"}}],"usage":{"input_tokens":7,"cache_read_input_tokens":40,"cache_creation_input_tokens":3,"output_tokens":9}}}
 `,
 		filepath.Join(runDir, "agent-a1.meta.json"): `{"agentType":"p:errors","description":"errors","workflowPhase":"Review","pickedEffortModel":"claude-opus-5-5"}`,
 		filepath.Join(runDir, "agent-a1.jsonl"): `{"type":"assistant","uuid":"u1","isSidechain":true,"timestamp":"2026-11-17T20:00:01.000Z","message":{"id":"msg_1","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"thinking","thinking":"t"}],"usage":{"input_tokens":2,"cache_read_input_tokens":100,"cache_creation_input_tokens":10,"output_tokens":5}}}
@@ -98,6 +98,13 @@ func TestParseSession_WorkflowRuns(t *testing.T) {
 	}
 	if agent.APIResponses != 1 || agent.InputTokens != 112 || agent.OutputTokens != 5 {
 		t.Errorf("responses/in/out = %d/%d/%d, want 1/112/5", agent.APIResponses, agent.InputTokens, agent.OutputTokens)
+	}
+	if agent.CacheReadTokens != 100 || agent.CacheCreationTokens != 10 {
+		t.Errorf("agent cache read/creation = %d/%d, want 100/10", agent.CacheReadTokens, agent.CacheCreationTokens)
+	}
+	// The session's usage is its own transcript only: the agent's tokens must not roll up into it.
+	if sess.APIResponses != 1 || sess.InputTokens != 50 || sess.CacheReadTokens != 40 || sess.CacheCreationTokens != 3 || sess.OutputTokens != 9 {
+		t.Errorf("session usage = %+v, want 1 response, 50 in (40 read, 3 creation), 9 out", sess.Usage)
 	}
 	if sess.Stats.SidechainToolCalls != 1 || sess.Stats.ToolFailureCount != 1 {
 		t.Errorf("rolled-up sidechain calls/failures = %d/%d, want 1/1", sess.Stats.SidechainToolCalls, sess.Stats.ToolFailureCount)

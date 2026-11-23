@@ -1,7 +1,7 @@
 ---
 name: commit-push
 description: Commit changes and push to the current branch's origin; refresh an open PR's description if one exists. Use when the user asks to "commit and push", "push this up", or wants changes committed and the remote updated without opening a new PR.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(git symbolic-ref:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*), AskUserQuestion
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git checkout:*), Bash(git switch:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh *), Bash(git push:*), Bash(git commit:*), Bash(gh pr view:*), Bash(gh pr edit:*), Bash(mktemp:*), AskUserQuestion
 model: sonnet
 effort: low
 ---
@@ -11,13 +11,14 @@ effort: low
 - Current git status: !`git status`
 - Current git diff (staged and unstaged changes): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
+- Default branch: !`${CLAUDE_PLUGIN_ROOT}/scripts/default-branch.sh`
 - Recent commits: !`git log --oneline -10`
 
 ## Your task
 
 Commit the changes above and push them to the current branch's `origin`.
 
-1. **Determine the default branch.** Run `git symbolic-ref --short refs/remotes/origin/HEAD` and strip the `origin/` prefix. If that fails (no `origin/HEAD`), treat `main`, then `master`, as the default.
+1. **Default branch.** Use the **Default branch** from Context above as `<default>`.
 
 2. **Protected-branch guard.** Treat the current branch as _protected_ if its name contains any of these case-sensitive substrings: `dev`, `stage`, `qa`, `prod`, `main`, `release`. If the current branch is protected, do **not** silently commit onto it. Call the **AskUserQuestion** tool (`multiSelect: false`) with header `Branch`, a question naming the protected branch (e.g. "You're on protected branch `develop`. Commit here or create a new branch?"), and two options:
    - `Create new branch` (Recommended) — "Derive a short kebab-case branch name from the nature of the changes (e.g. `fix-auth-token-expiry`) and run `git switch -c <name>` before committing."
