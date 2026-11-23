@@ -17,77 +17,66 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git workflow skills (each also a slash command): commit, commit-push, commit-push-pr, push, pr, clean_gone, cherry-pick, merge, and rebase",
-      "version": "0.11.0",
       "category": "git"
     },
     {
       "name": "pr-respond",
       "source": "./plugins/pr-respond",
       "description": "Respond to every flagged issue on a PR — inline comments and review-body findings, including your own — dismissing false positives and fixing valid ones; verify responses to your own review threads and resolve the ones that hold",
-      "version": "2.1.1",
       "category": "code-review"
     },
     {
       "name": "pr-review",
       "source": "./plugins/pr-review",
       "description": "Multi-specialist code review of a PR using parallel native subagents (no agent team, no SDK)",
-      "version": "4.0.5",
       "category": "code-review"
     },
     {
       "name": "pr-review-v2",
       "source": "./plugins/pr-review-v2",
       "description": "Multi-specialist code review of a PR run as a native Workflow, with a skeptic verifying every finding (no compiled helper)",
-      "version": "0.1.2",
       "category": "code-review"
     },
     {
       "name": "docs",
       "source": "./plugins/docs",
       "description": "Audit project docs (CLAUDE.md, READMEs, docs/ trees, .claude/commands, .claude/skills, .claude/rules, architecture docs) for stale claims about the codebase and report findings with suggested fixes",
-      "version": "1.7.0",
       "category": "documentation"
     },
     {
       "name": "debate",
       "source": "./plugins/debate",
       "description": "Adversarial debate on a claim. Pro and con subagents generate opening arguments then attack and defend across up to 3 rounds; orchestrator renders an inline markdown report of surviving, negated, and disputed arguments.",
-      "version": "0.2.2",
       "category": "reasoning"
     },
     {
       "name": "deep",
       "source": "./plugins/deep",
       "description": "Deep, fact-checked research (/deep:research): web searches, library docs via Context7 and an optional codebase search, adversarial verification of every claim (two voters plus a tie-break), and a cited inline report",
-      "version": "0.2.0",
       "category": "research"
     },
     {
       "name": "simplify",
       "source": "./plugins/simplify",
       "description": "Simplification skills (each also a slash command): behavior-preserving code cleanups (/simplify:simplify-code) and lossless prose distillation (/simplify:simplify-prose)",
-      "version": "3.0.0",
       "category": "code-quality"
     },
     {
       "name": "transcript",
       "source": "./plugins/transcript",
       "description": "Print the filepath of the current Claude Code session's .jsonl transcript",
-      "version": "0.3.5",
       "category": "session-tools"
     },
     {
       "name": "caffeine",
       "source": "./plugins/caffeine",
       "description": "Keep macOS awake while Claude Code works, via the built-in caffeinate (no Electron, no npx, non-blocking hooks)",
-      "version": "0.1.1",
       "category": "session-tools"
     },
     {
       "name": "jira",
       "source": "./plugins/jira",
       "description": "JIRA workflow skills (user-invoked slash commands, not model-invocable): create a structured ticket from a diff/PR/description, pick up a ticket by key to verify claims, plan, and implement it, and generate a runnable Postman QA collection from a ticket's acceptance criteria or a GitHub PR's diff.",
-      "version": "1.8.0",
       "category": "project-management"
     }
   ]

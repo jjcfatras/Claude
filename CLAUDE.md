@@ -26,11 +26,10 @@ To build the Go helper, run `make release` (or `make test`) directly from inside
 Note: `.claude/settings.json` registers hooks that block bad edits at write time — don't fight them, fix the underlying issue:
 
 - **Auto-format** (`PostToolUse`): `.claude/hooks/format.sh` hands the edited file to `scripts/format.sh`. Don't run formatters manually.
-- **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`.
+- **`plugin.json` validator** (`PostToolUse`): every `plugins/*/.claude-plugin/plugin.json` must have top-level `.name` and `.version`, and a matching entry in `.claude-plugin/marketplace.json`. `version` lives only in `plugin.json`; marketplace entries carry none.
 - **Frontmatter validator** (`PostToolUse`): every `plugins/*/commands/*.md`, `plugins/*/skills/*/SKILL.md`, and `.claude/skills/*/SKILL.md` must start with `---` and include a `description:` field.
-- **Version-sync validator** (`PostToolUse`): a plugin's `plugin.json` `version` must match its entry in `.claude-plugin/marketplace.json`; editing either file triggers the check.
 
-All four match on `Edit|Write` only — a scripted multi-file edit (`python3` heredoc, shell redirect) bypasses every one of them. After one, run `make format` and re-check manifests yourself.
+All three match on `Edit|Write` only — a scripted multi-file edit (`python3` heredoc, shell redirect) bypasses every one of them. After one, run `make format` and re-check manifests yourself.
 
 ## Project Structure
 
@@ -66,7 +65,7 @@ plugins/<name>/
   agents/, references/, bin/, tools/, hooks/, scripts/, workflows/  # only where needed
 ```
 
-Plugin layout against Anthropic's standard layout (what each folder means, manifest rules, `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PLUGIN_DATA}`, accepted deviations): see `.claude/rules/plugin-structure.md`. Skill folder layout (skill-level vs plugin-level files, `references/`/`assets/`/`scripts/`, `${CLAUDE_SKILL_DIR}` vs `${CLAUDE_PLUGIN_ROOT}`): see `.claude/rules/skill-structure.md`. CLAUDE.md and `.claude/rules/` authoring (what belongs, size, imports, path-scoped rules): see `.claude/rules/claude-md-structure.md`.
+Plugin layout against Anthropic's standard layout (what each folder means, manifest rules, `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PLUGIN_DATA}`, workflows): see `.claude/rules/plugin-structure.md`. Skill folder layout (skill-level vs plugin-level files, `references/`/`assets/`/`scripts/`, `${CLAUDE_SKILL_DIR}` vs `${CLAUDE_PLUGIN_ROOT}`): see `.claude/rules/skill-structure.md`. CLAUDE.md and `.claude/rules/` authoring (what belongs, size, imports, path-scoped rules): see `.claude/rules/claude-md-structure.md`.
 
 Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`, `jira-ticket-workspace/`, `debate-workspace/`, `plugin-session-auditor-workspace/`) are gitignored scratch space for the skill-creator / audit / command workflows — safe to ignore. Each is listed individually in `.gitignore` (no `*-workspace/` glob — add new workspace dirs there explicitly).
 
