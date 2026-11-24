@@ -1,0 +1,50 @@
+diff --git a/src/modules/account/src/lib/repositories/user-identity.repository.ts b/src/modules/account/src/lib/repositories/user-identity.repository.ts
+index 7d1d324..20ba58d 100644
+--- a/src/modules/account/src/lib/repositories/user-identity.repository.ts
++++ b/src/modules/account/src/lib/repositories/user-identity.repository.ts
+@@ -3,6 +3,11 @@ import { AccountDatabase } from '@fairsquare/component-data-model';
+ import { Transaction } from 'kysely';
+ import { UserIdentityDAL } from '../dals';
+ 
++/** Okta reports the issuer with or without a trailing slash; links are stored without one. */
++export function normalizeIssuer(issuer: string) {
++  return issuer.replace(/\/+$/, '');
++}
++
+ /**
+  * Links between FairSquare users and external identity provider accounts (FSIF-112).
+  */
+@@ -23,7 +28,7 @@ export class UserIdentityRepository extends DbRepository<'userIdentity', Account
+         forUpdate: false,
+         filter: {
+           $where: [
+-            { column: 'issuer', operator: '=', value: issuer },
++            { column: 'issuer', operator: '=', value: normalizeIssuer(issuer) },
+             { column: 'subject', operator: '=', value: subject },
+           ],
+         },
+diff --git a/src/modules/account/src/lib/repositories/user-identity.repository.spec.ts b/src/modules/account/src/lib/repositories/user-identity.repository.spec.ts
+index 2f918ac..9323949 100644
+--- a/src/modules/account/src/lib/repositories/user-identity.repository.spec.ts
++++ b/src/modules/account/src/lib/repositories/user-identity.repository.spec.ts
+@@ -1,3 +1,4 @@
++import * as repositoryModule from './user-identity.repository';
+ import { UserIdentityRepository } from './user-identity.repository';
+ import { UserIdentityDAL } from '../dals';
+ 
+@@ -27,6 +28,15 @@ describe('UserIdentityRepository', () => {
+   });
+ 
+   describe('getByIssuerSubject', () => {
++    it('normalizes the issuer before querying', async () => {
++      const normalizeSpy = jest.spyOn(repositoryModule, 'normalizeIssuer');
++      userIdentityDal.getAll.mockResolvedValue([link]);
++
++      await repository.getByIssuerSubject('https://example.okta.com/', '00u1abcd');
++
++      expect(normalizeSpy).toHaveBeenCalledWith('https://example.okta.com/');
++    });
++
+     it('filters on both issuer and subject and returns the match', async () => {
+       userIdentityDal.getAll.mockResolvedValue([link]);
+ 

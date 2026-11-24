@@ -1,0 +1,35 @@
+diff --git a/apps/broker-portal-web/components/app/applications/new/step-1-upload/document-slots-upload/document-slot-card.tsx b/apps/broker-portal-web/components/app/applications/new/step-1-upload/document-slots-upload/document-slot-card.tsx
+index 0fda8da..d072783 100644
+--- a/apps/broker-portal-web/components/app/applications/new/step-1-upload/document-slots-upload/document-slot-card.tsx
++++ b/apps/broker-portal-web/components/app/applications/new/step-1-upload/document-slots-upload/document-slot-card.tsx
+@@ -2,7 +2,7 @@
+ 
+ import { AlertCircle, Plus, X } from 'lucide-react';
+ import type { ChangeEvent, DragEvent } from 'react';
+-import { useRef, useState } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import type { UploadedFile } from '@/components/app/shared/file-upload/file-upload';
+ import {
+   APPLICATION_ALLOWED_EXTENSIONS,
+@@ -14,6 +14,9 @@ import { SlotFileRow } from './slot-file-row';
+ 
+ export const ACCEPTED_FILE_EXTENSIONS = APPLICATION_ALLOWED_EXTENSIONS.join(',');
+ 
++/** Upload errors clear themselves after this long so a stale rejection doesn't linger. */
++const ERROR_DISMISS_MS = 5000;
++
+ interface DocumentSlotCardProps {
+   files: UploadedFile[];
+   onAddFiles: (slot: DocumentSlotConfig, rawFiles: File[]) => string[];
+@@ -26,6 +29,11 @@ export function DocumentSlotCard({ files, onAddFiles, onRemove, slot }: Document
+   const [errors, setErrors] = useState<string[]>([]);
+   const fileInputRef = useRef<HTMLInputElement>(null);
+ 
++  useEffect(() => {
++    if (errors.length === 0) return;
++    setTimeout(() => setErrors([]), ERROR_DISMISS_MS);
++  }, [errors]);
++
+   const count = files.filter((f) => f.status === READY_FILE_STATUS).length;
+   const isComplete = count >= slot.completeAt;
+   const SlotIcon = slot.icon;
