@@ -73,6 +73,6 @@ Root-level `*-workspace/` dirs (e.g. `code-review-workspace/`, `docs-workspace/`
 
 Each plugin has a manifest at `plugins/<name>/.claude-plugin/plugin.json` (name, version, description, repository, license, keywords). A plugin may declare `dependencies` on plugins from another marketplace (e.g. `jira` depends on `context7` and `superpowers` from `claude-plugins-official`); the root `marketplace.json` must allowlist that marketplace in `allowCrossMarketplaceDependenciesOn`.
 
-Each slash command is a markdown file in `plugins/<name>/commands/` with YAML frontmatter (`description`, `allowed-tools`, `model`, `effort`, `argument-hint`, `disable-model-invocation`). See `.claude/rules/component-frontmatter.md` §1 (skills & slash commands share one frontmatter set) for the full field reference and the `model`/`effort` tier semantics.
+Each slash command is a markdown file in `plugins/<name>/commands/` with YAML frontmatter (`description`, `allowed-tools`, `model`, `effort`, `argument-hint`, `disable-model-invocation`). Field reference: Anthropic's [skills frontmatter reference](https://code.claude.com/docs/en/skills#frontmatter-reference) (a command file takes the same fields except `name` and `paths`) and, for `agents/*.md`, [subagent frontmatter](https://code.claude.com/docs/en/sub-agents#supported-frontmatter-fields).
 
 Reference docs and shared rubrics live under `plugins/<name>/references/`. Use `${CLAUDE_PLUGIN_ROOT}` inside command files to resolve plugin-relative paths at runtime.

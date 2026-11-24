@@ -61,6 +61,17 @@ Observed in Claude Code, not in the docs:
 - `meta.name` must not match a skill or command in the same plugin, since both would be `/<plugin>:<name>`.
 - `meta.whenToUse` is appended to the workflow's entry in the skill listing. Set it to which skill invokes the workflow and the args it requires.
 
+## Model and effort
+
+Skills, commands and agents can pin `model` and `effort` in frontmatter ([frontmatter reference](https://code.claude.com/docs/en/skills#frontmatter-reference), [supported frontmatter fields](https://code.claude.com/docs/en/sub-agents#supported-frontmatter-fields)). Omit both unless the component needs them: unset, the session's values apply, and an agent's model falls back to `CLAUDE_CODE_SUBAGENT_MODEL`, then the parent's ([choose a model](https://code.claude.com/docs/en/sub-agents#choose-a-model)).
+
+- `haiku` with `effort: low`: mechanical, deterministic work. It is the fastest, cheapest tier ([model aliases](https://code.claude.com/docs/en/model-config#model-aliases), [choose the right model](https://code.claude.com/docs/en/costs#choose-the-right-model)).
+- `sonnet` with `low` or `medium`: the default for routine skills and single-agent work. It "handles most coding tasks well and costs less than Opus" ([choose the right model](https://code.claude.com/docs/en/costs#choose-the-right-model)).
+- `opus` with `high` or `xhigh`: complex architectural decisions and multi-step reasoning ([choose the right model](https://code.claude.com/docs/en/costs#choose-the-right-model)).
+- `fable`: only the hardest, longest-running tasks, never as a default ([work with Fable](https://code.claude.com/docs/en/model-config#work-with-fable)). Never pin it for security work: requests its classifiers flag, mostly cybersecurity, fall back to Opus, often on the first request ([automatic model fallback](https://code.claude.com/docs/en/model-config#automatic-model-fallback), [security workloads](https://code.claude.com/docs/en/model-config#security-research-and-biology-workloads)).
+- `max` effort costs the most and is slowest. Use it only for the most demanding tasks ([recommended effort levels](https://platform.claude.com/docs/en/build-with-claude/effort#recommended-effort-levels)). A level the model doesn't support falls back to the highest one it does support below it ([adjust effort level](https://code.claude.com/docs/en/model-config#adjust-effort-level)).
+- `effort` takes only `low` to `max`. `ultracode` is a session setting, not an effort level, so it never goes in frontmatter ([adjust effort level](https://code.claude.com/docs/en/model-config#adjust-effort-level)).
+
 ## Validate
 
 `claude plugin validate --strict` treats warnings as errors and checks the manifest and every skill, agent and command frontmatter ([plugin validate](https://code.claude.com/docs/en/plugins/cli-reference#plugin-validate)), plus paths that are missing or escape the plugin ([validate the manifest](https://code.claude.com/docs/en/plugins/manifest-reference#validate-the-manifest)). A run on the marketplace doesn't open the skills, agents or commands of plugins in other directories, so validate each plugin directory too ([validate a directory](https://code.claude.com/docs/en/plugins/cli-reference#validate-a-directory)).
